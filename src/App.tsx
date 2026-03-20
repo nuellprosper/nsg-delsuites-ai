@@ -1,118 +1,171 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AudioRecorder } from './components/audiorecorder';
 import { AITutor } from './components/aitutor';
 import { Quiz } from './components/quiz';
-import { BookOpen, Mic, BrainCircuit, Loader2 } from 'lucide-react';
+import { Search, Loader2, FileAudio, ImageIcon, BrainCircuit, History, BookOpen, Trash2 } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Initialize Gemini
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-interface Topic {
-  name: string;
-  explanation: string;
+interface Session {
+  id: string;
+  courseCode: string;
+  timestamp: number;
+  topics: any[];
+  quiz: any[];
 }
 
-type ViewMode = 'record' | 'tutor' | 'quiz' | 'summary';
-
 function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('record');
+  const [viewMode, setViewMode] = useState<'record' | 'tutor' | 'quiz'>('record');
   const [isProcessing, setIsProcessing] = useState(false);
   const [courseCode, setCourseCode] = useState('');
-  const [topics, setTopics] = useState<Topic[]>([]);
+  const [history, setHistory] = useState<Session[]>([]);
+  const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  
+  const [selectedAudio, setSelectedAudio] = useState<File | Blob | null>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
 
-  const handleRecordingComplete = async (audioBlob: Blob) => {
+  // Load History on Start
+  useEffect(() => {
+    const saved = localStorage.getItem('nsg_history');
+    if (saved) setHistory(JSON.parse(saved));
+  }, []);
+
+  const saveToHistory = (newSession: Session) => {
+    const updatedHistory = [newSession, ...history];
+    setHistory(updatedHistory);
+    localStorage.setItem('nsg_history', JSON.stringify(updatedHistory));
+  };
+
+  const deleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = history.filter(s => s.id !== id);
+    setHistory(updated);
+    localStorage.setItem('nsg_history', JSON.stringify(updated));
+  };
+
+  const fileToBase64 = (file: File | Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result?.toString().split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleStartAnalysis = async () => {
     setIsProcessing(true);
     setErrorMsg(null);
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        const base64Data = reader.result?.toString().split(',')[1] || '';
-        
-        // UPGRADED MODEL: gemini-1.5 is legacy; gemini-2.5-flash is the current standard.
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        
-        const prompt = `Analyze this lecture transcript from ${courseCode || 'a university lecture'}. Extract the key topics and explain them briefly. Format your response EXACTLY like this: TOPICS: [{"name": "Topic Name", "explanation": "Brief explanation"}]`;
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const prompt = `Analyze materials for ${courseCode || 'Engineering'}. 1. Detailed Topics. 2. 20 MCQ Quiz. Format: TOPICS: [...] QUIZ: [...]`;
+      const parts: any[] = [prompt];
+      if (selectedAudio) parts.push({ inlineData: { data: await fileToBase64(selectedAudio), mimeType: selectedAudio.type || "audio/webm" } });
+      if (selectedImage) parts.push({ inlineData: { data: await fileToBase64(selectedImage), mimeType: selectedImage.type } });
 
-        try {
-          const result = await model.generateContent([
-            prompt,
-            { inlineData: { data: base64Data, mimeType: "audio/webm" } }
-          ]);
+      const result = await model.generateContent(parts);
+      const resText = result.response.text();
+      const tPart = JSON.parse(resText.split('TOPICS:')[1].split('QUIZ:')[0].trim());
+      const qPart = JSON.parse(resText.split('QUIZ:')[1].trim());
 
-          const responseText = result.response.text();
-          const topicsPart = responseText.split('TOPICS:')[1];
-          
-          if (!topicsPart) {
-             throw new Error("Format error: The AI responded but I couldn't find the topics. Try a longer recording.");
-          }
-          
-          const extractedTopics = JSON.parse(topicsPart.trim());
-          setTopics(extractedTopics);
-          setViewMode('tutor');
-        } catch (apiErr: any) {
-           setErrorMsg(`API ERROR: ${apiErr.message}`);
-        }
-        setIsProcessing(false);
+      const newSession: Session = {
+        id: Date.now().toString(),
+        courseCode: courseCode || 'Untitled Lecture',
+        timestamp: Date.now(),
+        topics: tPart,
+        quiz: qPart
       };
-    } catch (err: any) {
-      setErrorMsg(`SYSTEM ERROR: ${err.message}`);
-      setIsProcessing(false);
-    }
+
+      saveToHistory(newSession);
+      setCurrentSession(newSession);
+      setViewMode('tutor');
+    } catch (err: any) { setErrorMsg(err.message); }
+    setIsProcessing(false);
   };
 
+  const filteredHistory = history.filter(s => 
+    s.courseCode.toLowerCase().includes(courseCode.toLowerCase())
+  );
+
   return (
-    <div className="min-h-screen bg-white font-mono text-black">
-      <header className="bg-yellow-400 border-b-4 border-black p-6 sticky top-0 z-10">
-        <h1 className="text-4xl font-black italic tracking-tighter uppercase">NSG FOR DELSUITES</h1>
-        <p className="text-sm font-bold bg-black text-white inline-block px-2 py-1 mt-2 uppercase tracking-widest">BY NUELLGRAPHICS</p>
+    <div className="min-h-screen bg-white font-mono text-black pb-10">
+      <header className="bg-yellow-400 border-b-4 border-black p-6 sticky top-0 z-20 shadow-md">
+        <h1 className="text-4xl font-black italic tracking-tighter uppercase leading-none">NSG FOR DELSUITES</h1>
+        <div className="flex justify-between items-center mt-2">
+          <p className="text-xs font-bold bg-black text-white px-2 py-1 uppercase">HISTORY & SEARCH ENABLED</p>
+        </div>
       </header>
 
       <main className="p-4 max-w-4xl mx-auto">
-        {errorMsg && (
-          <div className="bg-red-500 text-white p-4 border-4 border-black mb-6 font-bold uppercase shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-            ⚠️ {errorMsg}
-            <p className="mt-2 text-xs normal-case opacity-90 italic">Hint: If this is a 404, we might need the 'gemini-3-flash-preview' model instead.</p>
-          </div>
-        )}
-
         {isProcessing ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <Loader2 className="w-16 h-16 animate-spin mb-4" />
-            <p className="text-xl font-black uppercase italic text-center">Gemini 2.5 is analyzing lecture...</p>
+            <Loader2 className="w-20 h-20 animate-spin mb-6 text-yellow-500" />
+            <p className="text-2xl font-black uppercase italic">Saving to History...</p>
           </div>
         ) : (
-          <>
+          <div className="space-y-6">
             {viewMode === 'record' && (
-              <div className="space-y-8 animate-in fade-in duration-500">
-                <div className="border-4 border-black p-6 bg-white shadow-[8px_8px_0px_rgba(0,0,0,1)]">
-                  <label className="block text-xs font-black uppercase mb-2">Course Code (e.g. MTH 102)</label>
-                  <input 
-                    type="text" 
-                    value={courseCode}
-                    onChange={(e) => setCourseCode(e.target.value)}
-                    placeholder="CHM 101..." 
-                    className="w-full border-4 border-black p-3 font-bold uppercase focus:bg-yellow-50 outline-none"
-                  />
+              <>
+                <div className="border-4 border-black p-6 bg-white shadow-[8px_8px_0px_black]">
+                  <label className="block text-xs font-black uppercase mb-2">Search or Name Course</label>
+                  <div className="flex gap-2">
+                    <input type="text" value={courseCode} onChange={(e) => setCourseCode(e.target.value)} placeholder="e.g. MTH 102" className="flex-1 border-4 border-black p-3 font-bold uppercase outline-none focus:bg-yellow-50" />
+                    <div className="bg-black text-white p-3 border-4 border-black"><Search /></div>
+                  </div>
                 </div>
-                <AudioRecorder onRecordingComplete={handleRecordingComplete} />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className={`border-4 border-black p-4 ${selectedImage ? 'bg-green-100' : 'bg-white'}`}>
+                    <input type="file" accept="image/*" className="hidden" id="img-up" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
+                    <label htmlFor="img-up" className="cursor-pointer flex flex-col items-center"><ImageIcon /><span className="text-[10px] font-black uppercase mt-1">Image</span></label>
+                  </div>
+                  <div className={`border-4 border-black p-4 ${selectedAudio ? 'bg-green-100' : 'bg-white'}`}>
+                    <input type="file" accept="audio/*" className="hidden" id="aud-up" onChange={(e) => setSelectedAudio(e.target.files?.[0] || null)} />
+                    <label htmlFor="aud-up" className="cursor-pointer flex flex-col items-center"><FileAudio /><span className="text-[10px] font-black uppercase mt-1">Audio</span></label>
+                  </div>
+                </div>
+
+                <AudioRecorder onRecordingComplete={(blob) => setSelectedAudio(blob)} />
+
+                {(selectedAudio || selectedImage) && (
+                  <button onClick={handleStartAnalysis} className="w-full bg-black text-white p-4 font-black uppercase text-xl shadow-[4px_4px_0px_#facc15]">Analyze New Lecture</button>
+                )}
+
+                {/* History List */}
+                <div className="mt-10">
+                  <h2 className="flex items-center gap-2 font-black uppercase text-xl mb-4"><History /> Recent Lectures</h2>
+                  <div className="space-y-3">
+                    {filteredHistory.map(session => (
+                      <div key={session.id} onClick={() => { setCurrentSession(session); setViewMode('tutor'); }} className="border-4 border-black p-4 bg-white shadow-[4px_4px_0px_black] flex justify-between items-center cursor-pointer hover:bg-yellow-50">
+                        <div>
+                          <p className="font-black uppercase">{session.courseCode}</p>
+                          <p className="text-[10px] text-gray-500">{new Date(session.timestamp).toLocaleDateString()}</p>
+                        </div>
+                        <button onClick={(e) => deleteSession(session.id, e)} className="text-red-500 p-2"><Trash2 size={20} /></button>
+                      </div>
+                    ))}
+                    {filteredHistory.length === 0 && <p className="text-center italic text-gray-400">No lectures found.</p>}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {viewMode === 'tutor' && currentSession && (
+              <div className="space-y-6">
+                <AITutor topics={currentSession.topics} />
+                <button onClick={() => setViewMode('quiz')} className="w-full border-4 border-black bg-black text-white p-5 font-black uppercase shadow-[6px_6px_0px_yellow] flex items-center justify-center gap-2 text-xl"><BrainCircuit /> Start 20-Question Quiz</button>
+                <button onClick={() => setViewMode('record')} className="w-full border-4 border-black p-4 font-black uppercase">← Back to List</button>
               </div>
             )}
 
-            {viewMode === 'tutor' && (
-              <div className="space-y-6 animate-in slide-in-from-bottom-8 duration-500">
-                 <AITutor topics={topics} />
-                 <button 
-                  onClick={() => setViewMode('record')}
-                  className="w-full border-4 border-black bg-white p-4 font-black uppercase shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:bg-yellow-400 transition-colors active:shadow-none active:translate-x-1 active:translate-y-1"
-                 >
-                   ← Back to Recorder
-                 </button>
+            {viewMode === 'quiz' && currentSession && (
+              <div className="space-y-6">
+                <Quiz questions={currentSession.quiz} />
+                <button onClick={() => setViewMode('tutor')} className="w-full border-4 border-black p-4 font-black uppercase">← Back to Insights</button>
               </div>
             )}
-          </>
+          </div>
         )}
       </main>
     </div>
