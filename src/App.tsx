@@ -1,213 +1,120 @@
-import { useState, useEffect } from 'react';
-import { openDB } from 'idb';
-import { AudioRecorder } from './components/audiorecorder';
-import { AITutor } from './components/aitutor';
-import { Mic, BookOpen, History, Trash2, Loader2, Upload, Settings } from 'lucide-react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { useState } from 'react';
+import { CheckCircle2, Circle, HelpCircle, Trophy } from 'lucide-react';
 
-// Configured for Gemini 2.5 Flash
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(API_KEY);
+interface AITutorProps {
+  topics: string[];
+  quiz: any[];
+}
 
-const initDB = async () => {
-  return openDB('NSG_Database', 1, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains('sessions')) {
-        db.createObjectStore('sessions', { keyPath: 'id' });
-      }
-    },
-  });
-};
+export const AITutor = ({ topics, quiz }: AITutorProps) => {
+  const [view, setView] = useState<'topics' | 'quiz'>('topics');
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [score, setScore] = useState(0);
+  const [showResult, setShowResult] = useState(false);
 
-function App() {
-  const [activeTab, setActiveTab] = useState<'record' | 'tutor' | 'library'>('record');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [courseCode, setCourseCode] = useState('');
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [currentSession, setCurrentSession] = useState<any>(null);
-
-  useEffect(() => {
-    const loadSessions = async () => {
-      const db = await initDB();
-      const all = await db.getAll('sessions');
-      setSessions(all.sort((a, b) => b.timestamp - a.timestamp));
-    };
-    loadSessions();
-  }, [activeTab]);
-
-  const handleProcessAudio = async (blob: Blob) => {
-    if (!courseCode) return alert("Please enter a Course Code (e.g., EEE 101) first!");
-    if (!API_KEY) return alert("API Key missing. Please check your Environment Variables.");
+  const handleAnswer = (selectedOption: string) => {
+    const correctAnswer = quiz[currentQuestion].correct;
     
-    setIsProcessing(true);
+    // SMART CHECK: Checks if the selected text contains the correct letter 
+    // or if the strings match exactly.
+    const isCorrect = 
+      selectedOption === correctAnswer || 
+      selectedOption.startsWith(correctAnswer + " ") ||
+      selectedOption.startsWith(correctAnswer + ".");
 
-    try {
-      // SET TO GEMINI 2.5 FLASH AS REQUESTED
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      
-      const base64 = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result?.toString().split(',')[1]);
-        reader.readAsDataURL(blob);
-      });
-
-      const prompt = `You are a DELSU Engineering Tutor. Analyze this ${courseCode} lecture audio. 
-      Return ONLY a JSON object with this structure:
-      {
-        "topics": ["Point 1 summary", "Point 2 summary", "Point 3 summary"],
-        "quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": "A"}]
-      }`;
-      
-      const result = await model.generateContent([
-        { text: prompt }, 
-        { inlineData: { data: base64 as string, mimeType: "audio/webm" } }
-      ]);
-      
-      const resText = result.response.text();
-      
-      // Safety: Robust JSON parsing
-      let cleanData;
-      try {
-        const start = resText.indexOf('{');
-        const end = resText.lastIndexOf('}') + 1;
-        cleanData = JSON.parse(resText.substring(start, end));
-      } catch (e) {
-        throw new Error("AI response format error. Please try a clearer recording.");
-      }
-
-      const newSession = {
-        id: Date.now().toString(),
-        courseCode: courseCode.toUpperCase(),
-        timestamp: Date.now(),
-        topics: cleanData.topics || ["No summary generated"],
-        quiz: cleanData.quiz || [],
-        audioBlob: blob 
-      };
-
-      const db = await initDB();
-      await db.put('sessions', newSession);
-      
-      setCurrentSession(newSession);
-      setActiveTab('tutor');
-    } catch (error: any) {
-      alert("Error: " + error.message);
-    } finally {
-      setIsProcessing(false);
+    if (isCorrect) {
+      setScore((prevScore) => prevScore + 1);
+    }
+    
+    // Move to next question or show result
+    if (currentQuestion + 1 < quiz.length) {
+      setCurrentQuestion(currentQuestion + 1);
+    } else {
+      setShowResult(true);
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleProcessAudio(file);
-  };
-
-  const deleteSession = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm("Delete this lecture?")) {
-      const db = await initDB();
-      await db.delete('sessions', id);
-      setSessions(sessions.filter(s => s.id !== id));
-      if (currentSession?.id === id) setCurrentSession(null);
-    }
+  const resetQuiz = () => {
+    setScore(0);
+    setCurrentQuestion(0);
+    setShowResult(false);
   };
 
   return (
-    <div className="min-h-screen bg-white pb-24 text-slate-900 font-sans">
-      <header className="p-6 border-b border-slate-50 sticky top-0 bg-white/90 backdrop-blur-md z-50 flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-black italic tracking-tighter text-red-600">NSG FOR DELSUITES</h1>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Engineering AI Tutor</p>
+    <div className="space-y-6">
+      <div className="flex bg-slate-100 p-1 rounded-2xl">
+        <button 
+          onClick={() => setView('topics')} 
+          className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${view === 'topics' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
+        >
+          Summary
+        </button>
+        <button 
+          onClick={() => setView('quiz')} 
+          className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${view === 'quiz' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
+        >
+          Exam Prep
+        </button>
+      </div>
+
+      {view === 'topics' ? (
+        <div className="space-y-4">
+          {topics.map((t, i) => (
+            <div key={i} className="bg-white border border-slate-100 p-6 rounded-[2rem] shadow-sm">
+              <div className="w-8 h-1 bg-red-600 mb-3 rounded-full"></div>
+              <p className="text-slate-700 font-bold leading-relaxed text-sm">{t}</p>
+            </div>
+          ))}
         </div>
-        <button className="text-slate-300 hover:text-red-600"><Settings size={20} /></button>
-      </header>
-
-      <main className="p-4 max-w-md mx-auto">
-        {activeTab === 'record' && (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block ml-2">Current Course</label>
-              <input 
-                type="text" value={courseCode} onChange={(e) => setCourseCode(e.target.value)}
-                placeholder="e.g. EEE 101" 
-                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-black focus:border-red-600 outline-none transition-all shadow-sm"
-              />
-            </div>
-
-            <div className="flex flex-col items-center py-12 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
-              <AudioRecorder onRecordingComplete={handleProcessAudio} />
-              <div className="mt-8">
-                <label className="flex items-center gap-2 bg-white px-8 py-3 rounded-full shadow-md border border-slate-100 cursor-pointer active:scale-95 transition-all">
-                  <Upload size={18} className="text-red-600" />
-                  <span className="text-xs font-black uppercase tracking-tight">Upload Lecture</span>
-                  <input type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
-                </label>
-              </div>
-            </div>
-
-            {isProcessing && (
-              <div className="flex flex-col items-center gap-3 font-black text-red-600 uppercase pt-4 animate-pulse">
-                <Loader2 className="animate-spin" size={32} />
-                <span className="text-xs tracking-widest">Gemini 2.5 Analyzing...</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'tutor' && currentSession && (
-          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-             <div className="bg-red-600 text-white p-7 rounded-[2.5rem] shadow-xl relative overflow-hidden">
-                <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
-                <h2 className="font-black text-3xl uppercase leading-none">{currentSession.courseCode}</h2>
-                <p className="text-[10px] font-bold opacity-80 mt-2 tracking-widest uppercase">2.5 Flash Analysis</p>
-             </div>
-             
-             <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 flex items-center gap-3">
-               <div className="bg-white p-2 rounded-full text-red-600 shadow-sm"><Mic size={16}/></div>
-               <audio controls src={URL.createObjectURL(currentSession.audioBlob)} className="w-full h-8 opacity-70" />
-             </div>
-
-             <AITutor topics={currentSession.topics} quiz={currentSession.quiz} />
-          </div>
-        )}
-
-        {activeTab === 'library' && (
-          <div className="space-y-4 animate-in fade-in duration-500">
-            <h2 className="text-[10px] font-black text-slate-400 px-2 tracking-widest uppercase">Your Archives</h2>
-            {sessions.length === 0 ? (
-              <div className="text-center py-20 font-bold italic text-slate-300">No lectures saved yet.</div>
-            ) : (
-              sessions.map(s => (
-                <div key={s.id} onClick={() => { setCurrentSession(s); setActiveTab('tutor'); }} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center active:bg-red-50 transition-all shadow-sm">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-slate-50 p-3 rounded-2xl text-red-600"><BookOpen size={20}/></div>
-                    <div>
-                      <span className="font-black text-slate-800 uppercase block">{s.courseCode}</span>
-                      <span className="text-[9px] font-bold text-slate-400">{new Date(s.timestamp).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                  <button onClick={(e) => deleteSession(s.id, e)} className="p-2 text-slate-200 hover:text-red-500">
-                    <Trash2 size={18}/>
-                  </button>
+      ) : (
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm min-h-[350px] flex flex-col justify-center">
+          {quiz && quiz.length > 0 ? (
+            !showResult ? (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                  <span>Question {currentQuestion + 1} of {quiz.length}</span>
+                  <HelpCircle size={16} />
                 </div>
-              ))
-            )}
-          </div>
-        )}
-      </main>
-
-      <nav className="fixed bottom-8 left-8 right-8 bg-slate-900 rounded-[2.5rem] flex justify-around p-4 shadow-2xl z-50 ring-4 ring-white">
-        <button onClick={() => setActiveTab('record')} className={`p-3 rounded-2xl transition-all ${activeTab === 'record' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>
-          <Mic size={24} />
-        </button>
-        <button onClick={() => setActiveTab('tutor')} disabled={!currentSession} className={`p-3 rounded-2xl transition-all ${activeTab === 'tutor' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 disabled:opacity-20'}`}>
-          <BookOpen size={24} />
-        </button>
-        <button onClick={() => setActiveTab('library')} className={`p-3 rounded-2xl transition-all ${activeTab === 'library' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500'}`}>
-          <History size={24} />
-        </button>
-      </nav>
+                <h3 className="font-black text-slate-800 text-lg leading-tight">{quiz[currentQuestion].question}</h3>
+                <div className="grid gap-3">
+                  {quiz[currentQuestion].options.map((opt: string, idx: number) => (
+                    <button 
+                      key={idx} 
+                      onClick={() => handleAnswer(opt)} 
+                      className="w-full text-left p-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold text-sm active:bg-red-600 active:text-white transition-all"
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-10 animate-in zoom-in duration-300">
+                <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Trophy size={40} />
+                </div>
+                <h3 className="font-black text-2xl uppercase text-slate-800">Test Complete!</h3>
+                <p className="text-slate-400 font-bold mt-2">
+                  You scored <span className="text-red-600 text-xl">{score}</span> out of {quiz.length}
+                </p>
+                <div className="mt-4 text-[10px] font-black uppercase text-slate-300">
+                  {score === quiz.length ? "Engineering Genius!" : "Keep Studying, Delsuite!"}
+                </div>
+                <button 
+                  onClick={resetQuiz} 
+                  className="mt-8 w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95 transition-transform"
+                >
+                  Restart Quiz
+                </button>
+              </div>
+            )
+          ) : (
+            <div className="text-center py-10 text-slate-300 font-bold italic">
+              Generating quiz... Try a longer recording.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
-}
-
-export default App;
+};
