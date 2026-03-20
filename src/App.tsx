@@ -31,8 +31,8 @@ function App() {
       reader.onloadend = async () => {
         const base64Data = reader.result?.toString().split(',')[1] || '';
         
-        // FIXED LINE: Added "models/" prefix to fix the 404 error
-        const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
+        // UPDATED LINE: Using the specific version string to bypass the 404
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
         
         const prompt = `Analyze this lecture transcript from ${courseCode || 'a university lecture'}. Extract the key topics and explain them briefly. Format your response EXACTLY like this: TOPICS: [{"name": "Topic Name", "explanation": "Brief explanation"}]`;
 
@@ -46,8 +46,7 @@ function App() {
           const topicsPart = responseText.split('TOPICS:')[1];
           
           if (!topicsPart) {
-             console.log("Raw Response:", responseText);
-             throw new Error("The AI responded but not in the right format. Try speaking more clearly.");
+             throw new Error("The AI didn't return the data in the right format. Try recording again.");
           }
           
           const extractedTopics = JSON.parse(topicsPart.trim());
@@ -76,14 +75,13 @@ function App() {
         {errorMsg && (
           <div className="bg-red-500 text-white p-4 border-4 border-black mb-6 font-bold uppercase shadow-[4px_4px_0px_rgba(0,0,0,1)]">
             ⚠️ {errorMsg}
-            <p className="mt-2 text-xs normal-case opacity-90">Tip: Ensure your VITE_GEMINI_API_KEY is set in Vercel.</p>
           </div>
         )}
 
         {isProcessing ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-16 h-16 animate-spin mb-4" />
-            <p className="text-xl font-black uppercase italic">Gemini is analyzing lecture...</p>
+            <p className="text-xl font-black uppercase italic text-center">Gemini is analyzing lecture...</p>
           </div>
         ) : (
           <>
@@ -104,11 +102,11 @@ function App() {
             )}
 
             {viewMode === 'tutor' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4">
+              <div className="space-y-6">
                  <AITutor topics={topics} />
                  <button 
                   onClick={() => setViewMode('record')}
-                  className="mt-8 w-full border-4 border-black bg-white p-4 font-black uppercase shadow-[4px_4px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1"
+                  className="w-full border-4 border-black bg-white p-4 font-black uppercase shadow-[4px_4px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1"
                  >
                    ← Record New Lecture
                  </button>
