@@ -36,17 +36,15 @@ function App() {
 
   const handleProcessAudio = async (blob: Blob) => {
     if (!API_KEY) {
-      alert("API Key Missing! Add VITE_GEMINI_API_KEY to Netlify/Vercel.");
+      alert("Missing API Key! Please check your Netlify environment variables.");
       return;
     }
-
-    if (!courseCode) return alert("Enter Course Code first!");
+    if (!courseCode) return alert("Enter a Course Code!");
     setIsProcessing(true);
 
     try {
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-3.1-flash-lite-preview" 
-      });
+      // REVERTED TO GEMINI 2.5 FLASH AS REQUESTED
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       
       const base64 = await new Promise((resolve) => {
         const reader = new FileReader();
@@ -54,15 +52,13 @@ function App() {
         reader.readAsDataURL(blob);
       });
 
-      // IMPROVED PROMPT: Forces the AI to use a clean JSON block
-      const prompt = `You are a DELSU Engineering Tutor. Analyze this ${courseCode} lecture audio. 
+      const prompt = `You are a DELSU Engineering Tutor. Analyze this ${courseCode} lecture. 
       Return a summary of 3 key topics and 20 MCQs. 
-      Your entire response must be a single JSON object with this exact structure:
+      Format strictly as a JSON object:
       {
-        "topics": ["Topic 1 title and detailed summary", "Topic 2 title and detailed summary", "Topic 3 title and detailed summary"],
+        "topics": ["Full detailed text for Topic 1", "Full detailed text for Topic 2", "Full detailed text for Topic 3"],
         "quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correct": "A"}]
-      }
-      Do not include any text before or after the JSON.`;
+      }`;
       
       const result = await model.generateContent([
         { text: prompt }, 
@@ -70,8 +66,6 @@ function App() {
       ]);
       
       const resText = result.response.text();
-      
-      // NEW LOGIC: Strips away any extra AI chatter to find the JSON
       const jsonStart = resText.indexOf('{');
       const jsonEnd = resText.lastIndexOf('}') + 1;
       const cleanJson = JSON.parse(resText.slice(jsonStart, jsonEnd));
@@ -80,8 +74,8 @@ function App() {
         id: Date.now().toString(),
         courseCode,
         timestamp: Date.now(),
-        topics: cleanJson.topics || ["No topics found"],
-        quiz: cleanJson.quiz || [],
+        topics: cleanJson.topics,
+        quiz: cleanJson.quiz,
         audioBlob: blob 
       };
 
@@ -89,9 +83,9 @@ function App() {
       await db.put('sessions', newSession);
       setCurrentSession(newSession);
       setActiveTab('tutor');
-    } catch (error: any) {
-      console.error("Gemini Error:", error);
-      alert("Analysis failed. Please try a clearer recording.");
+    } catch (error) {
+      console.error("Analysis Error:", error);
+      alert("Analysis failed. Try a shorter or clearer recording.");
     } finally {
       setIsProcessing(false);
     }
@@ -99,7 +93,7 @@ function App() {
 
   const deleteSession = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("Delete this session?")) {
+    if (confirm("Delete session?")) {
       const db = await initDB();
       await db.delete('sessions', id);
       setSessions(sessions.filter(s => s.id !== id));
@@ -112,8 +106,9 @@ function App() {
       <header className="p-6 bg-white border-b border-slate-200 sticky top-0 z-30 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black italic tracking-tighter text-red-600 uppercase">NSG FOR DELSUITES</h1>
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">NUELLGRAPHICS AI • 2026 EDITION</p>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">NUELLGRAPHICS AI • 2.5 EDITION</p>
         </div>
+        {!API_KEY && <AlertCircle className="text-red-500 animate-pulse" size={20} />}
       </header>
 
       <main className="p-4 max-w-md mx-auto">
@@ -121,18 +116,16 @@ function App() {
           <div className="space-y-6">
             <input 
               type="text" value={courseCode} onChange={(e) => setCourseCode(e.target.value)}
-              placeholder="e.g. MTH 102 - BINOMIAL" 
+              placeholder="e.g. EEE 101" 
               className="w-full p-4 border-2 border-slate-200 rounded-2xl font-bold focus:border-red-600 outline-none"
             />
-            
             <div className="flex flex-col items-center py-12 bg-white rounded-[2rem] border-2 border-slate-100 shadow-md">
               <AudioRecorder onRecordingComplete={handleProcessAudio} />
-              <p className="mt-6 text-sm font-bold text-slate-400 italic">Tap to record and analyze</p>
+              <p className="mt-6 text-sm font-bold text-slate-400 italic">Tap to record lecture</p>
             </div>
-
             {isProcessing && (
               <div className="flex items-center justify-center gap-3 font-black text-red-600 uppercase animate-pulse pt-4">
-                <Loader2 className="animate-spin" /> Gemini is thinking...
+                <Loader2 className="animate-spin" /> Gemini 2.5 Analyzing...
               </div>
             )}
           </div>
@@ -141,24 +134,21 @@ function App() {
         {activeTab === 'tutor' && currentSession && (
           <div className="space-y-5">
             <div className="bg-red-600 text-white p-5 rounded-3xl shadow-lg">
-              <h2 className="font-black uppercase text-xl leading-none">{currentSession.courseCode}</h2>
-              <p className="text-[10px] font-bold opacity-70 mt-1 uppercase">Analyzed on {new Date(currentSession.timestamp).toLocaleDateString()}</p>
+              <h2 className="font-black uppercase text-xl">{currentSession.courseCode}</h2>
+              <p className="text-[10px] font-bold opacity-70 mt-1 uppercase">Analyzed {new Date(currentSession.timestamp).toLocaleDateString()}</p>
             </div>
-            
-            <div className="bg-white p-4 rounded-3xl border-2 border-slate-100 shadow-sm">
-              <p className="text-[9px] font-black text-slate-300 uppercase mb-2">Original Audio</p>
+            <div className="bg-white p-4 rounded-3xl border-2 border-slate-100">
               <audio controls src={URL.createObjectURL(currentSession.audioBlob)} className="w-full" />
             </div>
-
             <AITutor topics={currentSession.topics} quiz={currentSession.quiz} />
           </div>
         )}
 
         {activeTab === 'library' && (
           <div className="space-y-3">
-            <h2 className="text-[10px] font-black uppercase text-slate-400 px-2 tracking-widest">Recent Lectures</h2>
+            <h2 className="text-[10px] font-black uppercase text-slate-400 px-2 tracking-widest">Saved Lectures</h2>
             {sessions.map(s => (
-              <div key={s.id} onClick={() => { setCurrentSession(s); setActiveTab('tutor'); }} className="bg-white p-4 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm active:bg-slate-50">
+              <div key={s.id} onClick={() => { setCurrentSession(s); setActiveTab('tutor'); }} className="bg-white p-4 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="bg-red-50 p-2 rounded-xl text-red-600"><BookOpen size={20}/></div>
                   <span className="font-black text-slate-800 uppercase text-sm tracking-tight">{s.courseCode}</span>
