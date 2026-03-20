@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { CheckCircle2, Circle, HelpCircle, Trophy } from 'lucide-react';
+import { CheckCircle2, Circle, HelpCircle, Trophy, RotateCcw } from 'lucide-react';
 
 interface AITutorProps {
   topics: string[];
-  quiz: any[];
+  quiz: {
+    question: string;
+    options: string[];
+    correct: string;
+  }[];
 }
 
 export const AITutor = ({ topics, quiz }: AITutorProps) => {
@@ -13,20 +17,25 @@ export const AITutor = ({ topics, quiz }: AITutorProps) => {
   const [showResult, setShowResult] = useState(false);
 
   const handleAnswer = (selectedOption: string) => {
+    if (!quiz || quiz.length === 0) return;
+
     const correctAnswer = quiz[currentQuestion].correct;
     
-    // SMART CHECK: Checks if the selected text contains the correct letter 
-    // or if the strings match exactly.
+    // SMART SCORING LOGIC:
+    // 1. Checks if the option matches the letter (e.g., "A")
+    // 2. Checks if the option starts with the letter and a period (e.g., "A. Ohms Law")
+    // 3. Checks if the whole string matches
     const isCorrect = 
-      selectedOption === correctAnswer || 
-      selectedOption.startsWith(correctAnswer + " ") ||
-      selectedOption.startsWith(correctAnswer + ".");
+      selectedOption.trim() === correctAnswer.trim() || 
+      selectedOption.trim().startsWith(correctAnswer + ".") ||
+      selectedOption.trim().startsWith(correctAnswer + ")") ||
+      selectedOption.trim().startsWith(correctAnswer + " ");
 
     if (isCorrect) {
       setScore((prevScore) => prevScore + 1);
     }
     
-    // Move to next question or show result
+    // Progress to next question or show final score
     if (currentQuestion + 1 < quiz.length) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
@@ -41,47 +50,57 @@ export const AITutor = ({ topics, quiz }: AITutorProps) => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex bg-slate-100 p-1 rounded-2xl">
+    <div className="space-y-6 pb-10">
+      {/* Navigation Switch */}
+      <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-inner">
         <button 
           onClick={() => setView('topics')} 
-          className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${view === 'topics' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
+          className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all ${view === 'topics' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
         >
-          Summary
+          Lecture Summary
         </button>
         <button 
           onClick={() => setView('quiz')} 
-          className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase transition-all ${view === 'quiz' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
+          className={`flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all ${view === 'quiz' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
         >
-          Exam Prep
+          Exam Practice
         </button>
       </div>
 
+      {/* Summary View */}
       {view === 'topics' ? (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
           {topics.map((t, i) => (
-            <div key={i} className="bg-white border border-slate-100 p-6 rounded-[2rem] shadow-sm">
-              <div className="w-8 h-1 bg-red-600 mb-3 rounded-full"></div>
+            <div key={i} className="bg-white border border-slate-100 p-6 rounded-[2rem] shadow-sm relative overflow-hidden group">
+              <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-600/20 group-hover:bg-red-600 transition-colors"></div>
               <p className="text-slate-700 font-bold leading-relaxed text-sm">{t}</p>
             </div>
           ))}
         </div>
       ) : (
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm min-h-[350px] flex flex-col justify-center">
+        /* Quiz View */
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm min-h-[400px] flex flex-col justify-center relative">
           {quiz && quiz.length > 0 ? (
             !showResult ? (
-              <div className="space-y-6">
+              <div className="space-y-6 animate-in fade-in duration-300">
                 <div className="flex justify-between items-center text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                  <span>Question {currentQuestion + 1} of {quiz.length}</span>
-                  <HelpCircle size={16} />
+                  <span className="bg-slate-50 px-3 py-1 rounded-full">Question {currentQuestion + 1} / {quiz.length}</span>
+                  <div className="flex items-center gap-1 text-red-600/50">
+                    <HelpCircle size={14} />
+                    <span>DELSU Mock</span>
+                  </div>
                 </div>
-                <h3 className="font-black text-slate-800 text-lg leading-tight">{quiz[currentQuestion].question}</h3>
+                
+                <h3 className="font-black text-slate-800 text-lg leading-tight px-2">
+                  {quiz[currentQuestion].question}
+                </h3>
+                
                 <div className="grid gap-3">
-                  {quiz[currentQuestion].options.map((opt: string, idx: number) => (
+                  {quiz[currentQuestion].options.map((opt, idx) => (
                     <button 
                       key={idx} 
                       onClick={() => handleAnswer(opt)} 
-                      className="w-full text-left p-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold text-sm active:bg-red-600 active:text-white transition-all"
+                      className="w-full text-left p-5 rounded-2xl bg-slate-50 border-2 border-slate-50 font-bold text-sm hover:border-red-100 active:bg-red-600 active:text-white active:border-red-600 transition-all shadow-sm"
                     >
                       {opt}
                     </button>
@@ -89,28 +108,32 @@ export const AITutor = ({ topics, quiz }: AITutorProps) => {
                 </div>
               </div>
             ) : (
-              <div className="text-center py-10 animate-in zoom-in duration-300">
-                <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Trophy size={40} />
+              /* Results View */
+              <div className="text-center py-6 animate-in zoom-in duration-500">
+                <div className="w-24 h-24 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
+                  <Trophy size={48} />
                 </div>
-                <h3 className="font-black text-2xl uppercase text-slate-800">Test Complete!</h3>
-                <p className="text-slate-400 font-bold mt-2">
-                  You scored <span className="text-red-600 text-xl">{score}</span> out of {quiz.length}
+                <h3 className="font-black text-2xl uppercase text-slate-800 tracking-tighter">Exam Result</h3>
+                <div className="mt-4 inline-block px-6 py-2 bg-slate-900 text-white rounded-full font-black text-xl">
+                  {score} <span className="text-slate-400 text-sm mx-1">/</span> {quiz.length}
+                </div>
+                
+                <p className="text-slate-400 font-bold mt-6 uppercase text-[10px] tracking-[0.2em]">
+                  {score === quiz.length ? "Engineering Distinction!" : "Keep Pushing, Delsuite!"}
                 </p>
-                <div className="mt-4 text-[10px] font-black uppercase text-slate-300">
-                  {score === quiz.length ? "Engineering Genius!" : "Keep Studying, Delsuite!"}
-                </div>
+                
                 <button 
                   onClick={resetQuiz} 
-                  className="mt-8 w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95 transition-transform"
+                  className="mt-10 w-full flex items-center justify-center gap-2 bg-red-600 text-white py-5 rounded-3xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all"
                 >
-                  Restart Quiz
+                  <RotateCcw size={16} />
+                  Retake Practice Test
                 </button>
               </div>
             )
           ) : (
-            <div className="text-center py-10 text-slate-300 font-bold italic">
-              Generating quiz... Try a longer recording.
+            <div className="text-center py-20 text-slate-300 font-bold italic">
+              AI is preparing your exam questions...
             </div>
           )}
         </div>
@@ -118,3 +141,4 @@ export const AITutor = ({ topics, quiz }: AITutorProps) => {
     </div>
   );
 };
+                       
