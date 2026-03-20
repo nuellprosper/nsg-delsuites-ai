@@ -1,44 +1,35 @@
-import React from 'react';
-import { BookOpen, Sparkles } from 'lucide-react';
-
-interface Topic {
-  name: string;
-  explanation: string;
+interface AITutorProps {
+  topics: string[];
+  quiz: any[];
 }
 
-export function AITutor({ topics }: { topics: Topic[] }) {
+export const AITutor = ({ topics, quiz }: AITutorProps) => {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 border-b-4 border-black pb-2">
-        <BookOpen size={24} className="text-yellow-500" />
-        <h2 className="text-2xl font-black uppercase italic tracking-tighter">Lecture Insights</h2>
+    <div className="space-y-8 mt-4">
+      <div className="flex items-center gap-3 border-b-4 border-slate-900 pb-2 mb-6">
+        <div className="text-yellow-500"><BookOpen size={32} /></div>
+        <h2 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900">Lecture Insights</h2>
       </div>
 
-      {topics.length === 0 ? (
-        <div className="p-10 border-4 border-dashed border-gray-300 text-center bg-gray-50">
-          <Sparkles size={40} className="mx-auto mb-4 text-gray-300" />
-          <p className="font-black text-gray-400 uppercase">Record a lecture to generate study notes!</p>
-        </div>
-      ) : (
-        <div className="grid gap-6">
-          {topics.map((topic, index) => (
-            <div 
-              key={index} 
-              className="p-5 border-4 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all"
-            >
-              <div className="inline-block bg-black text-white px-2 py-1 mb-3 text-xs font-black uppercase italic">
+      <div className="space-y-6">
+        {topics && topics.map((topic, index) => (
+          <div key={index} className="relative group">
+            <div className="absolute -inset-1 bg-slate-900 rounded-lg group-hover:bg-red-600 transition-colors duration-300"></div>
+            <div className="relative bg-white border-2 border-slate-900 p-6 rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="inline-block bg-slate-900 text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest mb-4 italic">
                 Topic {index + 1}
               </div>
-              <h3 className="font-black text-xl uppercase mb-3 border-b-2 border-yellow-400 pb-1">
-                {topic.name}
-              </h3>
-              <p className="text-sm font-bold leading-relaxed text-gray-800">
-                {topic.explanation}
+              <div className="w-full h-[2px] bg-yellow-400 mb-4 opacity-50"></div>
+              {/* This line below is what displays the actual text */}
+              <p className="text-slate-800 font-bold leading-relaxed text-sm md:text-base">
+                {topic || "No detail provided for this topic."}
               </p>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
+      
+      {/* Quiz Section could follow here using the 'quiz' prop */}
     </div>
   );
-}
+};
