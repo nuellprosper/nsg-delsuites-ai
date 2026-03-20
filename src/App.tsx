@@ -53,7 +53,7 @@ function App() {
       const base64 = await new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result?.toString().split(',')[1]);
-        reader.readAsDataURL(blob);
+        reader.readAsDataURL(blob);0
       });
 
       const prompt = `Analyze this ${courseCode} lecture. Provide study topics and 20 MCQs. Format: TOPICS: [JSON array] QUIZ: [JSON array]`;
@@ -71,7 +71,7 @@ function App() {
         timestamp: Date.now(),
         topics: JSON.parse(resText.split('TOPICS:')[1].split('QUIZ:')[0].trim()),
         quiz: JSON.parse(resText.split('QUIZ:')[1].trim()),
-        audioBlob: blob 
+        audioBlob: blob l
       };
 
       const db = await initDB();
