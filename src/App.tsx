@@ -5,7 +5,7 @@ import { AITutor } from './components/aitutor';
 import { Mic, BookOpen, History, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// API Key pulled from Vercel Environment Variables
+// API Key pulled from Netlify/Vercel Environment Variables
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
@@ -37,15 +37,15 @@ function App() {
 
   const handleProcessAudio = async (blob: Blob) => {
     if (!API_KEY) {
-      alert("Missing API Key! Please add VITE_GEMINI_API_KEY to Vercel.");
+      alert("Missing API Key! Please add VITE_GEMINI_API_KEY to your deployment settings.");
       return;
     }
 
-    if (!courseCode) return alert("Please enter a Course Code!");
+    if (!courseCode) return alert("Please enter a Course Code (e.g. EEE 101)!");
     setIsProcessing(true);
 
     try {
-      // UPDATED TO MARCH 2026 STANDARD: Gemini 3.1 Flash-Lite
+      // UPDATED TO 2026 STANDARD: Gemini 3.1 Flash-Lite
       const model = genAI.getGenerativeModel({ 
         model: "gemini-3.1-flash-lite-preview" 
       });
@@ -53,10 +53,14 @@ function App() {
       const base64 = await new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result?.toString().split(',')[1]);
-        reader.readAsDataURL(blob);0
+        reader.readAsDataURL(blob);
       });
 
-      const prompt = `Analyze this ${courseCode} lecture. Provide study topics and 20 MCQs. Format: TOPICS: [JSON array] QUIZ: [JSON array]`;
+      const prompt = `You are a DELSU Engineering Tutor. Analyze this ${courseCode} lecture audio. 
+      Provide a summary of key topics and 20 MCQs for exam revision. 
+      Format strictly as follows: 
+      TOPICS: [JSON array of strings] 
+      QUIZ: [JSON array of objects with question, options, correct]`;
       
       const result = await model.generateContent([
         { text: prompt }, 
@@ -65,13 +69,14 @@ function App() {
       
       const resText = result.response.text();
 
+      // FIXED: Removed the stray "l" after blob
       const newSession = {
         id: Date.now().toString(),
         courseCode,
         timestamp: Date.now(),
         topics: JSON.parse(resText.split('TOPICS:')[1].split('QUIZ:')[0].trim()),
         quiz: JSON.parse(resText.split('QUIZ:')[1].trim()),
-        audioBlob: blob l
+        audioBlob: blob 
       };
 
       const db = await initDB();
@@ -80,7 +85,7 @@ function App() {
       setActiveTab('tutor');
     } catch (error: any) {
       console.error("Gemini Error:", error);
-      alert(`AI Error: ${error.message}`);
+      alert(`AI Error: ${error.message}. Please check your internet connection and try again.`);
     } finally {
       setIsProcessing(false);
     }
@@ -111,7 +116,7 @@ function App() {
           <div className="space-y-6">
             <input 
               type="text" value={courseCode} onChange={(e) => setCourseCode(e.target.value)}
-              placeholder="e.g., EEE 101" 
+              placeholder="e.g. MTH 102" 
               className="w-full p-4 border-2 border-slate-200 rounded-2xl font-bold focus:border-red-600 outline-none shadow-sm"
             />
             
@@ -129,22 +134,26 @@ function App() {
         )}
 
         {activeTab === 'tutor' && currentSession && (
-          <div className="space-y-5">
+          <div className="space-y-5 animate-in slide-in-from-bottom-4">
             <div className="bg-red-600 text-white p-5 rounded-3xl">
               <h2 className="font-black uppercase text-xl leading-none">{currentSession.courseCode}</h2>
               <p className="text-[10px] font-bold opacity-60 mt-1">{new Date(currentSession.timestamp).toLocaleDateString()}</p>
             </div>
+            
             <div className="bg-white p-4 rounded-3xl border-2 border-slate-100">
               <audio controls src={URL.createObjectURL(currentSession.audioBlob)} className="w-full" />
             </div>
+
             <AITutor topics={currentSession.topics} />
           </div>
         )}
 
         {activeTab === 'library' && (
           <div className="space-y-3">
+            <h2 className="text-[10px] font-black uppercase text-slate-400 px-2">Lecture History</h2>
+            {sessions.length === 0 && <p className="text-center text-slate-400 text-sm py-10">No saved lectures yet.</p>}
             {sessions.map(s => (
-              <div key={s.id} onClick={() => { setCurrentSession(s); setActiveTab('tutor'); }} className="bg-white p-4 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm">
+              <div key={s.id} onClick={() => { setCurrentSession(s); setActiveTab('tutor'); }} className="bg-white p-4 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm active:scale-95 transition-transform">
                 <div className="flex items-center gap-3">
                   <div className="bg-red-50 p-2 rounded-xl text-red-600"><BookOpen size={20}/></div>
                   <span className="font-black text-slate-800 uppercase text-sm">{s.courseCode}</span>
