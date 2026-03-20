@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { AudioRecorder } from './components/AudioRecorder';
-import { AITutor } from './components/AITutor';
-import { Quiz } from './components/Quiz';
+import { AudioRecorder } from './components/audiorecorder';
+import { AITutor } from './components/aitutor';
+import { Quiz } from './components/quiz';
 import { BookOpen, Mic, BrainCircuit, Loader2 } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
