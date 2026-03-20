@@ -5,6 +5,7 @@ import { AITutor } from './components/aitutor';
 import { Mic, BookOpen, History, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// API Key pulled from Vercel Environment Variables
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
@@ -36,16 +37,15 @@ function App() {
 
   const handleProcessAudio = async (blob: Blob) => {
     if (!API_KEY) {
-      alert("Missing API Key! Check Vercel Settings.");
+      alert("Missing API Key! Please add VITE_GEMINI_API_KEY to Vercel.");
       return;
     }
 
-    if (!courseCode) return alert("Enter a Course Code!");
+    if (!courseCode) return alert("Please enter a Course Code!");
     setIsProcessing(true);
 
     try {
-      // 🚀 UPDATED TO 2026 STANDARD: Gemini 3.1 Flash-Lite
-      // This is the optimized 'workhorse' model for March 2026
+      // UPDATED TO MARCH 2026 STANDARD: Gemini 3.1 Flash-Lite
       const model = genAI.getGenerativeModel({ 
         model: "gemini-3.1-flash-lite-preview" 
       });
@@ -56,7 +56,7 @@ function App() {
         reader.readAsDataURL(blob);
       });
 
-      const prompt = `You are a DELSU Engineering Tutor. Analyze this ${courseCode} lecture. Provide a summary of key topics and 20 MCQs for revision. Format strictly as follows: TOPICS: [JSON array of strings] QUIZ: [JSON array of objects with question, options, correct]`;
+      const prompt = `Analyze this ${courseCode} lecture. Provide study topics and 20 MCQs. Format: TOPICS: [JSON array] QUIZ: [JSON array]`;
       
       const result = await model.generateContent([
         { text: prompt }, 
@@ -80,7 +80,7 @@ function App() {
       setActiveTab('tutor');
     } catch (error: any) {
       console.error("Gemini Error:", error);
-      alert(`AI Error: ${error.message}. Try again or check internet.`);
+      alert(`AI Error: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -101,7 +101,7 @@ function App() {
       <header className="p-6 bg-white border-b border-slate-200 sticky top-0 z-30 flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black italic tracking-tighter text-red-600">NSG FOR DELSUITES</h1>
-          <p className="text-[9px] font-bold text-slate-400 uppercase">Powered by Gemini 3.1 Flash</p>
+          <p className="text-[9px] font-bold text-slate-400 uppercase">AI STUDY SYSTEM • NUELLGRAPHICS</p>
         </div>
         {!API_KEY && <AlertCircle className="text-red-500 animate-pulse" size={20} />}
       </header>
@@ -111,8 +111,8 @@ function App() {
           <div className="space-y-6">
             <input 
               type="text" value={courseCode} onChange={(e) => setCourseCode(e.target.value)}
-              placeholder="e.g. GST 101" 
-              className="w-full p-4 border-2 border-slate-200 rounded-2xl font-bold focus:border-red-600 outline-none"
+              placeholder="e.g., EEE 101" 
+              className="w-full p-4 border-2 border-slate-200 rounded-2xl font-bold focus:border-red-600 outline-none shadow-sm"
             />
             
             <div className="flex flex-col items-center py-12 bg-white rounded-[2rem] border-2 border-slate-100 shadow-md">
@@ -122,7 +122,7 @@ function App() {
 
             {isProcessing && (
               <div className="flex items-center justify-center gap-3 font-black text-red-600 uppercase animate-pulse pt-4">
-                <Loader2 className="animate-spin" /> Analyzing Lecture...
+                <Loader2 className="animate-spin" /> Gemini 3.1 is analyzing...
               </div>
             )}
           </div>
@@ -131,14 +131,12 @@ function App() {
         {activeTab === 'tutor' && currentSession && (
           <div className="space-y-5">
             <div className="bg-red-600 text-white p-5 rounded-3xl">
-              <h2 className="font-black uppercase text-xl">{currentSession.courseCode}</h2>
-              <p className="text-[10px] font-bold opacity-70">{new Date(currentSession.timestamp).toLocaleString()}</p>
+              <h2 className="font-black uppercase text-xl leading-none">{currentSession.courseCode}</h2>
+              <p className="text-[10px] font-bold opacity-60 mt-1">{new Date(currentSession.timestamp).toLocaleDateString()}</p>
             </div>
-            
-            <div className="bg-white p-4 rounded-3xl border-2 border-slate-100 space-y-3">
+            <div className="bg-white p-4 rounded-3xl border-2 border-slate-100">
               <audio controls src={URL.createObjectURL(currentSession.audioBlob)} className="w-full" />
             </div>
-
             <AITutor topics={currentSession.topics} />
           </div>
         )}
@@ -174,4 +172,3 @@ function App() {
 }
 
 export default App;
-        
