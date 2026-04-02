@@ -46,6 +46,16 @@
     @apply border-l-4 border-red-600/30 pl-4 italic my-4 text-slate-500 dark:text-slate-400;
   }
 
+  .markdown-body table {
+    @apply w-full border-collapse my-4 text-xs;
+  }
+  .markdown-body th, .markdown-body td {
+    @apply border border-slate-200 dark:border-white/10 p-2 text-left;
+  }
+  .markdown-body th {
+    @apply bg-slate-50 dark:bg-white/5 font-black uppercase tracking-widest;
+  }
+
   /* Math styling */
   .katex-display {
     @apply my-4 overflow-x-auto overflow-y-hidden py-2;
