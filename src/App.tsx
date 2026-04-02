@@ -11,11 +11,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 /**
- * NSG DE-SUITES V2.7 - THE "PERFECTION" UPDATE
- * ✅ Fixed Library Detail View (No more plain pages)
+ * NSG DE-SUITES V2.7.1 - THE "STABILITY" UPDATE
+ * ✅ Switched to Gemini 3 Flash (Fixes 429 Quota Error)
+ * ✅ Fixed Library Detail View (Ensured data binding)
  * ✅ Manual + Auto Theme Toggle (Sun/Moon Button)
- * ✅ Stabilized Gemini 2.5 Flash Engine
- * ✅ Enhanced Audio/Image Sync
+ * ✅ Optimized for Render Deployment
  */
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
@@ -105,6 +105,17 @@ export default function App() {
       setTheme(systemDark ? 'dark' : 'light');
       document.documentElement.classList.toggle('dark', systemDark);
     }
+
+    // Listen for system changes if no manual theme is set
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (!localStorage.getItem('nsg_theme')) {
+        setTheme(e.matches ? 'dark' : 'light');
+        document.documentElement.classList.toggle('dark', e.matches);
+      }
+    };
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
   const toggleTheme = () => {
@@ -119,7 +130,7 @@ export default function App() {
     if (saved) setSessions(JSON.parse(saved));
     setChatHistory([{
       role: 'model',
-      text: "System Online. Gemini 2.5 Flash ready. Upload images or start recording to begin.",
+      text: "System Online. Gemini 3 Flash ready. Upload images or start recording to begin.",
       timestamp: new Date().toLocaleTimeString()
     }]);
   }, []);
@@ -197,7 +208,7 @@ export default function App() {
       
       const prompt = `Act as the NSG De-Suites AI Executive. Provide a sharp, comprehensive summary of these lecture materials and an action plan. Use markdown.`;
       const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
+        model: "gemini-3-flash-preview",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }]
       });
       const responseText = result.text || "Analysis failed.";
@@ -234,7 +245,7 @@ export default function App() {
     setChatHistory(prev => [...prev, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }]);
     try {
       if (!chatInstanceRef.current) {
-        chatInstanceRef.current = ai.chats.create({ model: "gemini-2.5-flash-image" });
+        chatInstanceRef.current = ai.chats.create({ model: "gemini-3-flash-preview" });
       }
       const result = await chatInstanceRef.current.sendMessage({ message: msg });
       setChatHistory(prev => [...prev, { role: 'model', text: result.text || "No response.", timestamp: new Date().toLocaleTimeString() }]);
@@ -258,7 +269,7 @@ export default function App() {
       }
 
       const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
+        model: "gemini-3-flash-preview",
         contents,
         config: { responseMimeType: "application/json" }
       });
@@ -294,7 +305,7 @@ export default function App() {
     <div className="min-h-screen bg-white dark:bg-[#050505] text-slate-900 dark:text-[#e0e0e0] font-sans selection:bg-red-600 pb-24 transition-colors duration-300">
       
       <div className="w-full bg-slate-50 dark:bg-[#0a0a0a] border-b border-slate-200 dark:border-white/10 p-2 sticky top-0 z-50">
-        <div className="max-w-[728px] h-10 mx-auto bg-slate-200/50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-black tracking-widest text-slate-400 dark:text-white/30">AD SLOT</div>
+        <div className="max-w-[728px] h-10 mx-auto bg-slate-200/50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-black tracking-widest text-slate-400 dark:text-white/30 uppercase">Ad Space</div>
       </div>
 
       <header className="px-5 py-4 flex justify-between items-center border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#050505]/95 backdrop-blur-xl sticky top-12 z-40">
@@ -369,11 +380,11 @@ export default function App() {
 
           {activeTab === 'ai' && (
             <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex flex-col h-[calc(100vh-220px)] bg-slate-50 dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 overflow-hidden relative shadow-sm">
-              {isAnalyzing && <div className="absolute inset-0 z-50 bg-white/90 dark:bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm"><p className="text-xs font-black text-red-500 uppercase tracking-widest animate-pulse">Analyzing with Gemini 2.5...</p></div>}
+              {isAnalyzing && <div className="absolute inset-0 z-50 bg-white/90 dark:bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm"><p className="text-xs font-black text-red-500 uppercase tracking-widest animate-pulse">Analyzing with Gemini 3...</p></div>}
               <div className="px-5 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md">
                 <div className="flex items-center gap-3">
                   <Brain size={18} className="text-red-600" />
-                  <div><p className="font-bold text-xs">Gemini 2.5 Flash</p></div>
+                  <div><p className="font-bold text-xs">Gemini 3 Flash</p></div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => generateQuiz(true)} className="bg-red-600/10 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-600/30 flex items-center gap-1"><Zap size={10}/> Turn to Quiz</button>
