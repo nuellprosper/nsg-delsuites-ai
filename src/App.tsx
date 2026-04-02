@@ -176,7 +176,7 @@ export default function NSG_DeSuites_Final() {
     setAnalysisProgress(10);
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       setAnalysisProgress(30);
 
       // Convert images to Gemini format
