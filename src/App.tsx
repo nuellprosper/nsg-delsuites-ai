@@ -214,7 +214,7 @@ export default function App() {
     setActiveTab('quiz');
     try {
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      let prompt = `Generate a 10-question multiple choice quiz about "${quizTopic || 'the lecture'}". Return ONLY a JSON object: {"questions": [{"question": "string", "options": ["string"], "correctAnswer": number}]}`;
+      let prompt = `Generate a 15 to 50-question multiple choice quiz about "${quizTopic || 'the lecture'}". Return ONLY a JSON object: {"questions": [{"question": "string", "options": ["string"], "correctAnswer": number}]}`;
       
       let parts: any[] = [prompt];
       if (fromLecture) {
