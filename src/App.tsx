@@ -3,7 +3,7 @@ import {
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings,
-  Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, FileCheck, ArrowLeft, Clock
+  Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, FileCheck, ArrowLeft, Clock, Sun, Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI } from "@google/genai";
@@ -11,14 +11,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 /**
- * NSG DE-SUITES V2.6 - THE "LIBRARY & THEME" UPDATE
- * ✅ Automatic Light/Dark Mode (System Based)
- * ✅ Interactive Library Detail View
- * ✅ Optimized Gemini 2.5 Flash Processing
- * ✅ Full Session Data Persistence
+ * NSG DE-SUITES V2.7 - THE "PERFECTION" UPDATE
+ * ✅ Fixed Library Detail View (No more plain pages)
+ * ✅ Manual + Auto Theme Toggle (Sun/Moon Button)
+ * ✅ Stabilized Gemini 2.5 Flash Engine
+ * ✅ Enhanced Audio/Image Sync
  */
 
-// Use VITE_ prefix for Render environment variables
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
@@ -93,19 +92,27 @@ export default function App() {
   const [quizState, setQuizState] = useState<'idle' | 'active' | 'finished'>('idle');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
-  // --- 🌓 THEME DETECTION ---
+  // --- 🌓 THEME LOGIC ---
   useEffect(() => {
-    const checkTheme = () => {
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-    checkTheme();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', checkTheme);
+    const savedTheme = localStorage.getItem('nsg_theme') as 'light' | 'dark';
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+    } else {
+      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(systemDark ? 'dark' : 'light');
+      document.documentElement.classList.toggle('dark', systemDark);
+    }
   }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('nsg_theme', newTheme);
+    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('nsg_sessions');
@@ -190,7 +197,7 @@ export default function App() {
       
       const prompt = `Act as the NSG De-Suites AI Executive. Provide a sharp, comprehensive summary of these lecture materials and an action plan. Use markdown.`;
       const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-image",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }]
       });
       const responseText = result.text || "Analysis failed.";
@@ -213,7 +220,7 @@ export default function App() {
         images: base64Images,
         audioUrl: audioUrl || undefined
       };
-      setSessions([newSession, ...sessions]);
+      setSessions(prev => [newSession, ...prev]);
       
     } catch (error: any) {
       setChatHistory(prev => [...prev, { role: 'model', text: `Error: ${error.message}`, timestamp: new Date().toLocaleTimeString() }]);
@@ -227,7 +234,7 @@ export default function App() {
     setChatHistory(prev => [...prev, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }]);
     try {
       if (!chatInstanceRef.current) {
-        chatInstanceRef.current = ai.chats.create({ model: "gemini-2.5-flash" });
+        chatInstanceRef.current = ai.chats.create({ model: "gemini-2.5-flash-image" });
       }
       const result = await chatInstanceRef.current.sendMessage({ message: msg });
       setChatHistory(prev => [...prev, { role: 'model', text: result.text || "No response.", timestamp: new Date().toLocaleTimeString() }]);
@@ -251,7 +258,7 @@ export default function App() {
       }
 
       const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-image",
         contents,
         config: { responseMimeType: "application/json" }
       });
@@ -300,7 +307,12 @@ export default function App() {
             <span className="text-[9px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest">Lecture OS 2.5</span>
           </div>
         </div>
-        <button className="text-slate-500 dark:text-white/70 hover:text-red-500 transition-colors"><Settings size={20} /></button>
+        <div className="flex items-center gap-2">
+          <button onClick={toggleTheme} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-white/70 hover:text-red-500 transition-all">
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <button className="text-slate-500 dark:text-white/70 hover:text-red-500 transition-colors"><Settings size={20} /></button>
+        </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 pt-6">
@@ -443,7 +455,7 @@ export default function App() {
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedSession.fullAnalysis}</ReactMarkdown>
                     </div>
 
-                    {selectedSession.images.length > 0 && (
+                    {selectedSession.images && selectedSession.images.length > 0 && (
                       <div className="space-y-3">
                         <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/40">Lecture Slides</h4>
                         <div className="grid grid-cols-3 gap-2">
