@@ -5,7 +5,7 @@ import {
   ChevronRight, Sparkles, Trash2, Settings,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI, Type } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,14 +13,12 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
 /**
- * NSG DE-SUITES V2.5 - RE-ENGINEERED
- * ✅ Fixed formatTime bug
- * ✅ Fixed chat error & improved readability
- * ✅ WhatsApp-style fixed bottom navigation
- * ✅ Mobile-first UX with compact buttons
- * ✅ Interactive Quiz Module (Gemini Powered)
- * ✅ Black + Red theme preserved
+ * NSG DE-SUITES V3.0 - INTELLIGENCE UPDATE
+ * ✅ Fixed motion/react build error
+ * ✅ Fixed duplicate key error
  * ✅ LocalStorage Persistence (Chat, Quiz, History)
+ * ✅ LaTeX Math Support
+ * ✅ Gemini 3 Flash Optimization
  */
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -326,7 +324,7 @@ export default function App() {
       );
 
       const prompt = `
-        Generate a 15 to 100-question multiple choice quiz about "${quizTopic || 'the provided lecture content'}".
+        Generate a 10-question multiple choice quiz about "${quizTopic || 'the provided lecture content'}".
         Return ONLY a JSON object with this structure:
         {
           "questions": [
@@ -430,7 +428,7 @@ export default function App() {
             <Brain size={22} className="text-red-600" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">(Nuell Study Guide)</span></h1>
+            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">DE-SUITES</span></h1>
             <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 3.0</span>
           </div>
         </div>
@@ -878,7 +876,7 @@ export default function App() {
       <nav className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/10 z-50">
         <div className="flex items-center justify-around py-2 max-w-lg mx-auto">
           {[
-            { id: 'record', icon: Mic, icon: Mic, label: 'Record' },
+            { id: 'record', icon: Mic, label: 'Record' },
             { id: 'ai', icon: Brain, label: 'AI Chat' },
             { id: 'history', icon: History, label: 'Library' },
             { id: 'quiz', icon: Zap, label: 'Quiz' }
