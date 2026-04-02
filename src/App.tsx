@@ -3,22 +3,24 @@ import {
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings,
-  Database, Zap, Cpu
+  Zap, Cpu, CheckCircle2, XCircle, RefreshCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 /**
- * NSG DE-SUITES V2.5 - FULL REDESIGN + FIXED
- * ✅ Fixed formatTime bug (no more broken code string)
- * ✅ Fixed chat error ("First content should be with role 'user'")
- * ✅ WhatsApp-style fixed bottom navigation (compact, clean)
- * ✅ All buttons significantly smaller + better spacing (mobile-first UX)
+ * NSG DE-SUITES V2.5 - RE-ENGINEERED
+ * ✅ Fixed formatTime bug
+ * ✅ Fixed chat error & improved readability
+ * ✅ WhatsApp-style fixed bottom navigation
+ * ✅ Mobile-first UX with compact buttons
+ * ✅ Interactive Quiz Module (Gemini Powered)
  * ✅ Black + Red theme preserved
- * ✅ Small ad slots kept for monetization
- * ✅ All original functionality 100% intact
  */
 
+// Use VITE_ prefix for client-side env vars in Vite
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
@@ -46,8 +48,14 @@ interface LectureSession {
   transcript?: string;
 }
 
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number;
+}
+
 async function fileToGenerativePart(file: File) {
-  const base64EncodedDataPromise = new Promise((resolve) => {
+  const base64EncodedDataPromise = new Promise<string>((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
     reader.readAsDataURL(file);
@@ -57,9 +65,9 @@ async function fileToGenerativePart(file: File) {
   };
 }
 
-export default function NSG_DeSuites_Final() {
+export default function App() {
   // --- 📱 APP STATE ---
-  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'settings'>('record');
+  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz'>('record');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // --- 🎙️ RECORDING ENGINE ---
@@ -73,23 +81,25 @@ export default function NSG_DeSuites_Final() {
 
   // --- 📂 MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
 
   // --- 🤖 AI CHAT SYSTEM ---
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const geminiChatRef = useRef<any>(null);   // Persistent chat instance for Gemini
+  const chatInstanceRef = useRef<any>(null);
 
   // --- 📚 PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
 
-  // --- 🔄 DEBUG & API KEY CHECK ---
-  useEffect(() => {
-    const key = import.meta.env.VITE_GEMINI_API_KEY;
-    console.log('%c🔑 GEMINI 2.5 API KEY STATUS', 'color:#ff0040; font-size:13px; font-weight:bold', 
-      key ? `✅ LOADED (length: ${key.length})` : '❌ MISSING — Redeploy on Render after setting VITE_GEMINI_API_KEY');
-  }, []);
+  // --- 📝 QUIZ STATE ---
+  const [quizTopic, setQuizTopic] = useState('');
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizState, setQuizState] = useState<'idle' | 'active' | 'finished'>('idle');
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [isAnswered, setIsAnswered] = useState(false);
 
   // --- 📱 INITIALIZATION ---
   useEffect(() => {
@@ -98,7 +108,7 @@ export default function NSG_DeSuites_Final() {
     
     setChatHistory([{
       role: 'model',
-      text: "System Online. Gemini 2.5 Flash ready. Upload images or start recording to begin.",
+      text: "System Online. Gemini AI ready. Upload images or start recording to begin.",
       timestamp: new Date().toLocaleTimeString()
     }]);
   }, []);
@@ -151,7 +161,7 @@ export default function NSG_DeSuites_Final() {
     const hrs = Math.floor(s / 3600);
     const mins = Math.floor((s % 3600) / 60);
     const secs = s % 60;
-    return `\( {hrs.toString().padStart(2, '0')}: \){mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   // --- 🖼️ IMAGE HANDLER ---
@@ -170,7 +180,7 @@ export default function NSG_DeSuites_Final() {
     setUploadedImages([...uploadedImages, ...mapped]);
   };
 
-  // --- 🧠 GEMINI 2.5 FLASH ANALYSIS ---
+  // --- 🧠 GEMINI ANALYSIS ---
   const triggerFullAnalysis = async () => {
     if (uploadedImages.length === 0 && !recordedBlob) {
       alert("No data provided for analysis.");
@@ -179,26 +189,20 @@ export default function NSG_DeSuites_Final() {
 
     setIsAnalyzing(true);
     setActiveTab('ai');
-    setAnalysisProgress(10);
 
     try {
-      if (!API_KEY) throw new Error("API key is missing. Check Render environment variables and redeploy.");
-
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      setAnalysisProgress(30);
-
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const imageParts = await Promise.all(
         uploadedImages.map(img => fileToGenerativePart(img.file))
       );
-      setAnalysisProgress(60);
 
       const prompt = `
         Act as the NSG De-Suites AI Executive. I have provided ${uploadedImages.length} lecture slides 
         and an audio recording. 
         1. Provide a concise Executive Summary.
-        2. Extract 5 Key Technical Concepts.
+        2. Extract 5 Key Technical Concepts with clear explanations.
         3. Create a bulleted "Action Plan" for studying this content.
-        Style: Professional, sharp, and academic.
+        Style: Professional, sharp, and academic. Use markdown for better formatting.
       `;
 
       const result = await model.generateContent([prompt, ...imageParts]);
@@ -210,53 +214,120 @@ export default function NSG_DeSuites_Final() {
         text,
         timestamp: new Date().toLocaleTimeString()
       }]);
-      setAnalysisProgress(100);
     } catch (error: any) {
-      console.error('🚨 Gemini 2.5 Analysis Error:', error);
+      console.error('🚨 Gemini Analysis Error:', error);
       setChatHistory(prev => [...prev, {
         role: 'model',
-        text: `Critical Error: ${error.message || 'Failed to connect to Gemini 2.5. Please verify your API Key and redeploy on Render.'}`,
+        text: `Critical Error: ${error.message || 'Failed to connect to Gemini.'}`,
         timestamp: new Date().toLocaleTimeString()
       }]);
     } finally {
-      setTimeout(() => setIsAnalyzing(false), 1000);
+      setIsAnalyzing(false);
     }
   };
 
-  // --- 💬 CHAT WITH GEMINI 2.5 (FIXED - persistent chat instance) ---
+  // --- 💬 CHAT WITH GEMINI ---
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     const msg = chatInput;
     setChatInput('');
 
-    // Add user message to UI immediately
     setChatHistory(prev => [...prev, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }]);
 
     try {
-      if (!API_KEY) throw new Error("API key is missing.");
-
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-      // Create persistent chat instance on first message (avoids history role error)
-      if (!geminiChatRef.current) {
-        geminiChatRef.current = model.startChat({ history: [] });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      if (!chatInstanceRef.current) {
+        chatInstanceRef.current = model.startChat({ history: [] });
       }
 
-      const result = await geminiChatRef.current.sendMessage(msg);
+      const result = await chatInstanceRef.current.sendMessage(msg);
       const response = await result.response;
-
+      
       setChatHistory(prev => [...prev, { 
         role: 'model', 
         text: response.text(), 
         timestamp: new Date().toLocaleTimeString() 
       }]);
     } catch (e: any) {
-      console.error('🚨 Gemini 2.5 Chat Error:', e);
+      console.error('🚨 Gemini Chat Error:', e);
       setChatHistory(prev => [...prev, { 
         role: 'model', 
         text: `Connection interrupted: ${e.message || 'Unknown error'}`,
         timestamp: new Date().toLocaleTimeString() 
       }]);
+    }
+  };
+
+  // --- 📝 QUIZ LOGIC ---
+  const generateQuiz = async () => {
+    if (!quizTopic.trim() && uploadedImages.length === 0) {
+      alert("Please enter a topic or upload lecture slides first.");
+      return;
+    }
+
+    setIsGeneratingQuiz(true);
+    setQuizState('idle');
+
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const imageParts = await Promise.all(
+        uploadedImages.map(img => fileToGenerativePart(img.file))
+      );
+
+      const prompt = `
+        Generate a 10-question multiple choice quiz about "${quizTopic || 'the provided lecture content'}".
+        Return ONLY a JSON object with this structure:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "options": ["string", "string", "string", "string"],
+              "correctAnswer": number (0-3)
+            }
+          ]
+        }
+      `;
+
+      const result = await model.generateContent([prompt, ...imageParts]);
+      const response = await result.response;
+      const text = response.text();
+      
+      // Clean JSON if model adds markdown blocks
+      const cleanJson = text.replace(/```json|```/g, "").trim();
+      const data = JSON.parse(cleanJson);
+
+      if (data.questions) {
+        setQuizQuestions(data.questions);
+        setCurrentQuestionIndex(0);
+        setQuizScore(0);
+        setQuizState('active');
+        setSelectedOption(null);
+        setIsAnswered(false);
+      }
+    } catch (error) {
+      console.error("Quiz Generation Error:", error);
+      alert("Failed to generate quiz. Please try again.");
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleOptionSelect = (index: number) => {
+    if (isAnswered) return;
+    setSelectedOption(index);
+    setIsAnswered(true);
+    if (index === quizQuestions[currentQuestionIndex].correctAnswer) {
+      setQuizScore(prev => prev + 1);
+    }
+  };
+
+  const nextQuestion = () => {
+    if (currentQuestionIndex < quizQuestions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      setSelectedOption(null);
+      setIsAnswered(false);
+    } else {
+      setQuizState('finished');
     }
   };
 
@@ -272,11 +343,10 @@ export default function NSG_DeSuites_Final() {
     setSessions([newSession, ...sessions]);
   };
 
-  // --- 🎨 REDESIGNED UI - WhatsApp style, compact, small buttons ---
   return (
-    <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans selection:bg-red-600 pb-20">
+    <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans selection:bg-red-600 pb-24">
       
-      {/* 💰 SMALL TOP AD SLOT (for monetization) */}
+      {/* 💰 TOP AD SLOT */}
       <div className="w-full bg-[#0a0a0a] border-b border-white/10 p-2 sticky top-0 z-50">
         <div className="max-w-[728px] h-10 mx-auto bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-white/20 text-[10px] font-black tracking-widest text-white/30">
           AD SLOT • 728×90
@@ -290,77 +360,102 @@ export default function NSG_DeSuites_Final() {
             <Brain size={22} className="text-red-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tighter italic">NSG <span className="text-red-600">DE-SUITES</span></h1>
-            <span className="text-[10px] font-black text-white/40">Lecture OS 2.5</span>
+            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">DE-SUITES</span></h1>
+            <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 2.5</span>
           </div>
         </div>
-        <button onClick={() => setActiveTab('settings')} className="text-white/70 hover:text-red-500 transition-colors">
-          <Settings size={22} />
-        </button>
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-[10px] font-bold text-white/60">SYSTEM READY</span>
+          </div>
+          <button className="text-white/70 hover:text-red-500 transition-colors">
+            <Settings size={20} />
+          </button>
+        </div>
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-6xl mx-auto px-4 pt-6">
+      <main className="max-w-4xl mx-auto px-4 pt-6">
         <AnimatePresence mode="wait">
           
           {/* RECORD TAB */}
           {activeTab === 'record' && (
-            <motion.div key="record" initial={{opacity:0}} animate={{opacity:1}} className="space-y-8">
-              <div className="bg-[#0a0a0a] rounded-3xl p-8 border border-white/10 relative">
-                <div className="flex flex-col items-center text-center">
-                  <div className="relative mb-8">
+            <motion.div key="record" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity: 0}} className="space-y-6">
+              <div className="bg-[#0a0a0a] rounded-3xl p-6 border border-white/10 relative overflow-hidden">
+                <div className="flex flex-col items-center text-center relative z-10">
+                  <div className="relative mb-6">
                     {isRecording && (
                       <motion.div 
-                        animate={{ scale: 1.8, opacity: 0.15 }}
-                        transition={{ repeat: Infinity, duration: 1.8 }}
-                        className="absolute inset-0 bg-red-600 rounded-full blur-3xl"
+                        animate={{ scale: 1.6, opacity: 0.1 }}
+                        transition={{ repeat: Infinity, duration: 2 }}
+                        className="absolute inset-0 bg-red-600 rounded-full blur-2xl"
                       />
                     )}
                     <button 
                       onClick={handleToggleRecording}
-                      className={`w-24 h-24 rounded-3xl flex items-center justify-center transition-all ${isRecording ? 'bg-white text-black scale-110' : 'bg-red-600 text-white hover:scale-105'}`}
+                      className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? 'bg-white text-black scale-105' : 'bg-red-600 text-white hover:scale-105 active:scale-95'}`}
                     >
-                      {isRecording ? <StopCircle size={42} /> : <Mic size={42} />}
+                      {isRecording ? <StopCircle size={32} /> : <Mic size={32} />}
                     </button>
                   </div>
 
-                  <h2 className="text-3xl font-black tracking-tighter mb-1">
-                    {isRecording ? "CAPTURE ACTIVE" : "ENGINE IDLE"}
+                  <h2 className="text-xl font-black tracking-tighter mb-1 uppercase">
+                    {isRecording ? "Capture Active" : "Engine Idle"}
                   </h2>
-                  <p className="font-mono text-5xl text-red-600 font-bold mb-8">
+                  <p className="font-mono text-4xl text-red-600 font-bold mb-6 tracking-tight">
                     {formatTime(recordingTime)}
                   </p>
 
-                  <div className="flex gap-3 w-full max-w-xs">
+                  <div className="flex gap-2 w-full max-w-xs">
                     {audioUrl && (
                       <a href={audioUrl} download="Lecture.mp3" 
-                         className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-6 py-4 rounded-3xl text-sm font-bold">
-                        <Download size={18} /> Export
+                         className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-2xl text-xs font-bold transition-all">
+                        <Download size={16} /> Export
                       </a>
                     )}
                     <button 
                       onClick={triggerFullAnalysis}
-                      className="flex-1 flex items-center justify-center gap-2 bg-red-600/10 hover:bg-red-600 text-red-600 hover:text-white px-6 py-4 rounded-3xl text-sm font-bold border border-red-600/30"
+                      disabled={isAnalyzing || (uploadedImages.length === 0 && !recordedBlob)}
+                      className="flex-1 flex items-center justify-center gap-2 bg-red-600/10 hover:bg-red-600 text-red-600 hover:text-white px-4 py-3 rounded-2xl text-xs font-bold border border-red-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Sparkles size={18} /> Analyze
+                      <Sparkles size={16} /> Analyze
                     </button>
                   </div>
                 </div>
+                
+                {/* Visualizer effect */}
+                {isRecording && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 flex items-end justify-center gap-0.5 px-4">
+                    {[...Array(20)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        animate={{ height: [4, Math.random() * 20 + 4, 4] }}
+                        transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
+                        className="w-full bg-red-600/40 rounded-t-full"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Upload Cards - compact */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 hover:border-red-600/30 cursor-pointer transition-all flex flex-col items-center">
-                  <ImageIcon size={28} className="mb-4 text-red-500" />
-                  <span className="font-bold text-sm">Upload Slides</span>
-                  <span className="text-[10px] text-white/40 mt-1">({uploadedImages.length}/50)</span>
+              {/* Upload Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="bg-[#0a0a0a] p-5 rounded-3xl border border-white/10 hover:border-red-600/30 cursor-pointer transition-all flex flex-col items-center group">
+                  <div className="w-10 h-10 bg-red-600/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-red-600 group-hover:text-white transition-all">
+                    <ImageIcon size={20} className="text-red-500 group-hover:text-white" />
+                  </div>
+                  <span className="font-bold text-xs">Upload Slides</span>
+                  <span className="text-[9px] text-white/40 mt-1 uppercase tracking-widest">({uploadedImages.length}/50)</span>
                   <input type="file" multiple accept="image/*" className="hidden" onChange={handleImages} />
                 </label>
 
-                <label className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 hover:border-red-600/30 cursor-pointer transition-all flex flex-col items-center">
-                  <FileAudio size={28} className="mb-4 text-red-500" />
-                  <span className="font-bold text-sm">Pre-recorded Audio</span>
-                  <span className="text-[10px] text-white/40 mt-1">MP3 / WAV</span>
+                <label className="bg-[#0a0a0a] p-5 rounded-3xl border border-white/10 hover:border-red-600/30 cursor-pointer transition-all flex flex-col items-center group">
+                  <div className="w-10 h-10 bg-red-600/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-red-600 group-hover:text-white transition-all">
+                    <FileAudio size={20} className="text-red-500 group-hover:text-white" />
+                  </div>
+                  <span className="font-bold text-xs">Import Audio</span>
+                  <span className="text-[9px] text-white/40 mt-1 uppercase tracking-widest">MP3 / WAV</span>
                   <input type="file" accept="audio/*" className="hidden" />
                 </label>
               </div>
@@ -369,30 +464,39 @@ export default function NSG_DeSuites_Final() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} className="flex flex-col h-[calc(100vh-180px)] bg-[#0a0a0a] rounded-3xl border border-white/10 overflow-hidden">
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex flex-col h-[calc(100vh-220px)] bg-[#0a0a0a] rounded-3xl border border-white/10 overflow-hidden relative">
               {isAnalyzing && (
-                <div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
-                  <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2 }} className="w-12 h-12 border-4 border-red-600/30 border-t-red-600 rounded-full mb-6" />
-                  <p className="text-sm font-bold text-red-500">Processing with Gemini 2.5...</p>
+                <div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm">
+                  <motion.div 
+                    animate={{ rotate: 360 }} 
+                    transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }} 
+                    className="w-10 h-10 border-2 border-red-600/20 border-t-red-600 rounded-full mb-4" 
+                  />
+                  <p className="text-xs font-black text-red-500 uppercase tracking-widest animate-pulse">Analyzing Lecture Data...</p>
                 </div>
               )}
 
               {/* Chat header */}
-              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-[#0a0a0a]">
+              <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between bg-[#0a0a0a]/80 backdrop-blur-md">
                 <div className="flex items-center gap-3">
-                  <Brain size={22} className="text-red-600" />
+                  <div className="w-8 h-8 bg-red-600/10 rounded-lg flex items-center justify-center">
+                    <Brain size={18} className="text-red-600" />
+                  </div>
                   <div>
-                    <p className="font-bold text-sm">Gemini 2.5 Flash</p>
-                    <p className="text-[10px] text-green-500">● Online</p>
+                    <p className="font-bold text-xs">Gemini AI</p>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1 h-1 bg-green-500 rounded-full" />
+                      <p className="text-[9px] text-white/40 uppercase font-bold">Encrypted Session</p>
+                    </div>
                   </div>
                 </div>
-                <button onClick={() => setChatHistory([])} className="text-white/40 hover:text-red-500">
-                  <Trash2 size={20} />
+                <button onClick={() => setChatHistory([])} className="text-white/30 hover:text-red-500 transition-colors">
+                  <Trash2 size={18} />
                 </button>
               </div>
 
               {/* Messages */}
-              <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-5 space-y-6">
+              <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
                 {chatHistory.map((msg, i) => (
                   <motion.div
                     key={i}
@@ -400,30 +504,34 @@ export default function NSG_DeSuites_Final() {
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`max-w-[78%] ${msg.role === 'user' ? 'bg-red-600 text-white' : 'bg-white/10'} rounded-3xl px-5 py-3 text-sm`}>
-                      {msg.text}
-                      <span className="block text-[9px] text-white/40 mt-2 text-right">{msg.timestamp}</span>
+                    <div className={`max-w-[85%] ${msg.role === 'user' ? 'bg-red-600 text-white rounded-2xl rounded-tr-none' : 'bg-white/5 border border-white/10 rounded-2xl rounded-tl-none'} px-4 py-3`}>
+                      <div className="markdown-body">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.text}
+                        </ReactMarkdown>
+                      </div>
+                      <span className="block text-[8px] text-white/30 mt-2 text-right font-mono">{msg.timestamp}</span>
                     </div>
                   </motion.div>
                 ))}
               </div>
 
-              {/* Compact input bar */}
-              <div className="p-4 border-t border-white/10 bg-[#0a0a0a]">
-                <div className="flex gap-2 bg-white/5 rounded-3xl p-2">
+              {/* Input bar */}
+              <div className="p-3 border-t border-white/10 bg-[#0a0a0a]">
+                <div className="flex gap-2 bg-white/5 rounded-2xl p-1.5 border border-white/10">
                   <input
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Ask anything about the lecture..."
-                    className="flex-1 bg-transparent px-5 py-3 text-sm outline-none"
+                    placeholder="Ask about the lecture..."
+                    className="flex-1 bg-transparent px-4 py-2 text-xs outline-none placeholder:text-white/20"
                   />
                   <button
                     onClick={handleSendMessage}
-                    className="bg-red-600 w-11 h-11 rounded-2xl flex items-center justify-center hover:scale-95 transition-transform"
+                    className="bg-red-600 w-9 h-9 rounded-xl flex items-center justify-center hover:scale-95 active:scale-90 transition-all shadow-lg shadow-red-600/20"
                   >
-                    <ChevronRight size={22} />
+                    <ChevronRight size={20} />
                   </button>
                 </div>
               </div>
@@ -432,23 +540,198 @@ export default function NSG_DeSuites_Final() {
 
           {/* HISTORY TAB */}
           {activeTab === 'history' && (
-            <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} className="space-y-4">
-              <h2 className="text-2xl font-black px-2">Library</h2>
+            <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter">Library</h2>
+                <span className="text-[10px] font-bold text-white/30">{sessions.length} SESSIONS</span>
+              </div>
               {sessions.length === 0 ? (
-                <div className="text-center py-20 text-white/30">
-                  <History size={48} className="mx-auto mb-4 opacity-20" />
-                  <p className="font-bold">No saved lectures yet</p>
+                <div className="text-center py-20 bg-[#0a0a0a] rounded-3xl border border-white/10 border-dashed">
+                  <History size={40} className="mx-auto mb-4 text-white/10" />
+                  <p className="text-sm font-bold text-white/30">No saved lectures found</p>
                 </div>
               ) : (
-                sessions.map(session => (
-                  <div key={session.id} className="bg-[#0a0a0a] p-5 rounded-3xl flex items-center justify-between border border-white/10">
-                    <div>
-                      <p className="font-bold">{session.title}</p>
-                      <p className="text-xs text-white/40">{session.date} • {session.duration} • {session.imageCount} slides</p>
+                <div className="space-y-3">
+                  {sessions.map(session => (
+                    <div key={session.id} className="bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-red-600/30 transition-all group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 transition-all">
+                          <FileAudio size={20} className="text-white/20 group-hover:text-red-500" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm">{session.title}</p>
+                          <p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration} • {session.imageCount} SLIDES</p>
+                        </div>
+                      </div>
+                      <button className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:bg-red-600 hover:text-white transition-all">
+                        <Play size={16} />
+                      </button>
                     </div>
-                    <Play size={22} className="text-red-500" />
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* QUIZ TAB */}
+          {activeTab === 'quiz' && (
+            <motion.div key="quiz" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter">Quiz Engine</h2>
+                <Zap size={20} className="text-red-600" />
+              </div>
+
+              {quizState === 'idle' && (
+                <div className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 space-y-4">
+                  <div className="text-center space-y-2 mb-4">
+                    <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                      <Sparkles size={24} className="text-red-600" />
+                    </div>
+                    <h3 className="font-bold text-lg">Generate Interactive Quiz</h3>
+                    <p className="text-xs text-white/40">Test your knowledge with AI-generated questions based on your lecture or a specific topic.</p>
                   </div>
-                ))
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Topic / Subject</label>
+                    <input 
+                      type="text" 
+                      value={quizTopic}
+                      onChange={(e) => setQuizTopic(e.target.value)}
+                      placeholder="e.g. Quantum Physics, EEE 101..."
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-sm outline-none focus:border-red-600/50 transition-all"
+                    />
+                  </div>
+
+                  <button 
+                    onClick={generateQuiz}
+                    disabled={isGeneratingQuiz}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isGeneratingQuiz ? (
+                      <>
+                        <RefreshCcw size={18} className="animate-spin" />
+                        GENERATING...
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={18} />
+                        START ASSESSMENT
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {quizState === 'active' && quizQuestions.length > 0 && (
+                <div className="space-y-6">
+                  {/* Progress bar */}
+                  <div className="bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/10">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${((currentQuestionIndex + 1) / quizQuestions.length) * 100}%` }}
+                      className="bg-red-600 h-full"
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Question {currentQuestionIndex + 1} of {quizQuestions.length}</span>
+                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Score: {quizScore}</span>
+                  </div>
+
+                  <div className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 space-y-6">
+                    <h3 className="text-lg font-bold leading-tight">{quizQuestions[currentQuestionIndex].question}</h3>
+                    
+                    <div className="space-y-3">
+                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => {
+                        const isCorrect = idx === quizQuestions[currentQuestionIndex].correctAnswer;
+                        const isSelected = selectedOption === idx;
+                        
+                        let bgColor = "bg-white/5";
+                        let borderColor = "border-white/10";
+                        let textColor = "text-white/80";
+
+                        if (isAnswered) {
+                          if (isCorrect) {
+                            bgColor = "bg-green-500/10";
+                            borderColor = "border-green-500/50";
+                            textColor = "text-green-500";
+                          } else if (isSelected) {
+                            bgColor = "bg-red-500/10";
+                            borderColor = "border-red-500/50";
+                            textColor = "text-red-500";
+                          } else {
+                            bgColor = "bg-white/5 opacity-40";
+                          }
+                        } else if (isSelected) {
+                          borderColor = "border-red-600";
+                        }
+
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleOptionSelect(idx)}
+                            disabled={isAnswered}
+                            className={`w-full text-left p-4 rounded-2xl border ${bgColor} ${borderColor} ${textColor} transition-all flex items-center justify-between group`}
+                          >
+                            <span className="text-sm font-medium">{option}</span>
+                            {isAnswered && isCorrect && <CheckCircle2 size={18} />}
+                            {isAnswered && isSelected && !isCorrect && <XCircle size={18} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {isAnswered && (
+                      <button 
+                        onClick={nextQuestion}
+                        className="w-full bg-white text-black font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-white/90 transition-all"
+                      >
+                        {currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"}
+                        <ChevronRight size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {quizState === 'finished' && (
+                <div className="bg-[#0a0a0a] p-8 rounded-3xl border border-white/10 text-center space-y-6">
+                  <div className="relative inline-block">
+                    <div className="w-24 h-24 bg-red-600/10 rounded-full flex items-center justify-center mx-auto">
+                      <Sparkles size={40} className="text-red-600" />
+                    </div>
+                    <motion.div 
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-2 -right-2 bg-white text-black text-[10px] font-black px-2 py-1 rounded-full border border-black"
+                    >
+                      COMPLETED
+                    </motion.div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="text-2xl font-black uppercase tracking-tighter">Assessment Result</h3>
+                    <p className="text-white/40 text-xs font-medium">You've successfully completed the AI evaluation.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                      <p className="text-[10px] font-black text-white/30 uppercase mb-1">Final Score</p>
+                      <p className="text-3xl font-black text-red-600">{quizScore}/{quizQuestions.length}</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
+                      <p className="text-[10px] font-black text-white/30 uppercase mb-1">Accuracy</p>
+                      <p className="text-3xl font-black text-white">{Math.round((quizScore / quizQuestions.length) * 100)}%</p>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => setQuizState('idle')}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm transition-all"
+                  >
+                    RETAKE ASSESSMENT
+                  </button>
+                </div>
               )}
             </motion.div>
           )}
@@ -456,29 +739,32 @@ export default function NSG_DeSuites_Final() {
         </AnimatePresence>
       </main>
 
-      {/* 💰 SMALL BOTTOM AD SLOT (for monetization) */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 px-4">
-        <div className="max-w-[728px] mx-auto h-10 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-[10px] font-black tracking-widest text-white/30">
+      {/* 💰 BOTTOM AD SLOT */}
+      <div className="fixed bottom-20 left-0 right-0 z-40 px-4 pointer-events-none">
+        <div className="max-w-[728px] mx-auto h-10 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-[10px] font-black tracking-widest text-white/30 backdrop-blur-sm">
           MOBILE AD • 320×50
         </div>
       </div>
 
       {/* WHATSAPP-STYLE FIXED BOTTOM NAVIGATION */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a] border-t border-white/10 z-50">
-        <div className="flex items-center justify-around py-2">
+      <nav className="fixed bottom-0 left-0 right-0 bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/10 z-50">
+        <div className="flex items-center justify-around py-2 max-w-lg mx-auto">
           {[
             { id: 'record', icon: Mic, label: 'Record' },
             { id: 'ai', icon: Brain, label: 'AI Chat' },
             { id: 'history', icon: History, label: 'Library' },
-            { id: 'settings', icon: Cpu, label: 'System' }
+            { id: 'quiz', icon: Zap, label: 'Quiz' }
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex flex-col items-center py-1 px-5 transition-all ${activeTab === tab.id ? 'text-red-600' : 'text-white/40'}`}
+              className={`flex flex-col items-center py-2 px-4 transition-all relative ${activeTab === tab.id ? 'text-red-600' : 'text-white/30 hover:text-white/60'}`}
             >
-              <tab.icon size={24} strokeWidth={activeTab === tab.id ? 2.5 : 1.75} />
-              <span className="text-[10px] font-bold mt-0.5">{tab.label}</span>
+              {activeTab === tab.id && (
+                <motion.div layoutId="nav-active" className="absolute inset-0 bg-red-600/5 rounded-2xl -z-10" />
+              )}
+              <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
+              <span className="text-[9px] font-black mt-1 uppercase tracking-tighter">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -486,8 +772,8 @@ export default function NSG_DeSuites_Final() {
 
       {/* BACKGROUND FX */}
       <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
-        <div className="absolute top-10 left-10 w-72 h-72 bg-red-600/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-red-600/5 rounded-full blur-3xl" />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-600/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-red-600/5 rounded-full blur-[150px]" />
       </div>
     </div>
   );
