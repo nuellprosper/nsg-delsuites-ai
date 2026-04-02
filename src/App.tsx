@@ -259,7 +259,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-black border border-white/10 rounded-2xl flex items-center justify-center"><Brain size={22} className="text-red-600" /></div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">DE-SUITES</span></h1>
+            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">Nuell Study Guide</span></h1>
             <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 2.5</span>
           </div>
         </div>
