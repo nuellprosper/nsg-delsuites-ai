@@ -13,15 +13,22 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
 /**
- * NSG DE-SUITES V3.0 - INTELLIGENCE UPDATE
+ * NSG (Nuell Study Guide) V3.0
  * ✅ Fixed motion/react build error
  * ✅ Fixed duplicate key error
  * ✅ LocalStorage Persistence (Chat, Quiz, History)
  * ✅ LaTeX Math Support
- * ✅ Gemini 3 Flash Optimization
+ * ✅ Gemini 3 Flash Optimization (Stable)
+ * ✅ Fixed Render API Key Access
  */
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const getApiKey = () => {
+  // Try both standard and Vite-prefixed environment variables
+  const key = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
+  return key.trim();
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 interface MediaFile {
   id: string;
@@ -100,13 +107,11 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
 
-  // --- 📱 INITIALIZATION & PERSISTENCE ---
+  // --- 📱 INITIALIZATION ---
   useEffect(() => {
-    // Load Sessions
     const savedSessions = localStorage.getItem('nsg_sessions');
     if (savedSessions) setSessions(JSON.parse(savedSessions));
 
-    // Load Chat History
     const savedChat = localStorage.getItem('nsg_chat_history');
     if (savedChat) {
       setChatHistory(JSON.parse(savedChat));
@@ -118,7 +123,6 @@ export default function App() {
       }]);
     }
 
-    // Load Quiz State
     const savedQuiz = localStorage.getItem('nsg_quiz_data');
     if (savedQuiz) {
       const quizData = JSON.parse(savedQuiz);
@@ -132,17 +136,14 @@ export default function App() {
     }
   }, []);
 
-  // Save Sessions
   useEffect(() => {
     localStorage.setItem('nsg_sessions', JSON.stringify(sessions));
   }, [sessions]);
 
-  // Save Chat History
   useEffect(() => {
     localStorage.setItem('nsg_chat_history', JSON.stringify(chatHistory));
   }, [chatHistory]);
 
-  // Save Quiz State
   useEffect(() => {
     const quizData = {
       questions: quizQuestions,
@@ -235,7 +236,7 @@ export default function App() {
       );
 
       const prompt = `
-        Act as the NSG De-Suites AI Executive. I have provided ${uploadedImages.length} lecture slides 
+        Act as the NSG (Nuell Study Guide) AI Executive. I have provided ${uploadedImages.length} lecture slides 
         and an audio recording. 
         1. Provide a concise Executive Summary.
         2. Extract 5 Key Technical Concepts with clear explanations.
@@ -278,7 +279,6 @@ export default function App() {
 
     try {
       if (!chatInstanceRef.current) {
-        // Resume from saved history
         const history = chatHistory.map(m => ({
           role: m.role,
           parts: [{ text: m.text }]
@@ -287,7 +287,7 @@ export default function App() {
         chatInstanceRef.current = ai.chats.create({
           model: "gemini-3-flash-preview",
           history: history,
-          config: { systemInstruction: "You are the NSG De-Suites AI Executive. Provide sharp, technical, and academic assistance. Use markdown for all responses. For any mathematical formulas, ALWAYS use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$\\int x dx$$) or single dollar signs for inline (e.g. $x^2$). Make your responses interesting, engaging, and highly structured like a premium AI assistant." }
+          config: { systemInstruction: "You are the NSG (Nuell Study Guide) AI Executive. Provide sharp, technical, and academic assistance. Use markdown for all responses. For any mathematical formulas, ALWAYS use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$\\int x dx$$) or single dollar signs for inline (e.g. $x^2$). Make your responses interesting, engaging, and highly structured like a premium AI assistant." }
         });
       }
 
@@ -324,7 +324,7 @@ export default function App() {
       );
 
       const prompt = `
-        Generate a 10-question multiple choice quiz about "${quizTopic || 'the provided lecture content'}".
+        Generate a 1t to 100-question multiple choice quiz about "${quizTopic || 'the provided lecture content'}".
         Return ONLY a JSON object with this structure:
         {
           "questions": [
@@ -428,7 +428,7 @@ export default function App() {
             <Brain size={22} className="text-red-600" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">DE-SUITES</span></h1>
+            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">(Nuell Study Guide)</span></h1>
             <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 3.0</span>
           </div>
         </div>
