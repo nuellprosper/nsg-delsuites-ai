@@ -191,7 +191,7 @@ export default function App() {
     setActiveTab('ai');
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const imageParts = await Promise.all(
         uploadedImages.map(img => fileToGenerativePart(img.file))
       );
@@ -235,7 +235,7 @@ export default function App() {
     setChatHistory(prev => [...prev, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }]);
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       if (!chatInstanceRef.current) {
         chatInstanceRef.current = model.startChat({ history: [] });
       }
@@ -269,7 +269,7 @@ export default function App() {
     setQuizState('idle');
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const imageParts = await Promise.all(
         uploadedImages.map(img => fileToGenerativePart(img.file))
       );
