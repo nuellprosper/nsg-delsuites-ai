@@ -1,9 +1,53 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
-body {
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  .markdown-body {
+    @apply text-[13px] sm:text-sm leading-relaxed antialiased;
+  }
+  .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    @apply font-black mt-5 mb-3 tracking-tight text-slate-900 dark:text-white uppercase;
+  }
+  .markdown-body h1 { @apply text-lg; }
+  .markdown-body h2 { @apply text-base; }
+  .markdown-body h3 { @apply text-sm; }
+  
+  .markdown-body p { 
+    @apply mb-4 text-slate-700 dark:text-slate-300 font-medium; 
+  }
+  
+  .markdown-body ul, .markdown-body ol {
+    @apply mb-4 pl-6 space-y-2;
+  }
+  .markdown-body ul { @apply list-disc; }
+  .markdown-body ol { @apply list-decimal; }
+  
+  .markdown-body li {
+    @apply text-slate-700 dark:text-slate-300 font-medium;
+  }
+  
+  .markdown-body strong {
+    @apply font-black text-red-600 dark:text-red-500;
+  }
+  
+  .markdown-body code {
+    @apply bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 rounded font-mono text-[11px] text-red-600 dark:text-red-400;
+  }
+  
+  .markdown-body pre {
+    @apply bg-slate-900 dark:bg-black p-4 rounded-2xl my-4 overflow-x-auto border border-slate-800 dark:border-white/5 shadow-inner;
+  }
+  
+  .markdown-body pre code {
+    @apply bg-transparent p-0 text-slate-300 dark:text-slate-300 text-xs leading-normal;
+  }
+
+  .markdown-body blockquote {
+    @apply border-l-4 border-red-600/30 pl-4 italic my-4 text-slate-500 dark:text-slate-400;
+  }
+
+  /* Math styling */
+  .katex-display {
+    @apply my-4 overflow-x-auto overflow-y-hidden py-2;
+  }
 }
