@@ -3,19 +3,21 @@ import {
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings,
-  Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, FileCheck, ArrowLeft, Clock, Sun, Moon
+  Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, FileCheck, ArrowLeft, Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 /**
- * NSG DE-SUITES V2.7.1 - THE "STABILITY" UPDATE
- * ✅ Switched to Gemini 3 Flash (Fixes 429 Quota Error)
- * ✅ Fixed Library Detail View (Ensured data binding)
- * ✅ Manual + Auto Theme Toggle (Sun/Moon Button)
- * ✅ Optimized for Render Deployment
+ * NSG DE-SUITES V3.0 - THE "INTELLIGENCE" UPDATE
+ * ✅ LaTeX Math Formula Rendering (Integrals, Fractions, etc.)
+ * ✅ Perfect Quiz UI with Back Button & Live Score
+ * ✅ Automatic Light/Dark Mode
+ * ✅ Gemini 3 Flash Optimization
  */
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
@@ -73,17 +75,14 @@ export default function App() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
   const [uploadedAudio, setUploadedAudio] = useState<File | null>(null);
-  
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInstanceRef = useRef<any>(null);
   const [sessions, setSessions] = useState<LectureSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
-  
   const [quizTopic, setQuizTopic] = useState('');
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
@@ -92,45 +91,25 @@ export default function App() {
   const [quizState, setQuizState] = useState<'idle' | 'active' | 'finished'>('idle');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
 
-  // --- 🌓 THEME LOGIC ---
   useEffect(() => {
-    const savedTheme = localStorage.getItem('nsg_theme') as 'light' | 'dark';
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
-    } else {
-      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setTheme(systemDark ? 'dark' : 'light');
-      document.documentElement.classList.toggle('dark', systemDark);
-    }
-
-    // Listen for system changes if no manual theme is set
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      if (!localStorage.getItem('nsg_theme')) {
-        setTheme(e.matches ? 'dark' : 'light');
-        document.documentElement.classList.toggle('dark', e.matches);
+    const checkTheme = () => {
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
       }
     };
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    checkTheme();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', checkTheme);
   }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
-    localStorage.setItem('nsg_theme', newTheme);
-    document.documentElement.classList.toggle('dark', newTheme === 'dark');
-  };
 
   useEffect(() => {
     const saved = localStorage.getItem('nsg_sessions');
     if (saved) setSessions(JSON.parse(saved));
     setChatHistory([{
       role: 'model',
-      text: "System Online. Gemini 3 Flash ready. Upload images or start recording to begin.",
+      text: "System Online. Gemini 3 Flash ready. I am your NSG AI Executive. How can I assist your studies today?",
       timestamp: new Date().toLocaleTimeString()
     }]);
   }, []);
@@ -179,12 +158,7 @@ export default function App() {
 
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const mapped = files.map(f => ({ 
-      id: Math.random().toString(36).substr(2, 9), 
-      file: f, 
-      preview: URL.createObjectURL(f), 
-      type: 'image' as const 
-    }));
+    const mapped = files.map(f => ({ id: Math.random().toString(36).substr(2, 9), file: f, preview: URL.createObjectURL(f), type: 'image' as const }));
     setUploadedImages([...uploadedImages, ...mapped]);
   };
 
@@ -193,6 +167,7 @@ export default function App() {
     if (file) {
       setUploadedAudio(file);
       setAudioUrl(URL.createObjectURL(file));
+      alert(`Audio "${file.name}" imported successfully.`);
     }
   };
 
@@ -205,8 +180,8 @@ export default function App() {
     setActiveTab('ai');
     try {
       const imageParts = await Promise.all(uploadedImages.map(img => fileToGenerativePart(img.file)));
+      const prompt = `Act as the NSG De-Suites AI Executive. Provide a sharp, comprehensive summary of these lecture materials and an action plan. Use markdown. IMPORTANT: For any mathematical formulas, ALWAYS use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$E=mc^2$$) or single dollar signs for inline (e.g. $x^2$).`;
       
-      const prompt = `Act as the NSG De-Suites AI Executive. Provide a sharp, comprehensive summary of these lecture materials and an action plan. Use markdown.`;
       const result = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }]
@@ -231,8 +206,7 @@ export default function App() {
         images: base64Images,
         audioUrl: audioUrl || undefined
       };
-      setSessions(prev => [newSession, ...prev]);
-      
+      setSessions([newSession, ...sessions]);
     } catch (error: any) {
       setChatHistory(prev => [...prev, { role: 'model', text: `Error: ${error.message}`, timestamp: new Date().toLocaleTimeString() }]);
     } finally { setIsAnalyzing(false); }
@@ -245,7 +219,12 @@ export default function App() {
     setChatHistory(prev => [...prev, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }]);
     try {
       if (!chatInstanceRef.current) {
-        chatInstanceRef.current = ai.chats.create({ model: "gemini-3-flash-preview" });
+        chatInstanceRef.current = ai.chats.create({ 
+          model: "gemini-3-flash-preview",
+          config: {
+            systemInstruction: "You are the NSG De-Suites AI Executive. Provide sharp, technical, and academic assistance. Use markdown. For any mathematical formulas, ALWAYS use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$\\int x dx$$) or single dollar signs for inline (e.g. $x^2$). Make your responses interesting, engaging, and highly structured like a premium AI assistant."
+          }
+        });
       }
       const result = await chatInstanceRef.current.sendMessage({ message: msg });
       setChatHistory(prev => [...prev, { role: 'model', text: result.text || "No response.", timestamp: new Date().toLocaleTimeString() }]);
@@ -259,7 +238,6 @@ export default function App() {
     setActiveTab('quiz');
     try {
       let prompt = `Generate a 15 to 20-question multiple choice quiz about "${quizTopic || 'the lecture'}". Return ONLY a JSON object: {"questions": [{"question": "string", "options": ["string"], "correctAnswer": number}]}`;
-      
       let contents: any[] = [{ parts: [{ text: prompt }] }];
       if (sessionData) {
         contents = [{ parts: [{ text: prompt }, { text: sessionData.fullAnalysis }] }];
@@ -267,13 +245,11 @@ export default function App() {
         const imageParts = await Promise.all(uploadedImages.map(img => fileToGenerativePart(img.file)));
         contents = [{ parts: [{ text: prompt }, ...imageParts] }];
       }
-
       const result = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents,
         config: { responseMimeType: "application/json" }
       });
-      
       const data = JSON.parse(result.text || "{}");
       if (data.questions) {
         setQuizQuestions(data.questions);
@@ -303,32 +279,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#050505] text-slate-900 dark:text-[#e0e0e0] font-sans selection:bg-red-600 pb-24 transition-colors duration-300">
-      
       <div className="w-full bg-slate-50 dark:bg-[#0a0a0a] border-b border-slate-200 dark:border-white/10 p-2 sticky top-0 z-50">
-        <div className="max-w-[728px] h-10 mx-auto bg-slate-200/50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-black tracking-widest text-slate-400 dark:text-white/30 uppercase">Ad Space</div>
+        <div className="max-w-[728px] h-10 mx-auto bg-slate-200/50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-black tracking-widest text-slate-400 dark:text-white/30 uppercase">AD SLOT</div>
       </div>
 
       <header className="px-5 py-4 flex justify-between items-center border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#050505]/95 backdrop-blur-xl sticky top-12 z-40">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-slate-100 dark:bg-black border border-slate-200 dark:border-white/10 rounded-2xl flex items-center justify-center shadow-sm">
-            <Brain size={22} className="text-red-600" />
-          </div>
+          <div className="w-9 h-9 bg-slate-100 dark:bg-black border border-slate-200 dark:border-white/10 rounded-2xl flex items-center justify-center shadow-sm"><Brain size={22} className="text-red-600" /></div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">(Nuell Study Guide)</span></h1>
-            <span className="text-[9px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest">Lecture OS 2.5</span>
+            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">DE-SUITES</span></h1>
+            <span className="text-[9px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest">Lecture OS 3.0</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={toggleTheme} className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-white/70 hover:text-red-500 transition-all">
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <button className="text-slate-500 dark:text-white/70 hover:text-red-500 transition-colors"><Settings size={20} /></button>
-        </div>
+        <button className="text-slate-500 dark:text-white/70 hover:text-red-500 transition-colors"><Settings size={20} /></button>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 pt-6">
         <AnimatePresence mode="wait">
-          
           {activeTab === 'record' && (
             <motion.div key="record" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity: 0}} className="space-y-6">
               <div className="bg-slate-50 dark:bg-[#0a0a0a] rounded-3xl p-6 border border-slate-200 dark:border-white/10 relative overflow-hidden shadow-sm">
@@ -347,7 +314,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
               {uploadedImages.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto py-2 scrollbar-hide">
                   {uploadedImages.map(img => (
@@ -358,12 +324,11 @@ export default function App() {
                   ))}
                 </div>
               )}
-
               <div className="grid grid-cols-2 gap-3">
                 <label className="bg-slate-50 dark:bg-[#0a0a0a] p-5 rounded-3xl border border-slate-200 dark:border-white/10 hover:border-red-600/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm">
                   <div className="w-10 h-10 bg-red-600/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-red-600 group-hover:text-white transition-all"><ImageIcon size={20} className="text-red-500 group-hover:text-white" /></div>
                   <span className="font-bold text-xs">Upload Slides</span>
-                  <span className="text-[10px] text-slate-400 dark:text-white/40 mt-1">{uploadedImages.length}/50</span>
+                  <span className="text-[10px] text-slate-400 dark:text-white/40 mt-1 uppercase tracking-widest">{uploadedImages.length}/50</span>
                   <input type="file" multiple accept="image/*" className="hidden" onChange={handleImages} />
                 </label>
                 <label className="bg-slate-50 dark:bg-[#0a0a0a] p-5 rounded-3xl border border-slate-200 dark:border-white/10 hover:border-red-600/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm">
@@ -371,7 +336,6 @@ export default function App() {
                     {uploadedAudio ? <FileCheck size={20} className="text-green-500" /> : <FileAudio size={20} className="text-red-500 group-hover:text-white" />}
                   </div>
                   <span className="font-bold text-xs">{uploadedAudio ? "Audio Ready" : "Import Audio"}</span>
-                  <span className="text-[10px] text-slate-400 dark:text-white/40 mt-1">{uploadedAudio ? uploadedAudio.name.substring(0, 10) + "..." : "MP3 / WAV"}</span>
                   <input type="file" accept="audio/*" className="hidden" onChange={handleAudioUpload} />
                 </label>
               </div>
@@ -382,20 +346,21 @@ export default function App() {
             <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex flex-col h-[calc(100vh-220px)] bg-slate-50 dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 overflow-hidden relative shadow-sm">
               {isAnalyzing && <div className="absolute inset-0 z-50 bg-white/90 dark:bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm"><p className="text-xs font-black text-red-500 uppercase tracking-widest animate-pulse">Analyzing with Gemini 3...</p></div>}
               <div className="px-5 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md">
-                <div className="flex items-center gap-3">
-                  <Brain size={18} className="text-red-600" />
-                  <div><p className="font-bold text-xs">Gemini 3 Flash</p></div>
-                </div>
+                <div className="flex items-center gap-3"><Brain size={18} className="text-red-600" /><p className="font-bold text-xs">Gemini 3 Flash</p></div>
                 <div className="flex gap-2">
                   <button onClick={() => generateQuiz(true)} className="bg-red-600/10 text-red-600 px-3 py-1 rounded-full text-[10px] font-bold border border-red-600/30 flex items-center gap-1"><Zap size={10}/> Turn to Quiz</button>
                   <button onClick={() => setChatHistory([])} className="text-slate-400 dark:text-white/30 hover:text-red-500"><Trash2 size={18} /></button>
                 </div>
               </div>
-              <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+              <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
                 {chatHistory.map((msg, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] ${msg.role === 'user' ? 'bg-red-600 text-white rounded-2xl rounded-tr-none shadow-md' : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl rounded-tl-none shadow-sm'} px-4 py-3`}>
-                      <div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown></div>
+                    <div className={`max-w-[92%] group relative ${msg.role === 'user' ? 'bg-red-600 text-white rounded-2xl rounded-tr-none shadow-md' : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl rounded-tl-none shadow-sm'} px-4 py-3.5`}>
+                      {msg.role === 'model' && (
+                        <button onClick={() => { navigator.clipboard.writeText(msg.text); alert("Copied!"); }} className="absolute -right-2 -top-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-sm text-slate-400 hover:text-red-600 z-10"><Download size={12} /></button>
+                      )}
+                      <div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown></div>
+                      <div className={`flex items-center gap-1 mt-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><span className="text-[8px] font-mono uppercase tracking-tighter opacity-40">{msg.timestamp}</span></div>
                     </div>
                   </motion.div>
                 ))}
@@ -413,34 +378,16 @@ export default function App() {
             <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-black uppercase tracking-tighter">Library</h2>
-                {selectedSession && (
-                  <button onClick={() => setSelectedSession(null)} className="text-red-600 text-xs font-bold flex items-center gap-1">
-                    <ArrowLeft size={14} /> Back
-                  </button>
-                )}
+                {selectedSession && <button onClick={() => setSelectedSession(null)} className="text-red-600 text-xs font-bold flex items-center gap-1"><ArrowLeft size={14} /> Back</button>}
               </div>
-
               {!selectedSession ? (
-                sessions.length === 0 ? (
-                  <div className="text-center py-20 bg-slate-50 dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 border-dashed">
-                    <p className="text-sm font-bold text-slate-400 dark:text-white/30">No saved lectures</p>
-                  </div>
-                ) : (
+                sessions.length === 0 ? <div className="text-center py-20 bg-slate-50 dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 border-dashed"><p className="text-sm font-bold text-slate-400 dark:text-white/30">No saved lectures</p></div> : (
                   <div className="space-y-3">
                     {sessions.map(session => (
-                      <button 
-                        key={session.id} 
-                        onClick={() => setSelectedSession(session)}
-                        className="w-full text-left bg-slate-50 dark:bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-slate-200 dark:border-white/10 hover:border-red-600/30 transition-all group shadow-sm"
-                      >
+                      <button key={session.id} onClick={() => setSelectedSession(session)} className="w-full text-left bg-slate-50 dark:bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-slate-200 dark:border-white/10 hover:border-red-600/30 transition-all group shadow-sm">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-white dark:bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 transition-all shadow-sm">
-                            <FileAudio size={20} className="text-slate-400 dark:text-white/20 group-hover:text-red-500" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm">{session.title}</p>
-                            <p className="text-[10px] text-slate-400 dark:text-white/40 font-mono uppercase">{session.date} • {session.duration}</p>
-                          </div>
+                          <div className="w-10 h-10 bg-white dark:bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 shadow-sm"><FileAudio size={20} className="text-slate-400 dark:text-white/20 group-hover:text-red-500" /></div>
+                          <div><p className="font-bold text-sm">{session.title}</p><p className="text-[10px] text-slate-400 dark:text-white/40 font-mono uppercase">{session.date} • {session.duration}</p></div>
                         </div>
                         <ChevronRight size={18} className="text-slate-300 dark:text-white/20 group-hover:text-red-500" />
                       </button>
@@ -450,30 +397,13 @@ export default function App() {
               ) : (
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6 pb-10">
                   <div className="bg-slate-50 dark:bg-[#0a0a0a] p-6 rounded-3xl border border-slate-200 dark:border-white/10 shadow-sm">
-                    <div className="flex items-center gap-3 mb-4">
-                      <Clock size={16} className="text-red-600" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/40">{selectedSession.date} • {selectedSession.duration}</span>
-                    </div>
+                    <div className="flex items-center gap-3 mb-4"><Clock size={16} className="text-red-600" /><span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/40">{selectedSession.date} • {selectedSession.duration}</span></div>
                     <h3 className="text-2xl font-black mb-4 leading-tight">{selectedSession.title}</h3>
-                    
-                    <div className="flex gap-2 mb-6">
-                      <button onClick={() => generateQuiz(false, selectedSession)} className="flex-1 bg-red-600 text-white py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20">
-                        <Zap size={14} /> Start Quiz
-                      </button>
-                    </div>
-
-                    <div className="markdown-body mb-8">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedSession.fullAnalysis}</ReactMarkdown>
-                    </div>
-
-                    {selectedSession.images && selectedSession.images.length > 0 && (
-                      <div className="space-y-3">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/40">Lecture Slides</h4>
-                        <div className="grid grid-cols-3 gap-2">
-                          {selectedSession.images.map((img, idx) => (
-                            <img key={idx} src={img} className="w-full aspect-square object-cover rounded-xl border border-slate-200 dark:border-white/10" />
-                          ))}
-                        </div>
+                    <button onClick={() => generateQuiz(false, selectedSession)} className="w-full bg-red-600 text-white py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 mb-6"><Zap size={14} /> Start Quiz</button>
+                    <div className="markdown-body mb-8"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{selectedSession.fullAnalysis}</ReactMarkdown></div>
+                    {selectedSession.images.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {selectedSession.images.map((img, idx) => <img key={idx} src={img} className="w-full aspect-square object-cover rounded-xl border border-slate-200 dark:border-white/10" />)}
                       </div>
                     )}
                   </div>
@@ -496,6 +426,19 @@ export default function App() {
               )}
               {quizState === 'active' && quizQuestions.length > 0 && (
                 <div className="space-y-6">
+                  {/* PERFECT QUIZ HEADER */}
+                  <div className="flex items-center justify-between bg-slate-50 dark:bg-[#0a0a0a] p-4 rounded-3xl border border-slate-200 dark:border-white/10 shadow-sm">
+                    <button onClick={() => setQuizState('idle')} className="flex items-center gap-2 text-xs font-black text-slate-400 dark:text-white/40 hover:text-red-600 transition-colors uppercase tracking-widest"><ArrowLeft size={16} /> Back</button>
+                    <div className="text-center">
+                      <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-0.5">Progress</p>
+                      <p className="text-sm font-black text-red-600">{currentQuestionIndex + 1} <span className="opacity-20">/</span> {quizQuestions.length}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-0.5">Score</p>
+                      <p className="text-sm font-black text-green-500">{quizScore}</p>
+                    </div>
+                  </div>
+
                   <div className="bg-slate-50 dark:bg-[#0a0a0a] p-6 rounded-3xl border border-slate-200 dark:border-white/10 space-y-6 shadow-sm">
                     <h3 className="text-lg font-bold leading-tight">{quizQuestions[currentQuestionIndex].question}</h3>
                     <div className="space-y-3">
