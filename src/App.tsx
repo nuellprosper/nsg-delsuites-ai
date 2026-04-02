@@ -6,7 +6,7 @@ import {
   Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, FileCheck, ArrowLeft, Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleGenerativeAI } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -18,7 +18,9 @@ import remarkGfm from 'remark-gfm';
  * ✅ Full Session Data Persistence
  */
 
-const ai = new GoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// Use VITE_ prefix for Render environment variables
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 interface MediaFile {
   id: string;
@@ -41,7 +43,7 @@ interface LectureSession {
   imageCount: number;
   summary: string;
   fullAnalysis: string;
-  images: string[]; // Base64 strings for persistence
+  images: string[]; 
   audioUrl?: string;
 }
 
@@ -91,6 +93,19 @@ export default function App() {
   const [quizState, setQuizState] = useState<'idle' | 'active' | 'finished'>('idle');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+
+  // --- 🌓 THEME DETECTION ---
+  useEffect(() => {
+    const checkTheme = () => {
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    checkTheme();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', checkTheme);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('nsg_sessions');
@@ -171,22 +186,22 @@ export default function App() {
     setIsAnalyzing(true);
     setActiveTab('ai');
     try {
-      const model = ai.models.getGenerativeModel({ model: "gemini-2.5-flash" });
       const imageParts = await Promise.all(uploadedImages.map(img => fileToGenerativePart(img.file)));
       
       const prompt = `Act as the NSG De-Suites AI Executive. Provide a sharp, comprehensive summary of these lecture materials and an action plan. Use markdown.`;
-      const result = await model.generateContent([prompt, ...imageParts]);
-      const responseText = result.response.text();
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ parts: [{ text: prompt }, ...imageParts] }]
+      });
+      const responseText = result.text || "Analysis failed.";
       
       setChatHistory(prev => [...prev, { role: 'model', text: responseText, timestamp: new Date().toLocaleTimeString() }]);
       
-      // Convert images to base64 for history storage
       const base64Images = await Promise.all(uploadedImages.map(async (img) => {
         const part = await fileToGenerativePart(img.file);
         return `data:${img.file.type};base64,${part.inlineData.data}`;
       }));
 
-      // Save to History
       const newSession: LectureSession = { 
         id: Date.now().toString(), 
         title: `Lecture Analysis ${new Date().toLocaleTimeString()}`, 
@@ -211,10 +226,11 @@ export default function App() {
     setChatInput('');
     setChatHistory(prev => [...prev, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }]);
     try {
-      const model = ai.models.getGenerativeModel({ model: "gemini-2.5-flash" });
-      if (!chatInstanceRef.current) chatInstanceRef.current = model.startChat({ history: [] });
-      const result = await chatInstanceRef.current.sendMessage(msg);
-      setChatHistory(prev => [...prev, { role: 'model', text: result.response.text(), timestamp: new Date().toLocaleTimeString() }]);
+      if (!chatInstanceRef.current) {
+        chatInstanceRef.current = ai.chats.create({ model: "gemini-2.5-flash" });
+      }
+      const result = await chatInstanceRef.current.sendMessage({ message: msg });
+      setChatHistory(prev => [...prev, { role: 'model', text: result.text || "No response.", timestamp: new Date().toLocaleTimeString() }]);
     } catch (e: any) {
       setChatHistory(prev => [...prev, { role: 'model', text: `Error: ${e.message}`, timestamp: new Date().toLocaleTimeString() }]);
     }
@@ -224,19 +240,23 @@ export default function App() {
     setIsGeneratingQuiz(true);
     setActiveTab('quiz');
     try {
-      const model = ai.models.getGenerativeModel({ model: "gemini-2.5-flash" });
       let prompt = `Generate a 15 to 20-question multiple choice quiz about "${quizTopic || 'the lecture'}". Return ONLY a JSON object: {"questions": [{"question": "string", "options": ["string"], "correctAnswer": number}]}`;
       
-      let parts: any[] = [prompt];
+      let contents: any[] = [{ parts: [{ text: prompt }] }];
       if (sessionData) {
-        parts = [prompt, sessionData.fullAnalysis];
+        contents = [{ parts: [{ text: prompt }, { text: sessionData.fullAnalysis }] }];
       } else if (fromLecture) {
         const imageParts = await Promise.all(uploadedImages.map(img => fileToGenerativePart(img.file)));
-        parts = [prompt, ...imageParts];
+        contents = [{ parts: [{ text: prompt }, ...imageParts] }];
       }
 
-      const result = await model.generateContent(parts);
-      const data = JSON.parse(result.response.text().replace(/```json|```/g, "").trim());
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents,
+        config: { responseMimeType: "application/json" }
+      });
+      
+      const data = JSON.parse(result.text || "{}");
       if (data.questions) {
         setQuizQuestions(data.questions);
         setCurrentQuestionIndex(0);
@@ -266,12 +286,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white dark:bg-[#050505] text-slate-900 dark:text-[#e0e0e0] font-sans selection:bg-red-600 pb-24 transition-colors duration-300">
       
-      {/* 💰 TOP AD SLOT */}
       <div className="w-full bg-slate-50 dark:bg-[#0a0a0a] border-b border-slate-200 dark:border-white/10 p-2 sticky top-0 z-50">
-        <div className="max-w-[728px] h-10 mx-auto bg-slate-200/50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-black tracking-widest text-slate-400 dark:text-white/30">AD SLOT • 728×90</div>
+        <div className="max-w-[728px] h-10 mx-auto bg-slate-200/50 dark:bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-black tracking-widest text-slate-400 dark:text-white/30">AD SLOT</div>
       </div>
 
-      {/* HEADER */}
       <header className="px-5 py-4 flex justify-between items-center border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#050505]/95 backdrop-blur-xl sticky top-12 z-40">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-slate-100 dark:bg-black border border-slate-200 dark:border-white/10 rounded-2xl flex items-center justify-center shadow-sm">
@@ -288,7 +306,6 @@ export default function App() {
       <main className="max-w-4xl mx-auto px-4 pt-6">
         <AnimatePresence mode="wait">
           
-          {/* RECORD TAB */}
           {activeTab === 'record' && (
             <motion.div key="record" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity: 0}} className="space-y-6">
               <div className="bg-slate-50 dark:bg-[#0a0a0a] rounded-3xl p-6 border border-slate-200 dark:border-white/10 relative overflow-hidden shadow-sm">
@@ -308,7 +325,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Image Previews */}
               {uploadedImages.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto py-2 scrollbar-hide">
                   {uploadedImages.map(img => (
@@ -339,7 +355,6 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
             <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex flex-col h-[calc(100vh-220px)] bg-slate-50 dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 overflow-hidden relative shadow-sm">
               {isAnalyzing && <div className="absolute inset-0 z-50 bg-white/90 dark:bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm"><p className="text-xs font-black text-red-500 uppercase tracking-widest animate-pulse">Analyzing with Gemini 2.5...</p></div>}
@@ -371,14 +386,13 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* HISTORY TAB */}
           {activeTab === 'history' && (
             <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-black uppercase tracking-tighter">Library</h2>
                 {selectedSession && (
                   <button onClick={() => setSelectedSession(null)} className="text-red-600 text-xs font-bold flex items-center gap-1">
-                    <ArrowLeft size={14} /> Back to List
+                    <ArrowLeft size={14} /> Back
                   </button>
                 )}
               </div>
@@ -423,11 +437,6 @@ export default function App() {
                       <button onClick={() => generateQuiz(false, selectedSession)} className="flex-1 bg-red-600 text-white py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20">
                         <Zap size={14} /> Start Quiz
                       </button>
-                      {selectedSession.audioUrl && (
-                        <a href={selectedSession.audioUrl} download className="flex-1 bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-white py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2">
-                          <Download size={14} /> Audio
-                        </a>
-                      )}
                     </div>
 
                     <div className="markdown-body mb-8">
@@ -450,7 +459,6 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* QUIZ TAB */}
           {activeTab === 'quiz' && (
             <motion.div key="quiz" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
               <h2 className="text-xl font-black uppercase tracking-tighter">Quiz Engine</h2>
@@ -497,7 +505,6 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* BOTTOM NAV */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 z-50">
         <div className="flex items-center justify-around py-2 max-w-lg mx-auto">
           {[
