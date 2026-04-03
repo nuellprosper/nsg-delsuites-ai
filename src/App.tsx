@@ -787,6 +787,23 @@ export default function App() {
               )}
             </motion.div>
           )}
+          {quizState === 'finished' && (
+                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-[#0a0a0a] p-10 rounded-3xl border border-slate-200 dark:border-white/10 text-center space-y-6 shadow-sm">
+                  <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle2 size={48} className="text-green-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Assessment Complete</h3>
+                    <p className="text-slate-500 dark:text-white/40 text-sm mt-1">You've successfully completed the {quizTopic} quiz.</p>
+                  </div>
+                  <div className="py-6 border-y border-slate-100 dark:border-white/5">
+                    <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-1">Final Score</p>
+                    <p className="text-5xl font-black text-red-600">{Math.round((quizScore / quizQuestions.length) * 100)}%</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white mt-2">{quizScore} correct out of {quizQuestions.length}</p>
+                  </div>
+                  <button onClick={() => setQuizState('idle')} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all">TRY ANOTHER TOPIC</button>
+                </motion.div>
+              )}
 
           {/* BLOG TAB */}
           {activeTab === 'blog' && (
