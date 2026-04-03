@@ -254,7 +254,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }]
       });
 
@@ -311,7 +311,7 @@ export default function App() {
         }));
 
         chatInstanceRef.current = ai.chats.create({
-          model: "gemini-2.5-flash",
+          model: "gemini-2.5-flash-lite",
           history: history,
           config: { systemInstruction: "You are the NSG (Nuell Study Guide) AI Executive. Provide sharp, technical, and academic assistance. Use markdown for all responses. For any mathematical formulas, ALWAYS use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$\\int x dx$$) or single dollar signs for inline (e.g. $x^2$). Make your responses interesting, engaging, and highly structured like a premium AI assistant." }
         });
@@ -364,7 +364,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }],
         config: {
           responseMimeType: "application/json",
