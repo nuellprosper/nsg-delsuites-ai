@@ -254,7 +254,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview",
+        model: "gemini-2.5-flash",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }]
       });
 
@@ -364,7 +364,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview",
+        model: "gemini-2.5-flash",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }],
         config: {
           responseMimeType: "application/json",
