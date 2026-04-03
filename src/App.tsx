@@ -14,16 +14,14 @@ import rehypeKatex from 'rehype-katex';
 
 /**
  * NSG (Nuell Study Guide) V3.0
- * ✅ Fixed motion/react build error
- * ✅ Fixed duplicate key error
- * ✅ LocalStorage Persistence (Chat, Quiz, History)
- * ✅ LaTeX Math Support
- * ✅ Gemini 3 Flash Optimization (Stable)
- * ✅ Fixed Render API Key Access
+ * ✅ Compulsory Welcome Modal
+ * ✅ Legal Pages (About, Terms, Contact)
+ * ✅ Gemini 2.5 Flash Integration
+ * ✅ 15-100 Question Quiz Engine
+ * ✅ Functional Library History
  */
 
 const getApiKey = () => {
-  // Try both standard and Vite-prefixed environment variables
   const key = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
   return key.trim();
 };
@@ -51,7 +49,9 @@ interface LectureSession {
   duration: string;
   imageCount: number;
   summary: string;
-  transcript?: string;
+  fullAnalysis: string;
+  images: string[]; 
+  audioUrl?: string;
 }
 
 interface QuizQuestion {
@@ -75,6 +75,8 @@ export default function App() {
   // --- 📱 APP STATE ---
   const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz'>('record');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | null>(null);
 
   // --- 🎙️ RECORDING ENGINE ---
   const [isRecording, setIsRecording] = useState(false);
@@ -96,6 +98,7 @@ export default function App() {
 
   // --- 📚 PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
+  const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
   // --- 📝 QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
@@ -118,7 +121,7 @@ export default function App() {
     } else {
       setChatHistory([{
         role: 'model',
-        text: "System Online. Gemini 3 Flash ready. Upload images or start recording to begin.",
+        text: "System Online. Gemini 2.5 Flash ready. Upload images or start recording to begin.",
         timestamp: new Date().toLocaleTimeString()
       }]);
     }
@@ -133,6 +136,11 @@ export default function App() {
       setSelectedOption(quizData.selectedOption !== undefined ? quizData.selectedOption : null);
       setIsAnswered(quizData.isAnswered || false);
       setQuizTopic(quizData.topic || '');
+    }
+
+    const hasSeenWelcome = localStorage.getItem('nsg_welcome_seen');
+    if (!hasSeenWelcome) {
+      setShowWelcome(true);
     }
   }, []);
 
@@ -246,7 +254,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash-preview",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }]
       });
 
@@ -257,6 +265,24 @@ export default function App() {
         text,
         timestamp: new Date().toLocaleTimeString()
       }]);
+
+      const base64Images = await Promise.all(uploadedImages.map(async (img) => {
+        const part = await fileToGenerativePart(img.file);
+        return `data:${img.file.type};base64,${part.inlineData.data}`;
+      }));
+
+      const newSession: LectureSession = { 
+        id: Date.now().toString(), 
+        title: `Lecture Analysis ${new Date().toLocaleTimeString()}`, 
+        date: new Date().toLocaleDateString(), 
+        duration: formatTime(recordingTime), 
+        imageCount: uploadedImages.length, 
+        summary: text.substring(0, 100) + "...",
+        fullAnalysis: text,
+        images: base64Images,
+        audioUrl: audioUrl || undefined
+      };
+      setSessions([newSession, ...sessions]);
     } catch (error: any) {
       console.error('🚨 Gemini Analysis Error:', error);
       setChatHistory(prev => [...prev, {
@@ -285,7 +311,7 @@ export default function App() {
         }));
 
         chatInstanceRef.current = ai.chats.create({
-          model: "gemini-2.5-flash",
+          model: "gemini-2.5-flash-preview",
           history: history,
           config: { systemInstruction: "You are the NSG (Nuell Study Guide) AI Executive. Provide sharp, technical, and academic assistance. Use markdown for all responses. For any mathematical formulas, ALWAYS use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$\\int x dx$$) or single dollar signs for inline (e.g. $x^2$). Make your responses interesting, engaging, and highly structured like a premium AI assistant." }
         });
@@ -338,7 +364,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-preview",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }],
         config: {
           responseMimeType: "application/json",
@@ -406,14 +432,120 @@ export default function App() {
       date: new Date().toLocaleDateString(),
       duration,
       imageCount: uploadedImages.length,
-      summary: "Lecture recorded and ready for analysis."
+      summary: "Lecture recorded and ready for analysis.",
+      fullAnalysis: "Recording saved. Trigger analysis for full details.",
+      images: []
     };
     setSessions([newSession, ...sessions]);
+  };
+
+  const closeWelcome = () => {
+    setShowWelcome(false);
+    localStorage.setItem('nsg_welcome_seen', 'true');
   };
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#e0e0e0] font-sans selection:bg-red-600 pb-24">
       
+      {/* WELCOME MODAL */}
+      <AnimatePresence>
+        {showWelcome && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-[#0a0a0a] border border-white/10 p-8 rounded-3xl max-w-lg w-full shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-1 bg-red-600" />
+              <div className="flex flex-col items-center text-center space-y-6">
+                <div className="w-16 h-16 bg-red-600/10 rounded-2xl flex items-center justify-center">
+                  <Brain size={40} className="text-red-600" />
+                </div>
+                <h2 className="text-2xl font-black tracking-tighter uppercase italic">Welcome to <span className="text-red-600">NSG</span></h2>
+                <p className="text-sm text-white/70 leading-relaxed">
+                  Welcome to NSG (Nuell Study Guide), powered by Nuell Graphics. Transform your learning experience by recording classes, generating AI transcriptions, chatting with our intelligent assistant, and creating custom quizzes. We are constantly improving NSG to better serve your academic journey. Thank you for choosing us as your study partner!
+                </p>
+                <button 
+                  onClick={closeWelcome}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm transition-all shadow-xl shadow-red-600/20"
+                >
+                  GET STARTED
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* LEGAL MODAL */}
+      <AnimatePresence>
+        {legalPage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-[#0a0a0a] border border-white/10 p-8 rounded-3xl max-w-2xl w-full shadow-2xl relative overflow-hidden max-h-[80vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-black uppercase tracking-tighter">
+                  {legalPage === 'about' && "About Us"}
+                  {legalPage === 'terms' && "Terms & Conditions"}
+                  {legalPage === 'contact' && "Contact Us"}
+                </h2>
+                <button onClick={() => setLegalPage(null)} className="text-white/40 hover:text-white transition-colors">
+                  <XCircle size={24} />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto pr-2 space-y-4 text-sm text-white/70 leading-relaxed">
+                {legalPage === 'about' && (
+                  <>
+                    <p>NSG (Nuell Study Guide) is a cutting-edge educational tool designed to empower students and lifelong learners. Powered by Nuell Graphics, we leverage advanced AI to simplify complex learning processes.</p>
+                    <p>Our mission is to provide a seamless interface for capturing lecture content, analyzing it with state-of-the-art language models, and providing interactive tools like AI chat and custom quizzes to reinforce knowledge.</p>
+                  </>
+                )}
+                {legalPage === 'terms' && (
+                  <>
+                    <p>By using NSG, you agree to the following terms:</p>
+                    <ul className="list-disc pl-5 space-y-2">
+                      <li>NSG is provided "as is" for educational purposes.</li>
+                      <li>Users are responsible for the content they upload and record.</li>
+                      <li>We do not guarantee 100% accuracy of AI-generated content.</li>
+                      <li>Your data is stored locally on your device for privacy.</li>
+                      <li>We reserve the right to update the application and its features.</li>
+                    </ul>
+                  </>
+                )}
+                {legalPage === 'contact' && (
+                  <div className="text-center py-8 space-y-4">
+                    <div className="w-16 h-16 bg-red-600/10 rounded-full flex items-center justify-center mx-auto">
+                      <Settings size={32} className="text-red-600" />
+                    </div>
+                    <p className="text-lg font-bold">Need Assistance?</p>
+                    <p>If you have any issues, pls contact us at:</p>
+                    <div className="space-y-1 font-mono text-red-500">
+                      <p>nuellkelechi@gmail.com</p>
+                      <p>07046732569</p>
+                    </div>
+                    <p className="text-xs text-white/40">Thank you for your support!</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 💰 TOP AD SLOT */}
       <div className="w-full bg-[#0a0a0a] border-b border-white/10 p-2 sticky top-0 z-50">
         <div className="max-w-[728px] h-10 mx-auto bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-white/20 text-[10px] font-black tracking-widest text-white/30">
@@ -574,7 +706,7 @@ export default function App() {
                     <Brain size={18} className="text-red-600" />
                   </div>
                   <div>
-                    <p className="font-bold text-xs">Gemini 3 Flash</p>
+                    <p className="font-bold text-xs">Gemini 2.5 Flash</p>
                     <div className="flex items-center gap-1">
                       <div className="w-1 h-1 bg-green-500 rounded-full" />
                       <p className="text-[9px] text-slate-400 dark:text-white/40 uppercase font-bold tracking-tighter">Optimized Intelligence</p>
@@ -650,32 +782,80 @@ export default function App() {
             <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
               <div className="flex items-center justify-between px-2">
                 <h2 className="text-xl font-black uppercase tracking-tighter">Library</h2>
-                <span className="text-[10px] font-bold text-white/30">{sessions.length} SESSIONS</span>
+                <div className="flex items-center gap-2">
+                  {selectedSession && (
+                    <button onClick={() => setSelectedSession(null)} className="text-red-600 text-xs font-bold flex items-center gap-1">
+                      <ArrowLeft size={14} /> Back
+                    </button>
+                  )}
+                  <span className="text-[10px] font-bold text-white/30">{sessions.length} SESSIONS</span>
+                </div>
               </div>
-              {sessions.length === 0 ? (
-                <div className="text-center py-20 bg-[#0a0a0a] rounded-3xl border border-white/10 border-dashed">
-                  <History size={40} className="mx-auto mb-4 text-white/10" />
-                  <p className="text-sm font-bold text-white/30">No saved lectures found</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {sessions.map(session => (
-                    <div key={session.id} className="bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-red-600/30 transition-all group">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 transition-all">
-                          <FileAudio size={20} className="text-white/20 group-hover:text-red-500" />
+
+              {!selectedSession ? (
+                sessions.length === 0 ? (
+                  <div className="text-center py-20 bg-[#0a0a0a] rounded-3xl border border-white/10 border-dashed">
+                    <History size={40} className="mx-auto mb-4 text-white/10" />
+                    <p className="text-sm font-bold text-white/30">No saved lectures found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sessions.map(session => (
+                      <button 
+                        key={session.id} 
+                        onClick={() => setSelectedSession(session)}
+                        className="w-full text-left bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-red-600/30 transition-all group"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 transition-all">
+                            <FileAudio size={20} className="text-white/20 group-hover:text-red-500" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm">{session.title}</p>
+                            <p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration} • {session.imageCount} SLIDES</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-sm">{session.title}</p>
-                          <p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration} • {session.imageCount} SLIDES</p>
-                        </div>
-                      </div>
-                      <button className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/40 hover:bg-red-600 hover:text-white transition-all">
-                        <Play size={16} />
+                        <ChevronRight size={18} className="text-white/20 group-hover:text-red-500" />
                       </button>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 space-y-6"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold">{selectedSession.title}</h3>
+                    <button 
+                      onClick={() => setSessions(prev => prev.filter(s => s.id !== selectedSession.id))}
+                      className="text-white/20 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center gap-4 text-[10px] font-mono text-white/40 uppercase">
+                    <span>{selectedSession.date}</span>
+                    <span>{selectedSession.duration}</span>
+                    <span>{selectedSession.imageCount} Slides</span>
+                  </div>
+
+                  <div className="markdown-body text-sm leading-relaxed">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {selectedSession.fullAnalysis}
+                    </ReactMarkdown>
+                  </div>
+
+                  {selectedSession.images.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {selectedSession.images.map((img, idx) => (
+                        <img key={idx} src={img} alt="slide" className="w-full aspect-square object-cover rounded-xl border border-white/10" />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </motion.div>
               )}
             </motion.div>
           )}
@@ -901,6 +1081,14 @@ export default function App() {
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-600/10 rounded-full blur-[120px]" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-red-600/5 rounded-full blur-[150px]" />
       </div>
+
+      {/* FOOTER LINKS FOR ADSENSE */}
+      <footer className="max-w-4xl mx-auto px-4 py-8 border-t border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-white/20">
+        <button onClick={() => setLegalPage('about')} className="hover:text-red-600 transition-colors">About Us</button>
+        <button onClick={() => setLegalPage('terms')} className="hover:text-red-600 transition-colors">Terms & Conditions</button>
+        <button onClick={() => setLegalPage('contact')} className="hover:text-red-600 transition-colors">Contact Us</button>
+        <span>© 2026 Nuell Graphics</span>
+      </footer>
     </div>
   );
 }
