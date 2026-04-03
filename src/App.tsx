@@ -121,7 +121,7 @@ export default function App() {
     } else {
       setChatHistory([{
         role: 'model',
-        text: "System Online. Gemini 2.5 Flash ready. Upload images or start recording to begin.",
+        text: "System Online. Gemini 3.1 Flash ready. Upload images or start recording to begin.",
         timestamp: new Date().toLocaleTimeString()
       }]);
     }
@@ -254,7 +254,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }]
       });
 
@@ -311,7 +311,7 @@ export default function App() {
         }));
 
         chatInstanceRef.current = ai.chats.create({
-          model: "gemini-2.5-flash-lite",
+          model: "gemini-3.1-flash-lite-preview",
           history: history,
           config: { systemInstruction: "You are the NSG (Nuell Study Guide) AI Executive. Provide sharp, technical, and academic assistance. Use markdown for all responses. For any mathematical formulas, ALWAYS use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$\\int x dx$$) or single dollar signs for inline (e.g. $x^2$). Make your responses interesting, engaging, and highly structured like a premium AI assistant." }
         });
@@ -364,7 +364,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }],
         config: {
           responseMimeType: "application/json",
@@ -706,7 +706,7 @@ export default function App() {
                     <Brain size={18} className="text-red-600" />
                   </div>
                   <div>
-                    <p className="font-bold text-xs">Gemini 2.5 Flash</p>
+                    <p className="font-bold text-xs">Gemini 3.1 Flash</p>
                     <div className="flex items-center gap-1">
                       <div className="w-1 h-1 bg-green-500 rounded-full" />
                       <p className="text-[9px] text-slate-400 dark:text-white/40 uppercase font-bold tracking-tighter">Optimized Intelligence</p>
