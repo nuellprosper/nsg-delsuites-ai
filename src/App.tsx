@@ -397,7 +397,7 @@ export default function App() {
 
     try {
       const prompt = `
-        Generate a 15 to 100-question multiple choice quiz about "${quizTopic}".
+        Generate a 25(the least) to 100-question multiple choice quiz about "${quizTopic}".
         Return ONLY a JSON object with this structure:
         {
           "questions": [
