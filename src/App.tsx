@@ -14,7 +14,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
 /**
- * NSG (Nuell Study Guide) V3.6 - EXECUTIVE EDITION
+ * NSG (Nuell Study Guide) V3.7 - EXECUTIVE EDITION
  * ✅ FIXED: Audio recording/import now correctly sent to Gemini for analysis
  * ✅ Manual Theme Toggle (White <-> Black)
  * ✅ Library-to-Chat Integration
@@ -319,7 +319,8 @@ export default function App() {
         imageCount: uploadedImages.length, 
         summary: text.substring(0, 100) + "...",
         fullAnalysis: text,
-        images: base64Images
+        images: base64Images,
+        audioUrl: audioUrl || undefined
       };
       setSessions([newSession, ...sessions]);
     } catch (error: any) {
@@ -371,6 +372,98 @@ export default function App() {
         timestamp: new Date().toLocaleTimeString() 
       }]);
     }
+  };
+
+  // --- 📝 QUIZ LOGIC ---
+  const generateQuiz = async () => {
+    if (!quizTopic.trim()) {
+      alert("Please enter a topic first.");
+      return;
+    }
+
+    setIsGeneratingQuiz(true);
+    setQuizState('idle');
+
+    try {
+      const prompt = `
+        Generate a 15 to 100-question multiple choice quiz about "${quizTopic}".
+        Return ONLY a JSON object with this structure:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "options": ["string", "string", "string", "string"],
+              "correctAnswer": number (0-3)
+            }
+          ]
+        }
+      `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              questions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    question: { type: Type.STRING },
+                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    correctAnswer: { type: Type.INTEGER }
+                  },
+                  required: ["question", "options", "correctAnswer"]
+                }
+              }
+            },
+            required: ["questions"]
+          }
+        }
+      });
+
+      const data = JSON.parse(response.text || "{}");
+      if (data.questions) {
+        setQuizQuestions(data.questions);
+        setCurrentQuestionIndex(0);
+        setQuizScore(0);
+        setQuizState('active');
+        setSelectedOption(null);
+        setIsAnswered(false);
+      }
+    } catch (error) {
+      console.error("Quiz Generation Error:", error);
+      alert("Failed to generate quiz. Please try again.");
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleOptionSelect = (index: number) => {
+    if (isAnswered) return;
+    setSelectedOption(index);
+    setIsAnswered(true);
+    if (index === quizQuestions[currentQuestionIndex].correctAnswer) {
+      setQuizScore(prev => prev + 1);
+    }
+  };
+
+  const nextQuestion = () => {
+    if (currentQuestionIndex < quizQuestions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      setSelectedOption(null);
+      setIsAnswered(false);
+    } else {
+      setQuizState('finished');
+    }
+  };
+
+  const closeWelcome = () => {
+    setShowWelcome(false);
+    localStorage.setItem('nsg_welcome_seen', 'true');
   };// --- 📝 QUIZ LOGIC ---
   const generateQuiz = async () => {
     if (!quizTopic.trim()) {
