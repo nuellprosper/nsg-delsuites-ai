@@ -293,7 +293,7 @@ export default function App() {
   const generateQuiz = async () => {
     setIsGeneratingQuiz(true);
     try {
-      const prompt = `Generate a 15-question quiz about ${quizTopic}. Return JSON.`;
+      const prompt = `Generate a 15 to 100-question quiz about ${quizTopic}. Return JSON.`;
       const response = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }] }],
@@ -333,10 +333,7 @@ export default function App() {
   };
 
   const closeWelcome = () => { setShowWelcome(false); localStorage.setItem('nsg_welcome_seen', 'true'); };
-
-  // --- 🎨 THEME LOGIC ---
-  // Dark: bg-[#050505], text-white, buttons: bg-red-600 or bg-white
-  // Light: bg-white, text-black, buttons: bg-red-600 or bg-blackreturn (
+  return (
     <div className={`min-h-screen transition-colors duration-300 font-sans selection:bg-red-600 pb-24 ${theme === 'dark' ? 'bg-[#050505] text-white' : 'bg-white text-black'}`}>
       
       {/* WELCOME MODAL */}
@@ -500,7 +497,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* BLOG TAB (ADSENSE READY) */}
+          {/* BLOG TAB */}
           {activeTab === 'blog' && (
             <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} className="space-y-8 pb-12">
               <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-[#0a0a0a] border-white/10' : 'bg-white border-black/10'}`}>
@@ -554,4 +551,4 @@ function NavButton({ active, icon, label, onClick, theme }: { active: boolean, i
       <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
     </button>
   );
-}
+        }
