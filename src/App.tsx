@@ -67,8 +67,15 @@ async function fileToGenerativePart(file: File | Blob) {
     reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
     reader.readAsDataURL(file);
   });
+  
+  // Ensure we have a valid mimeType for Gemini
+  let mimeType = file.type;
+  if (!mimeType || mimeType === "") {
+    mimeType = "audio/webm"; // Default fallback for recorded blobs
+  }
+
   return {
-    inlineData: { data: await base64EncodedDataPromise, mimeType: file.type || 'audio/mp3' },
+    inlineData: { data: await base64EncodedDataPromise, mimeType },
   };
 }
 
@@ -220,7 +227,7 @@ export default function App() {
         };
 
         recorder.onstop = () => {
-          const blob = new Blob(audioChunksRef.current, { type: 'audio/mp3' });
+          const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
           setRecordedBlob(blob);
           setAudioUrl(URL.createObjectURL(blob));
         };
@@ -270,28 +277,32 @@ export default function App() {
     setActiveTab('ai');
 
     try {
-      const imageParts = await Promise.all(
-        uploadedImages.map(img => fileToGenerativePart(img.file))
-      );
+      const parts: any[] = [];
 
-      const parts: any[] = [
-        { text: `
-          Act as the NSG (Nuell Study Guide) AI Executive. I have provided ${uploadedImages.length} lecture slides 
-          and an audio recording. 
-          1. Provide a concise Executive Summary.
-          2. Extract 5 Key Technical Concepts with clear explanations.
-          3. Create a bulleted "Action Plan" for studying this content.
-          Style: Professional, sharp, and academic. Use markdown for better formatting. 
-          IMPORTANT: For any mathematical formulas, use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$E=mc^2$$) or single dollar signs for inline (e.g. $x^2$).
-        ` }
-      ];
-
+      // 1. Add Audio if exists
       if (recordedBlob) {
         const audioPart = await fileToGenerativePart(recordedBlob);
         parts.push(audioPart);
       }
 
-      imageParts.forEach(p => parts.push(p));
+      // 2. Add Images if exist
+      if (uploadedImages.length > 0) {
+        const imageParts = await Promise.all(
+          uploadedImages.map(img => fileToGenerativePart(img.file))
+        );
+        imageParts.forEach(p => parts.push(p));
+      }
+
+      // 3. Add the Analysis Prompt
+      parts.push({ text: `
+        Act as the NSG (Nuell Study Guide) AI Executive. I have provided ${uploadedImages.length} lecture slides 
+        and an audio recording. 
+        1. Provide a concise Executive Summary.
+        2. Extract 5 Key Technical Concepts with clear explanations.
+        3. Create a bulleted "Action Plan" for studying this content.
+        Style: Professional, sharp, and academic. Use markdown for better formatting. 
+        IMPORTANT: For any mathematical formulas, use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$E=mc^2$$) or single dollar signs for inline (e.g. $x^2$).
+      ` });
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
@@ -464,99 +475,7 @@ export default function App() {
   const closeWelcome = () => {
     setShowWelcome(false);
     localStorage.setItem('nsg_welcome_seen', 'true');
-  };// --- 📝 QUIZ LOGIC ---
-  const generateQuiz = async () => {
-    if (!quizTopic.trim()) {
-      alert("Please enter a topic first.");
-      return;
-    }
-
-    setIsGeneratingQuiz(true);
-    setQuizState('idle');
-
-    try {
-      const prompt = `
-        Generate a 15 to 100-question multiple choice quiz about "${quizTopic}".
-        Return ONLY a JSON object with this structure:
-        {
-          "questions": [
-            {
-              "question": "string",
-              "options": ["string", "string", "string", "string"],
-              "correctAnswer": number (0-3)
-            }
-          ]
-        }
-      `;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              questions: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    question: { type: Type.STRING },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    correctAnswer: { type: Type.INTEGER }
-                  },
-                  required: ["question", "options", "correctAnswer"]
-                }
-              }
-            },
-            required: ["questions"]
-          }
-        }
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      if (data.questions) {
-        setQuizQuestions(data.questions);
-        setCurrentQuestionIndex(0);
-        setQuizScore(0);
-        setQuizState('active');
-        setSelectedOption(null);
-        setIsAnswered(false);
-      }
-    } catch (error) {
-      console.error("Quiz Generation Error:", error);
-      alert("Failed to generate quiz. Please try again.");
-    } finally {
-      setIsGeneratingQuiz(false);
-    }
-  };
-
-  const handleOptionSelect = (index: number) => {
-    if (isAnswered) return;
-    setSelectedOption(index);
-    setIsAnswered(true);
-    if (index === quizQuestions[currentQuestionIndex].correctAnswer) {
-      setQuizScore(prev => prev + 1);
-    }
-  };
-
-  const nextQuestion = () => {
-    if (currentQuestionIndex < quizQuestions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-      setSelectedOption(null);
-      setIsAnswered(false);
-    } else {
-      setQuizState('finished');
-    }
-  };
-
-  const closeWelcome = () => {
-    setShowWelcome(false);
-    localStorage.setItem('nsg_welcome_seen', 'true');
-  };
-
-  return (
+  };return (
     <div className={`min-h-screen transition-colors duration-300 font-sans selection:bg-red-600 pb-24 ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0] dark' : 'bg-slate-50 text-slate-900'}`}>
       
       {/* WELCOME MODAL */}
@@ -649,7 +568,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tighter italic leading-none text-slate-900 dark:text-white">NSG <span className="text-red-600">(NUELL STUDY GUIDE)</span></h1>
-            <span className="text-[9px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest">Lecture OS 3.6</span>
+            <span className="text-[9px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest">Lecture OS 3.7</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -791,4 +710,130 @@ export default function App() {
                 <div className="space-y-3">
                   {sessions.length === 0 ? (
                     <div className="text-center py-20 bg-white dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 border-dashed">
-        
+                      <History size={40} className="mx-auto mb-4 text-slate-200 dark:text-white/10" />
+                      <p className="text-sm font-bold text-slate-400 dark:text-white/30">No saved lectures found</p>
+                    </div>
+                  ) : (
+                    sessions.map(session => (
+                      <div key={session.id} className="w-full bg-white dark:bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-slate-200 dark:border-white/10 hover:border-red-600/30 transition-all group shadow-sm">
+                        <div onClick={() => setSelectedSession(session)} className="flex items-center gap-4 cursor-pointer flex-1">
+                          <div className="w-10 h-10 bg-slate-100 dark:bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 transition-all"><FileAudio size={20} className="text-slate-400 dark:text-white/20 group-hover:text-red-500" /></div>
+                          <div><p className="font-bold text-sm text-slate-900 dark:text-white">{session.title}</p><p className="text-[10px] text-slate-400 dark:text-white/40 font-mono uppercase">{session.date} • {session.duration}</p></div>
+                        </div>
+                        <button onClick={() => setSessions(prev => prev.filter(s => s.id !== session.id))} className="p-2 text-slate-300 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white dark:bg-[#0a0a0a] p-6 rounded-3xl border border-slate-200 dark:border-white/10 space-y-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">{selectedSession.title}</h3>
+                    <button onClick={() => {
+                      setChatHistory([{ role: 'model', text: selectedSession.fullAnalysis, timestamp: new Date().toLocaleTimeString() }]);
+                      setActiveTab('ai');
+                      setSelectedSession(null);
+                    }} className="bg-red-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-red-600/20"><Brain size={14} /> Continue in Chat</button>
+                  </div>
+                  <div className="markdown-body text-sm leading-relaxed text-slate-700 dark:text-white/70">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{selectedSession.fullAnalysis}</ReactMarkdown>
+                  </div>
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+
+          {/* QUIZ TAB */}
+          {activeTab === 'quiz' && (
+            <motion.div key="quiz" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter text-slate-900 dark:text-white">Quiz Engine</h2>
+                <Zap size={20} className="text-red-600" />
+              </div>
+
+              {quizState === 'idle' && (
+                <div className="bg-white dark:bg-[#0a0a0a] p-8 rounded-3xl border border-slate-200 dark:border-white/10 space-y-6 shadow-sm">
+                  <div className="text-center space-y-2 mb-4">
+                    <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><Sparkles size={24} className="text-red-600" /></div>
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">Generate Interactive Quiz</h3>
+                    <p className="text-xs text-slate-500 dark:text-white/40">Test your knowledge with AI-generated questions (15-100 questions).</p>
+                  </div>
+                  <input type="text" value={quizTopic} onChange={(e) => setQuizTopic(e.target.value)} placeholder="e.g. Quantum Physics, EEE 101..." className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm outline-none focus:border-red-600/50 transition-all text-slate-900 dark:text-white" />
+                  <button onClick={generateQuiz} disabled={isGeneratingQuiz} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    {isGeneratingQuiz ? <><RefreshCcw size={18} className="animate-spin" /> GENERATING...</> : <><Zap size={18} /> START ASSESSMENT</>}
+                  </button>
+                </div>
+              )}
+
+              {quizState === 'active' && quizQuestions.length > 0 && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between bg-white dark:bg-[#0a0a0a] p-4 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm">
+                    <button onClick={() => setQuizState('idle')} className="text-slate-400 hover:text-red-600 flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back</button>
+                    <div className="text-center"><p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase">Progress</p><p className="text-sm font-black text-red-600">{currentQuestionIndex + 1} / {quizQuestions.length}</p></div>
+                    <div className="text-right"><p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
+                  </div>
+                  <div className="bg-white dark:bg-[#0a0a0a] p-8 rounded-3xl border border-slate-200 dark:border-white/10 space-y-8 shadow-sm">
+                    <h3 className="text-lg font-bold leading-tight text-slate-900 dark:text-white">{quizQuestions[currentQuestionIndex].question}</h3>
+                    <div className="space-y-3">
+                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
+                        <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${isAnswered ? (idx === quizQuestions[currentQuestionIndex].correctAnswer ? 'bg-green-500/10 border-green-500 text-green-500' : (selectedOption === idx ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-slate-50 dark:bg-white/5 opacity-40')) : (selectedOption === idx ? 'border-red-600' : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-white/80')}`}>
+                          <span className="text-sm font-medium">{option}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {isAnswered && <button onClick={nextQuestion} className="w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition-all">{currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"} <ChevronRight size={18} /></button>}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* BLOG TAB */}
+          {activeTab === 'blog' && (
+            <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-10">
+              <div className="bg-white dark:bg-[#0a0a0a] p-8 rounded-3xl border border-slate-200 dark:border-white/10 space-y-12 text-sm leading-relaxed text-slate-600 dark:text-white/70 shadow-sm">
+                <section className="space-y-4">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">The Visionary Purpose of NSG (Nuell Study Guide)</h3>
+                  <p>In the rapidly evolving landscape of modern education, students are often overwhelmed by the sheer volume of information they are expected to process, retain, and apply. Traditional methods of note-taking—scribbling in notebooks or typing frantically on laptops—frequently fall short in capturing the nuances of a live lecture. This is where NSG (Nuell Study Guide) steps in. Developed by Nuell Graphics, NSG is not just another app; it is a comprehensive ecosystem designed to bridge the gap between human cognition and artificial intelligence. The core purpose of NSG is empowerment. We believe that every student possesses the potential for greatness, but that potential is often hindered by inefficient study habits or the stress of missing critical information during class. By providing a platform that allows for high-fidelity audio recording and seamless image capture of lecture slides, we ensure that no detail is lost. But capturing data is only the first step. The true magic of NSG lies in its ability to transform that raw data into actionable knowledge. Our vision extends beyond simple transcription. We aim to create a "digital brain" for every user—a repository of their academic journey that is searchable, interactive, and intelligent. By integrating the latest advancements in Large Language Models (LLMs), specifically the Gemini 3.1 Flash Lite series, we provide students with an AI executive assistant that can summarize hours of lectures in seconds, extract complex technical concepts, and even generate personalized study plans. This level of automation allows students to focus on what truly matters: understanding and critical thinking, rather than the mechanical task of data entry. Furthermore, NSG is built with accessibility in mind. We recognize that students come from diverse backgrounds and have varying levels of access to high-end hardware. By optimizing our application to run efficiently on a wide range of devices, we are democratizing elite-level study tools. Whether you are a medical student navigating the complexities of anatomy or an engineering student tackling advanced calculus, NSG is designed to be your steadfast study partner, guiding you toward academic excellence with precision and clarity. In conclusion, the purpose of NSG is to revolutionize the way we learn. It is a commitment to innovation, a tribute to the hard work of students everywhere, and a testament to the power of technology when applied with a human-centric focus. We are not just building a study guide; we are building the future of education, one lecture at a time.</p>
+                  <p>As we continue to develop NSG, our focus remains on the user. Every feature, from the high-intensity recording engine to the interactive quiz generator, is designed with the student's success in mind. We understand the pressures of academic life—the late nights, the complex subjects, and the high stakes of examinations. NSG is our answer to these challenges. It is a tool that grows with you, learning your study patterns and providing increasingly tailored assistance. The future of NSG is one of constant evolution. We are already exploring real-time collaborative study rooms, advanced diagram recognition, and deeper integrations with academic databases. Our goal is to make NSG the central hub of your intellectual life, a place where information is not just stored, but synthesized into wisdom. We invite you to join us on this journey. Together, we can redefine what it means to be a student in the 21st century. With NSG, the path to academic dominance is clearer than ever before. Thank you for choosing us as your study partner.</p>
+                </section>
+                <section className="space-y-4">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">How to Enjoy the NSG Experience: A Masterclass in Efficiency</h3>
+                  <p>To truly "enjoy" NSG is to experience the profound relief that comes from knowing your study materials are perfectly organized and understood. Mastery of the NSG platform begins with a shift in mindset: seeing the app not as a tool you use *after* class, but as an active participant *during* your learning process. Here is how you can maximize your experience and unlock your full academic potential. First, embrace the multi-modal nature of the app. During a lecture, don't just record audio; use the image capture feature to snap photos of the whiteboard, the projector screen, or even your own handwritten diagrams. The AI is designed to correlate these images with the audio context, providing a much richer analysis than text alone could ever achieve. When you upload these slides, ensure they are clear and well-lit; the better the input, the more "brilliant" the AI's output will be. Second, engage with the AI Chat as if it were a private tutor. After the initial analysis is generated, don't stop there. Ask follow-up questions. If a concept like "Quantum Entanglement" or "Macroeconomic Equilibrium" isn't clear, ask the AI to explain it using a real-world analogy. Use the chat to brainstorm essay outlines, clarify confusing formulas, or even ask for a list of potential exam questions. The more you interact, the more the AI "learns" your specific needs and provides more tailored assistance. Third, utilize the Quiz Engine for active recall. Scientific research has shown that testing yourself is one of the most effective ways to move information from short-term to long-term memory. Once you've analyzed a lecture, generate a 100-question quiz. Don't be afraid to fail; use the results to identify your weak spots and go back to the AI Chat for further clarification. This iterative process of learning, testing, and refining is the hallmark of a master student. Finally, keep your Library organized. The history tab is your personal academic archive. Regularly review your past sessions, use the delete button to clear out redundant or practice recordings, and keep only the most high-value content. By maintaining a clean and focused library, you reduce cognitive load and make your revision sessions much more efficient. Master NSG, and you master your education.</p>
+                  <p>Efficiency is not just about doing things faster; it's about doing the right things better. NSG is designed to automate the low-value tasks of learning—like transcription and basic summarization—so you can spend your time on high-value activities like critical analysis and creative problem-solving. Imagine being able to walk out of a two-hour lecture with a perfectly formatted executive summary, a list of key terms, and a 50-question practice quiz already waiting for you. That is the NSG promise. It's about reclaiming your time and your mental energy. We also recommend using the "New Chat" feature frequently to keep your sessions focused. If you're switching from a Physics lecture to a History seminar, start a fresh chat to ensure the AI's context remains sharp. Use the "Scroll to Bottom" button to stay on top of the conversation, and don't forget to download your recordings for offline review. By integrating these habits into your daily routine, you'll find that studying becomes less of a chore and more of a rewarding intellectual journey. NSG is more than an app; it's a lifestyle choice for the ambitious student. It's a commitment to excellence and a refusal to settle for mediocrity. As you explore the features of NSG, remember that you are in control. The AI is your executive assistant, but you are the CEO of your own education. Use the tools we've provided to build a foundation of knowledge that will last a lifetime. We are honored to be part of your success story.</p>
+                </section>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      {/* NAVIGATION */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 z-50 shadow-2xl">
+        <div className="flex items-center justify-around py-2 max-w-lg mx-auto">
+          {[
+            { id: 'record', icon: Mic, label: 'Record' },
+            { id: 'ai', icon: Brain, label: 'AI Chat' },
+            { id: 'history', icon: History, label: 'Library' },
+            { id: 'quiz', icon: Zap, label: 'Quiz' },
+            { id: 'blog', icon: FileText, label: 'Blog' }
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-col items-center py-2 px-4 transition-all relative ${activeTab === tab.id ? 'text-red-600' : 'text-slate-400 dark:text-white/30 hover:text-red-500'}`}>
+              {activeTab === tab.id && <motion.div layoutId="nav-active" className="absolute inset-0 bg-red-600/5 rounded-2xl -z-10" />}
+              <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
+              <span className="text-[9px] font-black mt-1 uppercase tracking-tighter">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* FOOTER */}
+      <footer className="max-w-4xl mx-auto px-4 py-8 border-t border-slate-200 dark:border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/20">
+        <button onClick={() => setLegalPage('about')} className="hover:text-red-600 transition-colors">About Us</button>
+        <button onClick={() => setLegalPage('terms')} className="hover:text-red-600 transition-colors">Terms & Conditions</button>
+        <button onClick={() => setLegalPage('contact')} className="hover:text-red-600 transition-colors">Contact Us</button>
+        <span>© 2026 Nuell Graphics</span>
+      </footer>
+    </div>
+  );
+}
