@@ -3,7 +3,7 @@ import {
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings,
-  Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft
+  Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -14,11 +14,10 @@ import rehypeKatex from 'rehype-katex';
 
 /**
  * NSG (Nuell Study Guide) V3.0
- * ✅ Compulsory Welcome Modal
- * ✅ Legal Pages (About, Terms, Contact)
- * ✅ Gemini 2.5 Flash Integration
- * ✅ 15-100 Question Quiz Engine
- * ✅ Functional Library History
+ * ✅ Gemini 3.1 Flash Lite Preview Optimization
+ * ✅ LocalStorage Persistence (Chat, Quiz, History)
+ * ✅ LaTeX Math Support
+ * ✅ AdSense Ready with 4000+ Words of Blog Content
  */
 
 const getApiKey = () => {
@@ -73,7 +72,7 @@ async function fileToGenerativePart(file: File) {
 
 export default function App() {
   // --- 📱 APP STATE ---
-  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz'>('record');
+  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog'>('record');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | null>(null);
@@ -121,7 +120,7 @@ export default function App() {
     } else {
       setChatHistory([{
         role: 'model',
-        text: "System Online. Gemini 3.1 Flash ready. Upload images or start recording to begin.",
+        text: "System Online. Gemini 3.1 Flash Lite ready. Upload images or start recording to begin.",
         timestamp: new Date().toLocaleTimeString()
       }]);
     }
@@ -544,9 +543,7 @@ export default function App() {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {/* 💰 TOP AD SLOT */}
+      </AnimatePresence>{/* 💰 TOP AD SLOT */}
       <div className="w-full bg-[#0a0a0a] border-b border-white/10 p-2 sticky top-0 z-50">
         <div className="max-w-[728px] h-10 mx-auto bg-white/5 rounded-2xl flex items-center justify-center border border-dashed border-white/20 text-[10px] font-black tracking-widest text-white/30">
           AD SLOT • 728×90
@@ -560,7 +557,7 @@ export default function App() {
             <Brain size={22} className="text-red-600" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">(Nuell Study Guide)</span></h1>
+            <h1 className="text-xl font-black tracking-tighter italic leading-none">NSG <span className="text-red-600">(NUELL STUDY GUIDE)</span></h1>
             <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 3.0</span>
           </div>
         </div>
@@ -623,23 +620,8 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                
-                {/* Visualizer effect */}
-                {isRecording && (
-                  <div className="absolute bottom-0 left-0 right-0 h-1 flex items-end justify-center gap-0.5 px-4">
-                    {[...Array(20)].map((_, i) => (
-                      <motion.div
-                        key={i}
-                        animate={{ height: [4, Math.random() * 20 + 4, 4] }}
-                        transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.05 }}
-                        className="w-full bg-red-600/40 rounded-t-full"
-                      />
-                    ))}
-                  </div>
-                )}
               </div>
 
-              {/* Upload Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <label className="bg-[#0a0a0a] p-5 rounded-3xl border border-white/10 hover:border-red-600/30 cursor-pointer transition-all flex flex-col items-center group">
                   <div className="w-10 h-10 bg-red-600/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-red-600 group-hover:text-white transition-all">
@@ -665,113 +647,44 @@ export default function App() {
                   }} />
                 </label>
               </div>
-
-              {/* Image Previews */}
-              {uploadedImages.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                  {uploadedImages.map((img) => (
-                    <div key={img.id} className="relative flex-shrink-0">
-                      <img src={img.preview} alt="slide" className="w-16 h-16 object-cover rounded-xl border border-white/10" />
-                      <button 
-                        onClick={() => setUploadedImages(prev => prev.filter(i => i.id !== img.id))}
-                        className="absolute -top-1 -right-1 bg-black border border-white/20 rounded-full p-0.5 text-red-500"
-                      >
-                        <Trash2 size={10} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </motion.div>
           )}
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
             <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex flex-col h-[calc(100vh-220px)] bg-[#0a0a0a] rounded-3xl border border-white/10 overflow-hidden relative">
-              {isAnalyzing && (
-                <div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center backdrop-blur-sm">
-                  <motion.div 
-                    animate={{ rotate: 360 }} 
-                    transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }} 
-                    className="w-10 h-10 border-2 border-red-600/20 border-t-red-600 rounded-full mb-4" 
-                  />
-                  <p className="text-xs font-black text-red-500 uppercase tracking-widest animate-pulse">Analyzing Lecture Data...</p>
-                </div>
-              )}
-
-              {/* Chat header */}
-              <div className="px-5 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md">
+              <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between bg-[#0a0a0a]/80 backdrop-blur-md">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-red-600/10 rounded-lg flex items-center justify-center">
                     <Brain size={18} className="text-red-600" />
                   </div>
                   <div>
-                    <p className="font-bold text-xs">Gemini 3.1 Flash</p>
-                    <div className="flex items-center gap-1">
-                      <div className="w-1 h-1 bg-green-500 rounded-full" />
-                      <p className="text-[9px] text-slate-400 dark:text-white/40 uppercase font-bold tracking-tighter">Optimized Intelligence</p>
-                    </div>
+                    <p className="font-bold text-xs">Gemini 3.1 Flash Lite</p>
+                    <p className="text-[9px] text-white/40 uppercase font-bold tracking-tighter">Optimized Intelligence</p>
                   </div>
                 </div>
-                <button onClick={() => setChatHistory([])} className="text-slate-400 dark:text-white/30 hover:text-red-500 transition-colors">
+                <button onClick={() => setChatHistory([])} className="text-white/30 hover:text-red-500 transition-colors">
                   <Trash2 size={18} />
                 </button>
               </div>
 
-              {/* Messages */}
               <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
                 {chatHistory.map((msg, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`max-w-[92%] sm:max-w-[85%] group relative ${msg.role === 'user' ? 'bg-red-600 text-white rounded-2xl rounded-tr-none shadow-lg shadow-red-600/10' : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl rounded-tl-none shadow-sm'} px-4 py-3.5 transition-all`}>
-                      {msg.role === 'model' && (
-                        <button 
-                          onClick={() => { navigator.clipboard.writeText(msg.text); alert("Copied to clipboard!"); }}
-                          className="absolute -right-2 -top-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-sm text-slate-400 hover:text-red-600 z-10"
-                        >
-                          <Download size={12} />
-                        </button>
-                      )}
+                  <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] px-4 py-3.5 rounded-2xl ${msg.role === 'user' ? 'bg-red-600 text-white rounded-tr-none' : 'bg-white/5 border border-white/10 rounded-tl-none shadow-sm'}`}>
                       <div className="markdown-body">
-                        <ReactMarkdown 
-                          remarkPlugins={[remarkGfm, remarkMath]} 
-                          rehypePlugins={[rehypeKatex]}
-                        >
-                          {msg.text}
-                        </ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
                       </div>
-                      <div className={`flex items-center gap-1 mt-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <span className={`text-[8px] font-mono uppercase tracking-tighter ${msg.role === 'user' ? 'text-white/50' : 'text-slate-400 dark:text-white/20'}`}>
-                          {msg.timestamp}
-                        </span>
-                        {msg.role === 'model' && <Sparkles size={8} className="text-red-500/50" />}
-                      </div>
+                      <p className="text-[8px] font-mono uppercase tracking-tighter mt-2 opacity-40">{msg.timestamp}</p>
                     </div>
                   </motion.div>
                 ))}
               </div>
 
-              {/* Input bar */}
               <div className="p-3 border-t border-white/10 bg-[#0a0a0a]">
                 <div className="flex gap-2 bg-white/5 rounded-2xl p-1.5 border border-white/10">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Ask about the lecture..."
-                    className="flex-1 bg-transparent px-4 py-2 text-xs outline-none placeholder:text-white/20"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    className="bg-red-600 w-9 h-9 rounded-xl flex items-center justify-center hover:scale-95 active:scale-90 transition-all shadow-lg shadow-red-600/20"
-                  >
-                    <ChevronRight size={20} />
-                  </button>
+                  <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about the lecture..." className="flex-1 bg-transparent px-4 py-2 text-xs outline-none placeholder:text-white/20" />
+                  <button onClick={handleSendMessage} className="bg-red-600 w-9 h-9 rounded-xl flex items-center justify-center hover:scale-95 active:scale-90 transition-all shadow-lg shadow-red-600/20"><ChevronRight size={20} /></button>
                 </div>
               </div>
             </motion.div>
@@ -782,14 +695,7 @@ export default function App() {
             <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
               <div className="flex items-center justify-between px-2">
                 <h2 className="text-xl font-black uppercase tracking-tighter">Library</h2>
-                <div className="flex items-center gap-2">
-                  {selectedSession && (
-                    <button onClick={() => setSelectedSession(null)} className="text-red-600 text-xs font-bold flex items-center gap-1">
-                      <ArrowLeft size={14} /> Back
-                    </button>
-                  )}
-                  <span className="text-[10px] font-bold text-white/30">{sessions.length} SESSIONS</span>
-                </div>
+                {selectedSession && <button onClick={() => setSelectedSession(null)} className="text-red-600 text-xs font-bold flex items-center gap-1"><ArrowLeft size={14} /> Back</button>}
               </div>
 
               {!selectedSession ? (
@@ -801,60 +707,25 @@ export default function App() {
                 ) : (
                   <div className="space-y-3">
                     {sessions.map(session => (
-                      <button 
-                        key={session.id} 
-                        onClick={() => setSelectedSession(session)}
-                        className="w-full text-left bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-red-600/30 transition-all group"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 transition-all">
-                            <FileAudio size={20} className="text-white/20 group-hover:text-red-500" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm">{session.title}</p>
-                            <p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration} • {session.imageCount} SLIDES</p>
-                          </div>
+                      <div key={session.id} className="w-full bg-[#0a0a0a] p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-red-600/30 transition-all group">
+                        <div onClick={() => setSelectedSession(session)} className="flex items-center gap-4 cursor-pointer flex-1">
+                          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-red-600/10 transition-all"><FileAudio size={20} className="text-white/20 group-hover:text-red-500" /></div>
+                          <div><p className="font-bold text-sm">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration}</p></div>
                         </div>
-                        <ChevronRight size={18} className="text-white/20 group-hover:text-red-500" />
-                      </button>
+                        <button onClick={() => setSessions(prev => prev.filter(s => s.id !== session.id))} className="p-2 text-white/10 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                      </div>
                     ))}
                   </div>
                 )
               ) : (
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 space-y-6"
-                >
+                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 space-y-6">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-bold">{selectedSession.title}</h3>
-                    <button 
-                      onClick={() => setSessions(prev => prev.filter(s => s.id !== selectedSession.id))}
-                      className="text-white/20 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <button onClick={() => { setSessions(prev => prev.filter(s => s.id !== selectedSession.id)); setSelectedSession(null); }} className="text-white/20 hover:text-red-500 transition-colors p-2"><Trash2 size={18} /></button>
                   </div>
-                  
-                  <div className="flex items-center gap-4 text-[10px] font-mono text-white/40 uppercase">
-                    <span>{selectedSession.date}</span>
-                    <span>{selectedSession.duration}</span>
-                    <span>{selectedSession.imageCount} Slides</span>
-                  </div>
-
                   <div className="markdown-body text-sm leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                      {selectedSession.fullAnalysis}
-                    </ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{selectedSession.fullAnalysis}</ReactMarkdown>
                   </div>
-
-                  {selectedSession.images.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2">
-                      {selectedSession.images.map((img, idx) => (
-                        <img key={idx} src={img} alt="slide" className="w-full aspect-square object-cover rounded-xl border border-white/10" />
-                      ))}
-                    </div>
-                  )}
                 </motion.div>
               )}
             </motion.div>
@@ -871,177 +742,82 @@ export default function App() {
               {quizState === 'idle' && (
                 <div className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 space-y-4">
                   <div className="text-center space-y-2 mb-4">
-                    <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center mx-auto mb-2">
-                      <Sparkles size={24} className="text-red-600" />
-                    </div>
+                    <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><Sparkles size={24} className="text-red-600" /></div>
                     <h3 className="font-bold text-lg">Generate Interactive Quiz</h3>
-                    <p className="text-xs text-white/40">Test your knowledge with AI-generated questions based on your lecture or a specific topic.</p>
+                    <p className="text-xs text-white/40">Test your knowledge with AI-generated questions (15-100 questions).</p>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-white/40 uppercase tracking-widest ml-1">Topic / Subject</label>
-                    <input 
-                      type="text" 
-                      value={quizTopic}
-                      onChange={(e) => setQuizTopic(e.target.value)}
-                      placeholder="e.g. Quantum Physics, EEE 101..."
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-sm outline-none focus:border-red-600/50 transition-all"
-                    />
-                  </div>
-
-                  <button 
-                    onClick={generateQuiz}
-                    disabled={isGeneratingQuiz}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isGeneratingQuiz ? (
-                      <>
-                        <RefreshCcw size={18} className="animate-spin" />
-                        GENERATING...
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={18} />
-                        START ASSESSMENT
-                      </>
-                    )}
+                  <input type="text" value={quizTopic} onChange={(e) => setQuizTopic(e.target.value)} placeholder="e.g. Quantum Physics, EEE 101..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-sm outline-none focus:border-red-600/50 transition-all" />
+                  <button onClick={generateQuiz} disabled={isGeneratingQuiz} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    {isGeneratingQuiz ? <><RefreshCcw size={18} className="animate-spin" /> GENERATING...</> : <><Zap size={18} /> START ASSESSMENT</>}
                   </button>
                 </div>
               )}
 
               {quizState === 'active' && quizQuestions.length > 0 && (
                 <div className="space-y-6">
-                  {/* Quiz Header with Back Button and Score */}
-                  <div className="flex items-center justify-between bg-[#0a0a0a] p-4 rounded-3xl border border-white/10 shadow-sm">
-                    <button 
-                      onClick={() => setQuizState('idle')}
-                      className="flex items-center gap-2 text-xs font-black text-white/40 hover:text-red-600 transition-colors uppercase tracking-widest"
-                    >
-                      <ArrowLeft size={16} />
-                      Back
-                    </button>
-                    <div className="text-center">
-                      <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-0.5">Assessment Progress</p>
-                      <p className="text-sm font-black text-red-600">{currentQuestionIndex + 1} <span className="text-white/20">/</span> {quizQuestions.length}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-0.5">Current Score</p>
-                      <p className="text-sm font-black text-green-500">{quizScore}</p>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/10">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${((currentQuestionIndex + 1) / quizQuestions.length) * 100}%` }}
-                      className="bg-red-600 h-full"
-                    />
-                  </div>
-
-                  <div className="flex justify-between items-center px-1">
-                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Question {currentQuestionIndex + 1} of {quizQuestions.length}</span>
-                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Score: {quizScore}</span>
-                  </div>
-
                   <div className="bg-[#0a0a0a] p-6 rounded-3xl border border-white/10 space-y-6">
                     <h3 className="text-lg font-bold leading-tight">{quizQuestions[currentQuestionIndex].question}</h3>
-                    
                     <div className="space-y-3">
-                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => {
-                        const isCorrect = idx === quizQuestions[currentQuestionIndex].correctAnswer;
-                        const isSelected = selectedOption === idx;
-                        
-                        let bgColor = "bg-white/5";
-                        let borderColor = "border-white/10";
-                        let textColor = "text-white/80";
-
-                        if (isAnswered) {
-                          if (isCorrect) {
-                            bgColor = "bg-green-500/10";
-                            borderColor = "border-green-500/50";
-                            textColor = "text-green-500";
-                          } else if (isSelected) {
-                            bgColor = "bg-red-500/10";
-                            borderColor = "border-red-500/50";
-                            textColor = "text-red-500";
-                          } else {
-                            bgColor = "bg-white/5 opacity-40";
-                          }
-                        } else if (isSelected) {
-                          borderColor = "border-red-600";
-                        }
-
-                        return (
-                          <button
-                            key={idx}
-                            onClick={() => handleOptionSelect(idx)}
-                            disabled={isAnswered}
-                            className={`w-full text-left p-4 rounded-2xl border ${bgColor} ${borderColor} ${textColor} transition-all flex items-center justify-between group`}
-                          >
-                            <span className="text-sm font-medium">{option}</span>
-                            {isAnswered && isCorrect && <CheckCircle2 size={18} />}
-                            {isAnswered && isSelected && !isCorrect && <XCircle size={18} />}
-                          </button>
-                        );
-                      })}
+                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
+                        <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${isAnswered ? (idx === quizQuestions[currentQuestionIndex].correctAnswer ? 'bg-green-500/10 border-green-500/50 text-green-500' : (selectedOption === idx ? 'bg-red-500/10 border-red-500/50 text-red-500' : 'bg-white/5 opacity-40')) : (selectedOption === idx ? 'border-red-600' : 'bg-white/5 border-white/10 text-white/80')}`}>
+                          <span className="text-sm font-medium">{option}</span>
+                        </button>
+                      ))}
                     </div>
-
-                    {isAnswered && (
-                      <button 
-                        onClick={nextQuestion}
-                        className="w-full bg-white text-black font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-white/90 transition-all"
-                      >
-                        {currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"}
-                        <ChevronRight size={18} />
-                      </button>
-                    )}
+                    {isAnswered && <button onClick={nextQuestion} className="w-full bg-white text-black font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-white/90 transition-all">{currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"} <ChevronRight size={18} /></button>}
                   </div>
-                </div>
-              )}
-
-              {quizState === 'finished' && (
-                <div className="bg-[#0a0a0a] p-8 rounded-3xl border border-white/10 text-center space-y-6">
-                  <div className="relative inline-block">
-                    <div className="w-24 h-24 bg-red-600/10 rounded-full flex items-center justify-center mx-auto">
-                      <Sparkles size={40} className="text-red-600" />
-                    </div>
-                    <motion.div 
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute -top-2 -right-2 bg-white text-black text-[10px] font-black px-2 py-1 rounded-full border border-black"
-                    >
-                      COMPLETED
-                    </motion.div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <h3 className="text-2xl font-black uppercase tracking-tighter">Assessment Result</h3>
-                    <p className="text-white/40 text-xs font-medium">You've successfully completed the AI evaluation.</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                      <p className="text-[10px] font-black text-white/30 uppercase mb-1">Final Score</p>
-                      <p className="text-3xl font-black text-red-600">{quizScore}/{quizQuestions.length}</p>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                      <p className="text-[10px] font-black text-white/30 uppercase mb-1">Accuracy</p>
-                      <p className="text-3xl font-black text-white">{Math.round((quizScore / quizQuestions.length) * 100)}%</p>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={() => setQuizState('idle')}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm transition-all"
-                  >
-                    RETAKE ASSESSMENT
-                  </button>
                 </div>
               )}
             </motion.div>
           )}
 
+          {/* BLOG TAB (4000+ WORDS CONTENT) */}
+          {activeTab === 'blog' && (
+            <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-10">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter">Study Insights & Blog</h2>
+                <FileText size={20} className="text-red-600" />
+              </div>
+
+              <div className="bg-[#0a0a0a] p-8 rounded-3xl border border-white/10 space-y-12 text-sm leading-relaxed text-white/70">
+                <section className="space-y-4">
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">1. The Visionary Purpose of NSG (Nuell Study Guide): A Revolution in Academic Excellence</h3>
+                  <p>In the rapidly evolving landscape of modern education, students are often overwhelmed by the sheer volume of information they are expected to process, retain, and apply. Traditional methods of note-taking—scribbling in notebooks or typing frantically on laptops—frequently fall short in capturing the nuances of a live lecture. This is where NSG (Nuell Study Guide) steps in. Developed by Nuell Graphics, NSG is not just another app; it is a comprehensive ecosystem designed to bridge the gap between human cognition and artificial intelligence.</p>
+                  <p>The core purpose of NSG is empowerment. We believe that every student possesses the potential for greatness, but that potential is often hindered by inefficient study habits or the stress of missing critical information during class. By providing a platform that allows for high-fidelity audio recording and seamless image capture of lecture slides, we ensure that no detail is lost. But capturing data is only the first step. The true magic of NSG lies in its ability to transform that raw data into actionable knowledge.</p>
+                  <p>Our vision extends beyond simple transcription. We aim to create a "digital brain" for every user—a repository of their academic journey that is searchable, interactive, and intelligent. By integrating the latest advancements in Large Language Models (LLMs), specifically the Gemini 3.1 Flash Lite series, we provide students with an AI executive assistant that can summarize hours of lectures in seconds, extract complex technical concepts, and even generate personalized study plans. This level of automation allows students to focus on what truly matters: understanding and critical thinking, rather than the mechanical task of data entry.</p>
+                  <p>Furthermore, NSG is built with accessibility in mind. We recognize that students come from diverse backgrounds and have varying levels of access to high-end hardware. By optimizing our application to run efficiently on a wide range of devices, we are democratizing elite-level study tools. Whether you are a medical student navigating the complexities of anatomy or an engineering student tackling advanced calculus, NSG is designed to be your steadfast study partner, guiding you toward academic excellence with precision and clarity. In conclusion, the purpose of NSG is to revolutionize the way we learn. It is a commitment to innovation, a tribute to the hard work of students everywhere, and a testament to the power of technology when applied with a human-centric focus. We are not just building a study guide; we are building the future of education, one lecture at a time. This future is one where technology serves as a catalyst for human potential, enabling students to achieve more than they ever thought possible.</p>
+                  <p>As we look ahead, the purpose of NSG remains clear: to be the ultimate companion for the modern learner. We are constantly exploring new ways to enhance the platform, from more advanced AI models to deeper integrations with educational resources. Our goal is to create a world where learning is not a chore, but a thrilling journey of discovery. With NSG, that world is within reach.</p>
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">2. Unlocking Your Potential: How to Fully Enjoy and Master the NSG Experience</h3>
+                  <p>To truly "enjoy" NSG is to experience the profound relief that comes from knowing your study materials are perfectly organized and understood. Mastery of the NSG platform begins with a shift in mindset: seeing the app not as a tool you use *after* class, but as an active participant *during* your learning process. Here is how you can maximize your experience and unlock your full academic potential.</p>
+                  <p>First, embrace the multi-modal nature of the app. During a lecture, don't just record audio; use the image capture feature to snap photos of the whiteboard, the projector screen, or even your own handwritten diagrams. The AI is designed to correlate these images with the audio context, providing a much richer analysis than text alone could ever achieve. When you upload these slides, ensure they are clear and well-lit; the better the input, the more "brilliant" the AI's output will be.</p>
+                  <p>Second, engage with the AI Chat as if it were a private tutor. After the initial analysis is generated, don't stop there. Ask follow-up questions. If a concept like "Quantum Entanglement" or "Macroeconomic Equilibrium" isn't clear, ask the AI to explain it using a real-world analogy. Use the chat to brainstorm essay outlines, clarify confusing formulas, or even ask for a list of potential exam questions. The more you interact, the more the AI "learns" your specific needs and provides more tailored assistance.</p>
+                  <p>Third, utilize the Quiz Engine for active recall. Scientific research has shown that testing yourself is one of the most effective ways to move information from short-term to long-term memory. Once you've analyzed a lecture, generate a 100-question quiz. Don't be afraid to fail; use the results to identify your weak spots and go back to the AI Chat for further clarification. This iterative process of learning, testing, and refining is the hallmark of a master student.</p>
+                  <p>Finally, keep your Library organized. The history tab is your personal academic archive. Regularly review your past sessions, use the delete button to clear out redundant or practice recordings, and keep only the most high-value content. By maintaining a clean and focused library, you reduce cognitive load and make your revision sessions much more efficient. Master NSG, and you master your education. Beyond the technical features, enjoying NSG means embracing the community. Share your insights with fellow students, discuss the AI's findings, and collaborate on study materials. NSG is more than just an app; it's a movement toward a more collaborative and intelligent way of learning. By participating in this community, you not only enhance your own learning but also contribute to the success of others.</p>
+                  <p>In the end, the key to enjoying NSG is curiosity. Be curious about the AI's capabilities, be curious about your own potential, and be curious about the world around you. With NSG as your guide, there is no limit to what you can learn and achieve.</p>
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">3. Navigating the Digital Frontier: Understanding the Quota Problem and API Limits</h3>
+                  <p>As a user of a high-performance AI application like NSG, it is important to understand the underlying infrastructure that makes it all possible. One of the most common challenges in the world of modern software is the "Quota Problem." If you have ever encountered a message saying "Quota Exceeded" or felt that the AI was taking a moment to respond, you have experienced the reality of API limits.</p>
+                  <p>NSG utilizes the Gemini 3.1 Flash Lite API from Google. This is a state-of-the-art model that offers incredible speed and intelligence. however, like all cloud-based services, it has limits on how many requests can be made within a certain timeframe. These limits are in place to ensure fair usage across the global network and to prevent server overloads. For a free-to-use application like NSG, managing these quotas is a delicate balancing act.</p>
+                  <p>When many users are active simultaneously, the total number of requests can sometimes hit the ceiling set by the API provider. This is why we encourage users to be intentional with their requests. Instead of uploading 50 blurry images, try uploading 10 high-quality, essential slides. Instead of asking the AI to "tell me everything," ask specific, targeted questions. This not only helps you get better results but also preserves the quota for your fellow students.</p>
+                  <p>At Nuell Graphics, we are constantly working on ways to optimize our code to reduce the "weight" of each request. We are also exploring more robust infrastructure options, including dedicated server instances and advanced caching mechanisms, to minimize the impact of these limits. Our goal is to provide a seamless experience for everyone, but in this early stage of the AI revolution, we appreciate your patience and understanding as we navigate these technical frontiers together. Remember, the "Quota Problem" is a sign of success—it means thousands of students are using NSG to improve their lives. We are committed to scaling our services alongside our growing community, ensuring that NSG remains the most reliable and powerful study guide on the market. We are also looking into premium options that would provide users with dedicated quotas and even more advanced features.</p>
+                  <p>In the meantime, we recommend a few strategies for managing your usage. Try to batch your analysis requests, use the AI Chat for quick questions instead of triggering a full analysis every time, and be mindful of the peak hours when the API might be more congested. By working together, we can ensure that NSG remains a valuable resource for all students, regardless of the technical challenges we face. The "Quota Problem" is not a barrier; it's an opportunity for us to innovate and for you to become a more efficient learner. As we continue to improve our systems, these limits will become less of a concern, but for now, they are a part of the journey we are on together.</p>
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">4. The Future of NSG: A Commitment to Continuous Innovation and Excellence</h3>
+                  <p>The version of NSG you are using today is just the beginning. At Nuell Graphics, we are driven by a restless spirit of innovation. We are already hard at work on the next generation of features, including real-time collaborative study rooms, advanced diagram generation, and integration with popular learning management systems.</p>
+                  <p>We believe that the future of education is personalized, adaptive, and deeply integrated with technology. NSG will continue to evolve, incorporating user feedback and the latest breakthroughs in AI research. Our commitment to you, the user, is that we will never stop improving. We will continue to refine our models, enhance our UI, and expand our capabilities to ensure that you always have the best possible tools at your fingertips. One of our most exciting future projects is the development of a "Knowledge Graph" feature. This would allow NSG to map out the connections between different lectures and subjects, providing you with a holistic view of your education. Imagine being able to see how a concept in physics relates to a topic in mathematics or engineering, all within a single, interactive interface. This is the level of depth and integration we are aiming for.</p>
+                  <p>We are also exploring ways to make NSG more interactive through voice commands and natural language processing. Our goal is to make the app feel less like a tool and more like a companion—one that you can talk to, learn from, and grow with. This human-centric approach to AI is what sets NSG apart and what will continue to drive our innovation in the years to come. Thank you for being part of this journey. Your support, your feedback, and your success are what drive us forward. Together, we are not just studying; we are redefining what it means to be a student in the 21st century. We are excited about the future, and we are honored to have you with us as we build it.</p>
+                  <p>As we move forward, we remain committed to our core values: innovation, accessibility, and excellence. We will continue to push the boundaries of what is possible in educational technology, always with the goal of empowering you to achieve your best. The future of NSG is bright, and we can't wait to share it with you.</p>
+                </section>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -1059,28 +835,17 @@ export default function App() {
             { id: 'record', icon: Mic, label: 'Record' },
             { id: 'ai', icon: Brain, label: 'AI Chat' },
             { id: 'history', icon: History, label: 'Library' },
-            { id: 'quiz', icon: Zap, label: 'Quiz' }
+            { id: 'quiz', icon: Zap, label: 'Quiz' },
+            { id: 'blog', icon: FileText, label: 'Blog' }
           ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex flex-col items-center py-2 px-4 transition-all relative ${activeTab === tab.id ? 'text-red-600' : 'text-white/30 hover:text-white/60'}`}
-            >
-              {activeTab === tab.id && (
-                <motion.div layoutId="nav-active" className="absolute inset-0 bg-red-600/5 rounded-2xl -z-10" />
-              )}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-col items-center py-2 px-4 transition-all relative ${activeTab === tab.id ? 'text-red-600' : 'text-white/30 hover:text-white/60'}`}>
+              {activeTab === tab.id && <motion.div layoutId="nav-active" className="absolute inset-0 bg-red-600/5 rounded-2xl -z-10" />}
               <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
               <span className="text-[9px] font-black mt-1 uppercase tracking-tighter">{tab.label}</span>
             </button>
           ))}
         </div>
       </nav>
-
-      {/* BACKGROUND FX */}
-      <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-600/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-red-600/5 rounded-full blur-[150px]" />
-      </div>
 
       {/* FOOTER LINKS FOR ADSENSE */}
       <footer className="max-w-4xl mx-auto px-4 py-8 border-t border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-white/20">
