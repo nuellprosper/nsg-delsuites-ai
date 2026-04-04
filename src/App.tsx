@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
-  ChevronRight, Sparkles, Trash2, Settings,
+  ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText,
-  Sun, Moon, ArrowDown, PlusCircle
+  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks,
+  Pin, Edit3, Share2, Trophy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -12,15 +13,16 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { usePaystackPayment } from 'react-paystack';
+import { toPng } from 'html-to-image';
 
 /**
- * NSG (Nuell Study Guide) V3.7 - EXECUTIVE EDITION
- * ✅ FIXED: Audio recording/import now correctly sent to Gemini for analysis
- * ✅ Manual Theme Toggle (White <-> Black)
- * ✅ Library-to-Chat Integration
- * ✅ Audio/Image Previews & Downloads
- * ✅ 4000+ Words Blog Content
- * ✅ Perfected Quiz & Chat UI
+ * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
+ * ✅ Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
+ * ✅ Admin Backend Control (Score Sheet, Timer Restart, Results Download)
+ * ✅ Advanced AI Chat (Copy Response, History Sidebar)
+ * ✅ Enhanced Quiz (Customization, Deep Assessment, Report to AI)
+ * ✅ Paystack Payment Integration
  */
 
 const getApiKey = () => {
@@ -29,6 +31,8 @@ const getApiKey = () => {
 };
 
 const ai = new GoogleGenAI({ apiKey: getApiKey() });
+
+const PAYSTACK_PUBLIC_KEY = "pk_test_14a5b8ee0a06e063a8b0e46fc7e0e76ed66f2746";
 
 interface MediaFile {
   id: string;
@@ -41,6 +45,14 @@ interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  history: ChatMessage[];
+  timestamp: string;
+  isPinned?: boolean;
 }
 
 interface LectureSession {
@@ -59,6 +71,33 @@ interface QuizQuestion {
   question: string;
   options: string[];
   correctAnswer: number;
+  explanation?: string;
+}
+
+interface ExamQuestion extends QuizQuestion {
+  id: string;
+}
+
+interface StudentResult {
+  matric: string;
+  name: string;
+  score: number;
+  total: number;
+  timestamp: string;
+}
+
+interface RegisteredStudent {
+  matric: string;
+  name: string;
+  paymentEnabled: boolean;
+  isActive?: boolean;
+  lastActive?: number;
+}
+
+interface ExamConfig {
+  questionCount: number;
+  duration: number; // in seconds
+  price: number; // in Naira
 }
 
 async function fileToGenerativePart(file: File | Blob) {
@@ -81,8 +120,11 @@ async function fileToGenerativePart(file: File | Blob) {
 
 export default function App() {
   // --- 📱 APP STATE ---
-  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog'>('record');
+  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam'>('record');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareName, setShareName] = useState('');
+  const shareCardRef = useRef<HTMLDivElement>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -103,6 +145,9 @@ export default function App() {
   // --- 🤖 AI CHAT SYSTEM ---
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  const [showChatSidebarMobile, setShowChatSidebarMobile] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInstanceRef = useRef<any>(null);
 
@@ -112,14 +157,56 @@ export default function App() {
 
   // --- 📝 QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
+  const [quizDifficulty, setQuizDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | 'Professional'>('Medium');
+  const [quizQuestionCount, setQuizQuestionCount] = useState(25);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
-  const [quizState, setQuizState] = useState<'idle' | 'active' | 'finished'>('idle');
+  const [quizState, setQuizState] = useState<'idle' | 'active' | 'finished' | 'review'>('idle');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
 
+  // --- 🎓 CBT EXAM STATE ---
+  const [matricNumber, setMatricNumber] = useState('');
+  const [studentName, setStudentName] = useState('');
+  const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result'>('login');
+  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
+  const [examTimer, setExamTimer] = useState(3600); // 1 hour default
+  const [examScore, setExamScore] = useState(0);
+  const [examFinished, setExamFinished] = useState(false);
+  const [paymentVerified, setPaymentVerified] = useState(false);
+  const [examAnswers, setExamAnswers] = useState<Record<number, number>>({});
+  const [currentExamIndex, setCurrentExamIndex] = useState(0);
+  const examTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // --- 🛠️ ADMIN STATE ---
+  const [adminMode, setAdminMode] = useState(false);
+  const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
+  const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
+  const [isGeneratingAdminQuestions, setIsGeneratingAdminQuestions] = useState(false);
+  const [adminPin, setAdminPin] = useState('');
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [registeredStudents, setRegisteredStudents] = useState<RegisteredStudent[]>([]);
+  const [examConfig, setExamConfig] = useState<ExamConfig>({
+    questionCount: 25,
+    duration: 3600,
+    price: 2000
+  });
+  const [newStudentMatric, setNewStudentMatric] = useState('');
+  const [newStudentName, setNewStudentName] = useState('');
+
+  const handleAdminLogin = () => {
+    if (adminPin === '286900') {
+      setAdminMode(true);
+      setShowAdminLogin(false);
+      setAdminPin('');
+    } else {
+      setAdminNotification("Invalid Admin PIN");
+    }
+  };
+
+  // --- 💳 PAYSTACK INTEGRATION ---
   // --- 📱 INITIALIZATION ---
   useEffect(() => {
     const savedSessions = localStorage.getItem('nsg_sessions');
@@ -128,12 +215,23 @@ export default function App() {
     const savedTheme = localStorage.getItem('nsg_theme');
     if (savedTheme) setTheme(savedTheme as 'dark' | 'light');
 
-    const savedChat = localStorage.getItem('nsg_chat_history');
-    if (savedChat) {
-      setChatHistory(JSON.parse(savedChat));
-    } else {
-      resetChat();
-    }
+    const savedChatHistory = localStorage.getItem('nsg_chat_history');
+    if (savedChatHistory) setChatHistory(JSON.parse(savedChatHistory));
+
+    const savedChatSessions = localStorage.getItem('nsg_chat_sessions');
+    if (savedChatSessions) setChatSessions(JSON.parse(savedChatSessions));
+
+    const savedScoreSheet = localStorage.getItem('nsg_score_sheet');
+    if (savedScoreSheet) setScoreSheet(JSON.parse(savedScoreSheet));
+
+    const savedAdminQuestions = localStorage.getItem('nsg_admin_questions');
+    if (savedAdminQuestions) setExamQuestions(JSON.parse(savedAdminQuestions));
+
+    const savedRegisteredStudents = localStorage.getItem('nsg_registered_students');
+    if (savedRegisteredStudents) setRegisteredStudents(JSON.parse(savedRegisteredStudents));
+
+    const savedExamConfig = localStorage.getItem('nsg_exam_config');
+    if (savedExamConfig) setExamConfig(JSON.parse(savedExamConfig));
 
     const savedQuiz = localStorage.getItem('nsg_quiz_data');
     if (savedQuiz) {
@@ -149,6 +247,37 @@ export default function App() {
 
     const hasSeenWelcome = localStorage.getItem('nsg_welcome_seen');
     if (!hasSeenWelcome) setShowWelcome(true);
+
+    // Sync across tabs
+    const channel = new BroadcastChannel('nsg_exam_sync');
+    channel.onmessage = (event) => {
+      const { type, matric, result, isActive } = event.data;
+      if (type === 'RESULT_SUBMITTED') {
+        setScoreSheet(prev => [result, ...prev]);
+      } else if (type === 'STATUS_UPDATE') {
+        setRegisteredStudents(prev => prev.map(s => 
+          s.matric.toLowerCase() === matric.toLowerCase() ? { ...s, isActive, lastActive: Date.now() } : s
+        ));
+      } else if (type === 'RESET_EXAM') {
+        if (matricNumber.toLowerCase() === matric.toLowerCase()) {
+          setExamLobbyState('login');
+          setExamTimer(0);
+          setUserNotification("Your exam session has been reset by the admin.");
+        }
+      }
+    };
+
+    // Default chat session
+    if (savedChatSessions) {
+      const sessions = JSON.parse(savedChatSessions);
+      if (sessions.length === 0) {
+        resetChat();
+      }
+    } else {
+      resetChat();
+    }
+
+    return () => channel.close();
   }, []);
 
   useEffect(() => {
@@ -158,6 +287,38 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('nsg_chat_history', JSON.stringify(chatHistory));
   }, [chatHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('nsg_chat_sessions', JSON.stringify(chatSessions));
+  }, [chatSessions]);
+
+  useEffect(() => {
+    localStorage.setItem('nsg_score_sheet', JSON.stringify(scoreSheet));
+  }, [scoreSheet]);
+
+  useEffect(() => {
+    localStorage.setItem('nsg_admin_questions', JSON.stringify(examQuestions));
+  }, [examQuestions]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRegisteredStudents(prev => prev.map(s => {
+        if (s.isActive && s.lastActive && Date.now() - s.lastActive > 300000) {
+          return { ...s, isActive: false };
+        }
+        return s;
+      }));
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('nsg_registered_students', JSON.stringify(registeredStudents));
+  }, [registeredStudents]);
+
+  useEffect(() => {
+    localStorage.setItem('nsg_exam_config', JSON.stringify(examConfig));
+  }, [examConfig]);
 
   useEffect(() => {
     const quizData = {
@@ -201,14 +362,250 @@ export default function App() {
     }
   };
 
-  const resetChat = () => {
-    setChatHistory([{
-      role: 'model',
-      text: "System Online. Gemini 3.1 Flash Lite ready. Upload images or start recording to begin.",
-      timestamp: new Date().toLocaleTimeString()
-    }]);
-    chatInstanceRef.current = null;
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setUserNotification("Copied to clipboard!");
   };
+
+  // --- 🎓 CBT & ADMIN LOGIC ---
+  const shuffleArray = (array: any[]) => {
+    const newArr = [...array];
+    for (let i = newArr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+    }
+    return newArr;
+  };
+
+  const generateAdminQuestions = async () => {
+    if (!adminQuestionsRaw.trim()) return;
+    setIsGeneratingAdminQuestions(true);
+    try {
+      const prompt = `
+        Convert the following raw text into a professional Multiple Choice Question (MCQ) pool.
+        Each question must have 4 options (A-D) and one correct answer index (0-3).
+        Return ONLY a JSON object with this structure:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "options": ["string", "string", "string", "string"],
+              "correctAnswer": number,
+              "explanation": "string"
+            }
+          ]
+        }
+        Raw Text: ${adminQuestionsRaw}
+      `;
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { responseMimeType: "application/json" }
+      });
+      const data = JSON.parse(response.text || "{}");
+      if (data.questions) {
+        const formatted = data.questions.map((q: any) => ({ ...q, id: Math.random().toString(36).substr(2, 9) }));
+        setExamQuestions(formatted);
+        setAdminNotification(`Successfully generated ${formatted.length} questions.`);
+      }
+    } catch (e) {
+      console.error(e);
+      setAdminNotification("Failed to generate questions.");
+    } finally {
+      setIsGeneratingAdminQuestions(false);
+    }
+  };
+
+  const [userNotification, setUserNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (userNotification) {
+      const timer = setTimeout(() => setUserNotification(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [userNotification]);
+
+  const handleMatricLogin = () => {
+    if (!matricNumber.trim()) {
+      setUserNotification("Please enter your matric number.");
+      return;
+    }
+
+    let student = registeredStudents.find(s => s.matric.toLowerCase() === matricNumber.toLowerCase());
+    
+    if (student) {
+      setStudentName(student.name);
+      const session = localStorage.getItem(`nsg_exam_session_${student.matric}`);
+      if (session) {
+        const data = JSON.parse(session);
+        if (data.status === 'completed') {
+          setUserNotification("You have already completed this exam.");
+          return;
+        }
+      }
+
+      if (student.paymentEnabled && !paymentVerified) {
+        // Payment is required and not yet verified
+      } else {
+        setExamLobbyState('briefing');
+      }
+    } else {
+      setUserNotification("You are not included for this exam");
+      return;
+    }
+  };
+
+  const startExam = () => {
+    if (examQuestions.length < examConfig.questionCount) {
+      setUserNotification(`Admin has not uploaded enough questions (Minimum ${examConfig.questionCount} required).`);
+      return;
+    }
+    const shuffled = shuffleArray(examQuestions).slice(0, examConfig.questionCount);
+    setExamQuestions(shuffled);
+    setExamTimer(examConfig.duration);
+    setExamLobbyState('exam');
+    setExamAnswers({});
+    setCurrentExamIndex(0);
+    setExamFinished(false);
+    
+    // Mark as active
+    setRegisteredStudents(prev => prev.map(s => 
+      s.matric.toLowerCase() === matricNumber.toLowerCase() ? { ...s, isActive: true, lastActive: Date.now() } : s
+    ));
+    
+    // Broadcast status
+    const channel = new BroadcastChannel('nsg_exam_sync');
+    channel.postMessage({ type: 'STATUS_UPDATE', matric: matricNumber, isActive: true });
+    channel.close();
+
+    localStorage.setItem(`nsg_exam_session_${matricNumber}`, JSON.stringify({ status: 'in-progress', startTime: Date.now() }));
+
+    examTimerRef.current = setInterval(() => {
+      setExamTimer(prev => {
+        if (prev <= 1) {
+          submitExam();
+          return 0;
+        }
+        // Refresh active status every 30 seconds
+        if (prev % 30 === 0) {
+          setRegisteredStudents(curr => curr.map(s => 
+            s.matric.toLowerCase() === matricNumber.toLowerCase() ? { ...s, lastActive: Date.now(), isActive: true } : s
+          ));
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const submitExam = () => {
+    if (examTimerRef.current) clearInterval(examTimerRef.current);
+    
+    let score = 0;
+    examQuestions.forEach((q, idx) => {
+      if (examAnswers[idx] === q.correctAnswer) score++;
+    });
+
+    setExamScore(score);
+    setExamFinished(true);
+    setExamLobbyState('result');
+
+    // Mark as inactive
+    setRegisteredStudents(prev => prev.map(s => 
+      s.matric.toLowerCase() === matricNumber.toLowerCase() ? { ...s, isActive: false } : s
+    ));
+
+    const result: StudentResult = {
+      matric: matricNumber,
+      name: studentName,
+      score: score,
+      total: examQuestions.length,
+      timestamp: new Date().toLocaleString()
+    };
+    const newSheet = [result, ...scoreSheet];
+    setScoreSheet(newSheet);
+    localStorage.setItem('nsg_score_sheet', JSON.stringify(newSheet));
+    localStorage.setItem(`nsg_exam_session_${matricNumber}`, JSON.stringify({ status: 'completed', score }));
+
+    // Broadcast result
+    const channel = new BroadcastChannel('nsg_exam_sync');
+    channel.postMessage({ type: 'RESULT_SUBMITTED', result });
+    channel.close();
+  };
+
+  const [adminNotification, setAdminNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (adminNotification) {
+      const timer = setTimeout(() => setAdminNotification(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [adminNotification]);
+
+  const restartStudentTimer = (matric: string) => {
+    localStorage.removeItem(`nsg_exam_session_${matric}`);
+    setRegisteredStudents(prev => prev.map(s => 
+      s.matric === matric ? { ...s, isActive: false } : s
+    ));
+    setAdminNotification(`Session for ${matric} has been reset.`);
+
+    // Broadcast reset
+    const channel = new BroadcastChannel('nsg_exam_sync');
+    channel.postMessage({ type: 'RESET_EXAM', matric });
+    channel.close();
+  };
+
+  const addStudent = () => {
+    if (!newStudentMatric.trim() || !newStudentName.trim()) return;
+    if (registeredStudents.some(s => s.matric === newStudentMatric)) {
+      setAdminNotification("Matric number already exists.");
+      return;
+    }
+    setRegisteredStudents([...registeredStudents, { matric: newStudentMatric, name: newStudentName, paymentEnabled: true }]);
+    setNewStudentMatric('');
+    setNewStudentName('');
+    setAdminNotification("Student added successfully.");
+  };
+
+  const togglePayment = (matric: string) => {
+    setRegisteredStudents(registeredStudents.map(s => 
+      s.matric === matric ? { ...s, paymentEnabled: !s.paymentEnabled } : s
+    ));
+  };
+
+  const deleteStudent = (matric: string) => {
+    setRegisteredStudents(registeredStudents.filter(s => s.matric !== matric));
+  };
+
+  const downloadResults = () => {
+    const content = scoreSheet.map(r => `${r.timestamp} | ${r.matric} | ${r.name} | Score: ${r.score}/${r.total}`).join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NSG_Exam_Results_${Date.now()}.txt`;
+    a.click();
+  };
+
+  // --- 💳 PAYSTACK INTEGRATION ---
+  const handlePaystackSuccess = (reference: any) => {
+    setPaymentVerified(true);
+    setExamLobbyState('briefing');
+  };
+
+  const handlePaystackClose = () => {
+    setUserNotification("Payment cancelled. You must pay to take the exam.");
+  };
+
+  const paystackConfig = {
+    reference: (new Date()).getTime().toString(),
+    email: `${matricNumber}@nsg.com`,
+    amount: examConfig.price * 100, // Amount in kobo
+    publicKey: PAYSTACK_PUBLIC_KEY,
+    onSuccess: handlePaystackSuccess,
+    onClose: handlePaystackClose
+  };
+
+  const initializePayment = usePaystackPayment(paystackConfig);
 
   // --- 🎤 RECORDING LOGIC ---
   const handleToggleRecording = async () => {
@@ -238,7 +635,7 @@ export default function App() {
         setRecordingTime(0);
         timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
       } catch (err) {
-        alert("Microphone access denied. Please check permissions.");
+        setUserNotification("Microphone access denied. Please check permissions.");
       }
     }
   };
@@ -254,7 +651,7 @@ export default function App() {
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (uploadedImages.length + files.length > 50) {
-      alert("Limit Reached: 50 images max.");
+      setUserNotification("Limit Reached: 50 images max.");
       return;
     }
     const mapped = files.map(f => ({
@@ -269,7 +666,7 @@ export default function App() {
   // --- 🧠 GEMINI ANALYSIS ---
   const triggerFullAnalysis = async () => {
     if (uploadedImages.length === 0 && !recordedBlob) {
-      alert("No data provided for analysis.");
+      setUserNotification("No data provided for analysis.");
       return;
     }
 
@@ -346,13 +743,79 @@ export default function App() {
     }
   };
 
+  const resetChat = () => {
+    const newSession: ChatSession = {
+      id: Date.now().toString(),
+      title: "New Chat Session",
+      history: [{
+        role: 'model',
+        text: "System Online. How can I assist your studies today?",
+        timestamp: new Date().toLocaleTimeString()
+      }],
+      timestamp: new Date().toLocaleString(),
+      isPinned: false
+    };
+    setChatSessions([newSession, ...chatSessions]);
+    setActiveChatSessionId(newSession.id);
+    setChatHistory(newSession.history);
+    chatInstanceRef.current = null;
+  };
+
+  const renameChatSession = (id: string, newTitle: string) => {
+    setChatSessions(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
+  };
+
+  const togglePinChatSession = (id: string) => {
+    setChatSessions(prev => prev.map(s => s.id === id ? { ...s, isPinned: !s.isPinned } : s));
+  };
+
+  const handleShareResult = () => {
+    setShowShareModal(true);
+  };
+
+  const generateShareImage = async () => {
+    if (!shareCardRef.current) return;
+    try {
+      const dataUrl = await toPng(shareCardRef.current, { cacheBust: true });
+      const link = document.createElement('a');
+      link.download = `NSG_Score_${shareName || 'Student'}.png`;
+      link.href = dataUrl;
+      link.click();
+      setShowShareModal(false);
+      setUserNotification("Score card generated successfully!");
+    } catch (err) {
+      console.error('oops, something went wrong!', err);
+      setUserNotification("Failed to generate image.");
+    }
+  };
+
+  const loadChatSession = (id: string) => {
+    const session = chatSessions.find(s => s.id === id);
+    if (session) {
+      setActiveChatSessionId(id);
+      setChatHistory(session.history);
+      chatInstanceRef.current = null;
+    }
+  };
+
+  const deleteChatSession = (id: string) => {
+    const updated = chatSessions.filter(s => s.id !== id);
+    setChatSessions(updated);
+    if (activeChatSessionId === id && updated.length > 0) {
+      loadChatSession(updated[0].id);
+    } else if (updated.length === 0) {
+      resetChat();
+    }
+  };
+
   // --- 💬 CHAT WITH GEMINI ---
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     const msg = chatInput;
     setChatInput('');
 
-    setChatHistory(prev => [...prev, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }]);
+    const newHistory: ChatMessage[] = [...chatHistory, { role: 'user', text: msg, timestamp: new Date().toLocaleTimeString() }];
+    setChatHistory(newHistory);
 
     try {
       if (!chatInstanceRef.current) {
@@ -369,12 +832,25 @@ export default function App() {
       }
 
       const response = await chatInstanceRef.current.sendMessage({ message: msg });
-      
-      setChatHistory(prev => [...prev, { 
+      const modelMsg: ChatMessage = { 
         role: 'model', 
         text: response.text || "I couldn't process that request.", 
         timestamp: new Date().toLocaleTimeString() 
-      }]);
+      };
+      
+      const finalHistory = [...newHistory, modelMsg];
+      setChatHistory(finalHistory);
+
+      // Update Session
+      setChatSessions(prev => prev.map(s => {
+        if (s.id === activeChatSessionId) {
+          // Auto-name if it's the first user message (history was just the system greeting)
+          const newTitle = s.history.length <= 1 ? (msg.length > 30 ? msg.substring(0, 30) + '...' : msg) : s.title;
+          return { ...s, title: newTitle, history: finalHistory };
+        }
+        return s;
+      }));
+
     } catch (e: any) {
       console.error('🚨 Gemini Chat Error:', e);
       setChatHistory(prev => [...prev, { 
@@ -388,7 +864,7 @@ export default function App() {
   // --- 📝 QUIZ LOGIC ---
   const generateQuiz = async () => {
     if (!quizTopic.trim()) {
-      alert("Please enter a topic first.");
+      setUserNotification("Please enter a topic first.");
       return;
     }
 
@@ -397,14 +873,16 @@ export default function App() {
 
     try {
       const prompt = `
-        Generate a 25(the least) to 100-question multiple choice quiz about "${quizTopic}".
+        Generate a ${quizQuestionCount}-question multiple choice quiz about "${quizTopic}".
+        Difficulty Level: ${quizDifficulty}.
         Return ONLY a JSON object with this structure:
         {
           "questions": [
             {
               "question": "string",
               "options": ["string", "string", "string", "string"],
-              "correctAnswer": number (0-3)
+              "correctAnswer": number (0-3),
+              "explanation": "Detailed explanation of why the correct answer is right and others are wrong."
             }
           ]
         }
@@ -425,9 +903,10 @@ export default function App() {
                   properties: {
                     question: { type: Type.STRING },
                     options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    correctAnswer: { type: Type.INTEGER }
+                    correctAnswer: { type: Type.INTEGER },
+                    explanation: { type: Type.STRING }
                   },
-                  required: ["question", "options", "correctAnswer"]
+                  required: ["question", "options", "correctAnswer", "explanation"]
                 }
               }
             },
@@ -447,10 +926,22 @@ export default function App() {
       }
     } catch (error) {
       console.error("Quiz Generation Error:", error);
-      alert("Failed to generate quiz. Please try again.");
+      setUserNotification("Failed to generate quiz. Please try again.");
     } finally {
       setIsGeneratingQuiz(false);
     }
+  };
+
+  const sendQuizReportToAI = () => {
+    const report = `
+      I just completed a quiz on ${quizTopic}.
+      Score: ${quizScore}/${quizQuestions.length}.
+      Difficulty: ${quizDifficulty}.
+      Please analyze my performance and provide a study plan based on these results.
+    `;
+    setChatHistory(prev => [...prev, { role: 'user', text: report, timestamp: new Date().toLocaleTimeString() }]);
+    setActiveTab('ai');
+    handleSendMessage();
   };
 
   const handleOptionSelect = (index: number) => {
@@ -475,7 +966,9 @@ export default function App() {
   const closeWelcome = () => {
     setShowWelcome(false);
     localStorage.setItem('nsg_welcome_seen', 'true');
-  };return (
+  };
+
+  return (
     <div className={`min-h-screen transition-colors duration-300 font-sans selection:bg-red-600 pb-24 ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0] dark' : 'bg-slate-50 text-slate-900'}`}>
       
       {/* WELCOME MODAL */}
@@ -568,7 +1061,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tighter italic leading-none text-slate-900 dark:text-white">NSG <span className="text-red-600">(NUELL STUDY GUIDE)</span></h1>
-            <span className="text-[9px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest">Lecture OS 3.7</span>
+            <span className="text-[9px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest">Lecture OS 4.0</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -658,41 +1151,88 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex flex-col h-[calc(100vh-220px)] bg-white dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 overflow-hidden relative shadow-sm">
-              <div className="px-5 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-red-600/10 rounded-lg flex items-center justify-center"><Brain size={18} className="text-red-600" /></div>
-                  <div><p className="font-bold text-xs text-slate-900 dark:text-white">Gemini 3.1 Flash Lite</p><p className="text-[9px] text-slate-400 dark:text-white/40 uppercase font-bold tracking-tighter">Optimized Intelligence</p></div>
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-220px)] bg-white dark:bg-[#0a0a0a] rounded-3xl border border-slate-200 dark:border-white/10 overflow-hidden relative shadow-sm">
+              
+              {/* Chat Sidebar */}
+              <div className={`${showChatSidebarMobile ? 'flex absolute inset-0 z-50 w-full' : 'hidden'} md:flex md:relative md:w-64 border-r border-slate-200 dark:border-white/10 flex-col bg-slate-50 dark:bg-[#080808] transition-all`}>
+                <div className="p-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
+                  <button onClick={() => { resetChat(); setShowChatSidebarMobile(false); }} className="flex-1 flex items-center justify-center gap-2 bg-red-600 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all">
+                    <PlusCircle size={16} /> New Chat
+                  </button>
+                  {showChatSidebarMobile && (
+                    <button onClick={() => setShowChatSidebarMobile(false)} className="md:hidden p-2 text-slate-400 ml-2"><XCircle size={20} /></button>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={resetChat} className="p-2 text-slate-400 hover:text-red-600 transition-colors" title="New Chat"><PlusCircle size={18} /></button>
-                  <button onClick={() => setChatHistory([])} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18} /></button>
-                </div>
-              </div>
-
-              <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
-                {chatHistory.map((msg, i) => (
-                  <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] px-4 py-3.5 rounded-2xl ${msg.role === 'user' ? 'bg-red-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-tl-none shadow-sm'}`}>
-                      <div className="markdown-body text-slate-900 dark:text-white">
-                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                  {chatSessions
+                    .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
+                    .map(session => (
+                    <div key={session.id} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${activeChatSessionId === session.id ? 'bg-red-600/10 border border-red-600/20 text-red-600' : 'hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-white/40'}`}>
+                      <div onClick={() => { loadChatSession(session.id); setShowChatSidebarMobile(false); }} className="flex items-center gap-2 overflow-hidden flex-1">
+                        {session.isPinned ? <Pin size={12} className="text-red-600" /> : <FileText size={14} className="flex-shrink-0" />}
+                        <span className="text-[10px] font-bold truncate">{session.title}</span>
                       </div>
-                      <p className="text-[8px] font-mono uppercase tracking-tighter mt-2 opacity-40">{msg.timestamp}</p>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={(e) => { e.stopPropagation(); togglePinChatSession(session.id); }} className="p-1 hover:text-red-600">
+                          <Pin size={12} className={session.isPinned ? 'fill-red-600' : ''} />
+                        </button>
+                        <button onClick={(e) => { 
+                          e.stopPropagation(); 
+                          const newTitle = prompt("Rename Chat Session:", session.title);
+                          if (newTitle) renameChatSession(session.id, newTitle);
+                        }} className="p-1 hover:text-red-600">
+                          <Edit3 size={12} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setChatSessions(prev => prev.filter(s => s.id !== session.id)); }} className="p-1 hover:text-red-600">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
-                  </motion.div>
-                ))}
+                  ))}
+                </div>
               </div>
 
-              <AnimatePresence>
-                {showScrollButton && (
-                  <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} onClick={scrollToBottom} className="absolute bottom-24 right-6 p-3 bg-red-600 text-white rounded-full shadow-xl z-20"><ArrowDown size={20} /></motion.button>
-                )}
-              </AnimatePresence>
+              <div className="flex-1 flex flex-col relative">
+                <div className="px-5 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-white/80 dark:bg-[#0a0a0a]/80 backdrop-blur-md">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setShowChatSidebarMobile(true)} className="md:hidden p-2 bg-slate-100 dark:bg-white/5 rounded-lg text-slate-600 dark:text-white/60"><History size={18} /></button>
+                    <div className="w-8 h-8 bg-red-600/10 rounded-lg flex items-center justify-center"><Brain size={18} className="text-red-600" /></div>
+                    <div><p className="font-bold text-xs text-slate-900 dark:text-white">Gemini 3.1 Flash Lite</p><p className="text-[9px] text-slate-400 dark:text-white/40 uppercase font-bold tracking-tighter">Optimized Intelligence</p></div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setChatHistory([])} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18} /></button>
+                  </div>
+                </div>
 
-              <div className="p-4 bg-white dark:bg-[#0a0a0a] border-t border-slate-200 dark:border-white/10">
-                <div className="flex gap-2 bg-slate-100 dark:bg-white/5 p-2 rounded-2xl border border-slate-200 dark:border-white/10">
-                  <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask NSG Executive..." className="flex-1 bg-transparent border-none outline-none px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20" />
-                  <button onClick={handleSendMessage} className="bg-red-600 hover:bg-red-700 text-white p-2.5 rounded-xl transition-all shadow-lg shadow-red-600/20"><ChevronRight size={18} /></button>
+                <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth bg-slate-50/50 dark:bg-transparent">
+                  {chatHistory.map((msg, i) => (
+                    <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] px-4 py-3.5 rounded-2xl relative group ${msg.role === 'user' ? 'bg-red-600 text-white rounded-tr-none' : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-tl-none shadow-sm'}`}>
+                        <div className={`markdown-body ${msg.role === 'user' ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
+                        </div>
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/5">
+                          <p className={`text-[8px] font-mono uppercase tracking-tighter ${msg.role === 'user' ? 'text-white/60' : 'text-slate-400 dark:text-white/30'}`}>{msg.timestamp}</p>
+                          <button onClick={() => copyToClipboard(msg.text)} className={`p-1.5 rounded-lg transition-all ${msg.role === 'user' ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-red-600 hover:bg-red-600/5'}`} title="Copy message">
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                <AnimatePresence>
+                  {showScrollButton && (
+                    <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} onClick={scrollToBottom} className="absolute bottom-24 right-6 p-3 bg-red-600 text-white rounded-full shadow-xl z-20"><ArrowDown size={20} /></motion.button>
+                  )}
+                </AnimatePresence>
+
+                <div className="p-4 bg-white dark:bg-[#0a0a0a] border-t border-slate-200 dark:border-white/10">
+                  <div className="flex gap-2 bg-slate-100 dark:bg-white/5 p-2 rounded-2xl border border-slate-200 dark:border-white/10">
+                    <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask NSG Executive..." className="flex-1 bg-transparent border-none outline-none px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/20" />
+                    <button onClick={handleSendMessage} className="bg-red-600 hover:bg-red-700 text-white p-2.5 rounded-xl transition-all shadow-lg shadow-red-600/20"><ChevronRight size={18} /></button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -756,9 +1296,39 @@ export default function App() {
                   <div className="text-center space-y-2 mb-4">
                     <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><Sparkles size={24} className="text-red-600" /></div>
                     <h3 className="font-bold text-lg text-slate-900 dark:text-white">Generate Interactive Quiz</h3>
-                    <p className="text-xs text-slate-500 dark:text-white/40">Test your knowledge with AI-generated questions (15-100 questions).</p>
+                    <p className="text-xs text-slate-500 dark:text-white/40">Test your knowledge with AI-generated questions.</p>
                   </div>
-                  <input type="text" value={quizTopic} onChange={(e) => setQuizTopic(e.target.value)} placeholder="e.g. Quantum Physics, EEE 101..." className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm outline-none focus:border-red-600/50 transition-all text-slate-900 dark:text-white" />
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase mb-2 ml-1">Topic</p>
+                      <input type="text" value={quizTopic} onChange={(e) => setQuizTopic(e.target.value)} placeholder="e.g. Quantum Physics, EEE 101..." className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm outline-none focus:border-red-600/50 transition-all text-slate-900 dark:text-white" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase mb-2 ml-1">Questions</p>
+                        <div className="flex flex-wrap gap-2">
+                          {[15, 25, 50, 100].map(count => (
+                            <button key={count} onClick={() => setQuizQuestionCount(count)} className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${quizQuestionCount === count ? 'bg-red-600 border-red-600 text-white' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-white/40'}`}>
+                              {count}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase mb-2 ml-1">Difficulty</p>
+                        <div className="flex flex-wrap gap-2">
+                          {['Easy', 'Medium', 'Hard', 'Professional'].map(level => (
+                            <button key={level} onClick={() => setQuizDifficulty(level as any)} className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${quizDifficulty === level ? 'bg-red-600 border-red-600 text-white' : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-white/40'}`}>
+                              {level}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <button onClick={generateQuiz} disabled={isGeneratingQuiz} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
                     {isGeneratingQuiz ? <><RefreshCcw size={18} className="animate-spin" /> GENERATING...</> : <><Zap size={18} /> START ASSESSMENT</>}
                   </button>
@@ -785,40 +1355,334 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </motion.div>
-          )}
-          {quizState === 'finished' && (
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-[#0a0a0a] p-10 rounded-3xl border border-slate-200 dark:border-white/10 text-center space-y-6 shadow-sm">
-                  <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle2 size={48} className="text-green-500" />
+
+              {quizState === 'finished' && (
+                <div className="bg-white dark:bg-[#0a0a0a] p-10 rounded-3xl border border-slate-200 dark:border-white/10 text-center space-y-8 shadow-sm">
+                  <div className="w-24 h-24 bg-red-600/10 rounded-full flex items-center justify-center mx-auto relative">
+                    <Trophy size={48} className="text-red-600" />
+                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-red-600/5 rounded-full" />
                   </div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Assessment Complete</h3>
-                    <p className="text-slate-500 dark:text-white/40 text-sm mt-1">You've successfully completed the {quizTopic} quiz.</p>
+                    <p className="text-slate-500 dark:text-white/40 text-sm mt-1">You've successfully finished the quiz.</p>
+                  </div>
+                  <div className="py-8 border-y border-slate-100 dark:border-white/5">
+                    <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-1">Your Score</p>
+                    <p className="text-6xl font-black text-red-600">{quizScore} / {quizQuestions.length}</p>
+                    <p className="text-xs font-bold text-slate-400 dark:text-white/30 mt-2 uppercase tracking-widest">{Math.round((quizScore/quizQuestions.length)*100)}% Proficiency</p>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button onClick={handleShareResult} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2">
+                      <Share2 size={18} /> SHARE SCORE CARD
+                    </button>
+                    <button onClick={() => setQuizState('idle')} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all">TRY ANOTHER TOPIC</button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* EXAM TAB */}
+          {activeTab === 'exam' && (
+            <motion.div key="exam" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter text-slate-900 dark:text-white">CBT Examination</h2>
+                <ShieldCheck size={20} className="text-red-600" />
+              </div>
+
+              {examLobbyState === 'login' && (
+                <div className="bg-white dark:bg-[#0a0a0a] p-8 rounded-3xl border border-slate-200 dark:border-white/10 space-y-6 shadow-sm">
+                  <div className="text-center space-y-2">
+                    <div className="w-12 h-12 bg-red-600/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><User size={24} className="text-red-600" /></div>
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">Student Verification</h3>
+                    <p className="text-xs text-slate-500 dark:text-white/40">Enter your credentials to access the examination hall.</p>
+                    <AnimatePresence>
+                      {userNotification && (
+                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="bg-red-600/10 text-red-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-red-600/20 mt-2">
+                          {userNotification}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  {!showAdminLogin ? (
+                    <div className="space-y-4">
+                      {studentName ? (
+                        <div className="p-6 bg-slate-100 dark:bg-white/5 rounded-3xl border border-slate-200 dark:border-white/10 space-y-4 text-center">
+                          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center text-white font-black text-2xl mx-auto shadow-lg shadow-red-600/20">{studentName.charAt(0)}</div>
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest">Authenticated Student</p>
+                            <p className="text-xl font-black text-slate-900 dark:text-white">{studentName}</p>
+                            <p className="text-xs font-mono text-red-600 font-bold">{matricNumber}</p>
+                          </div>
+                          
+                          {registeredStudents.find(s => s.matric.toLowerCase() === matricNumber.toLowerCase())?.paymentEnabled && !paymentVerified ? (
+                            <div className="pt-4 space-y-3 border-t border-slate-200 dark:border-white/10">
+                              <p className="text-[10px] text-slate-500 dark:text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-slate-900 dark:text-white">₦{examConfig.price}</span>. Please complete payment to proceed.</p>
+                              <button onClick={() => initializePayment({ onSuccess: handlePaystackSuccess, onClose: handlePaystackClose })} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2">
+                                <CreditCard size={18} /> PAY ₦{examConfig.price} & PROCEED
+                              </button>
+                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className="w-full text-[10px] font-black text-slate-400 dark:text-white/30 uppercase hover:text-red-600 transition-all">Not you? Switch Account</button>
+                            </div>
+                          ) : (
+                            <div className="pt-4 space-y-3 border-t border-slate-200 dark:border-white/10">
+                              <button onClick={handleMatricLogin} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all">PROCEED TO HALL</button>
+                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className="w-full text-[10px] font-black text-slate-400 dark:text-white/30 uppercase hover:text-red-600 transition-all">Not you? Switch Account</button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-slate-900 dark:text-white focus:border-red-600/50 transition-all" />
+                          <button onClick={handleMatricLogin} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all">VERIFY MATRIC</button>
+                          <button onClick={() => setShowAdminLogin(true)} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-slate-200 dark:hover:bg-white/10 transition-all">ADMIN ACCESS</button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin PIN" className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-slate-900 dark:text-white" />
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowAdminLogin(false)} className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm">BACK</button>
+                        <button onClick={handleAdminLogin} className="flex-[2] bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all">LOGIN AS ADMIN</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {examLobbyState === 'briefing' && (
+                <div className="bg-white dark:bg-[#0a0a0a] p-8 rounded-3xl border border-slate-200 dark:border-white/10 space-y-6 shadow-sm">
+                  <div className="flex items-center gap-4 p-4 bg-slate-100 dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10">
+                    <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white font-black text-xl">{studentName.charAt(0)}</div>
+                    <div><p className="font-black text-slate-900 dark:text-white uppercase tracking-tighter">{studentName}</p><p className="text-[10px] text-slate-400 dark:text-white/40 font-mono">{matricNumber}</p></div>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">Examination Briefing</h3>
+                    <div className="p-4 bg-red-600/5 border border-red-600/20 rounded-2xl space-y-3">
+                      <p className="text-xs text-red-600 font-bold flex items-center gap-2"><XCircle size={14} /> WARNING: {studentName}, if you leave this app, you automatically forfeit the exam.</p>
+                      <p className="text-xs text-slate-600 dark:text-white/60 leading-relaxed">This is a professional CBT Mock Exam. You have {Math.floor(examConfig.duration / 60)} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
+                    </div>
+                  </div>
+                  <button onClick={startExam} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all flex items-center justify-center gap-2">
+                    <Zap size={18} /> START EXAMINATION NOW
+                  </button>
+                </div>
+              )}
+
+              {examLobbyState === 'exam' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between bg-white dark:bg-[#0a0a0a] p-4 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm sticky top-20 z-30">
+                    <div className="flex items-center gap-2 text-red-600 font-black">
+                      <Clock size={18} />
+                      <span className="font-mono text-lg">{Math.floor(examTimer / 60)}:{(examTimer % 60).toString().padStart(2, '0')}</span>
+                    </div>
+                    <div className="text-center"><p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase">Question</p><p className="text-sm font-black text-slate-900 dark:text-white">{currentExamIndex + 1} / {examQuestions.length}</p></div>
+                    <button onClick={submitExam} disabled={Object.keys(examAnswers).length < Math.min(examQuestions.length, 5)} className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-30">Submit</button>
+                  </div>
+
+                  <div className="bg-white dark:bg-[#0a0a0a] p-8 rounded-3xl border border-slate-200 dark:border-white/10 space-y-8 shadow-sm">
+                    <h3 className="text-lg font-bold leading-tight text-slate-900 dark:text-white">{examQuestions[currentExamIndex].question}</h3>
+                    <div className="space-y-3">
+                      {examQuestions[currentExamIndex].options.map((option, idx) => (
+                        <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-red-600 bg-red-600/5 text-red-600' : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-white/80'}`}>
+                          <span className="text-sm font-medium">{option}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-between pt-4">
+                      <button onClick={() => setCurrentExamIndex(prev => Math.max(0, prev - 1))} disabled={currentExamIndex === 0} className="p-3 text-slate-400 hover:text-red-600 disabled:opacity-20"><ArrowLeft size={24} /></button>
+                      <button onClick={() => setCurrentExamIndex(prev => Math.min(examQuestions.length - 1, prev + 1))} disabled={currentExamIndex === examQuestions.length - 1} className="p-3 text-slate-400 hover:text-red-600 disabled:opacity-20"><ChevronRight size={24} /></button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {examLobbyState === 'result' && (
+                <div className="bg-white dark:bg-[#0a0a0a] p-10 rounded-3xl border border-slate-200 dark:border-white/10 text-center space-y-6 shadow-sm">
+                  <div className="w-20 h-20 bg-red-600/10 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle2 size={48} className="text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Exam Submitted</h3>
+                    <p className="text-slate-500 dark:text-white/40 text-sm mt-1">Your results have been recorded in the system.</p>
                   </div>
                   <div className="py-6 border-y border-slate-100 dark:border-white/5">
                     <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-1">Final Score</p>
-                    <p className="text-5xl font-black text-red-600">{Math.round((quizScore / quizQuestions.length) * 100)}%</p>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white mt-2">{quizScore} correct out of {quizQuestions.length}</p>
+                    <p className="text-5xl font-black text-red-600">{examScore} / {examQuestions.length}</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white mt-2">{Math.round((examScore / examQuestions.length) * 100)}% Proficiency</p>
                   </div>
-                  <button onClick={() => setQuizState('idle')} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all">TRY ANOTHER TOPIC</button>
-                </motion.div>
+                  <button onClick={() => setExamLobbyState('login')} className="w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black py-4 rounded-2xl text-sm transition-all">LOGOUT</button>
+                </div>
               )}
+            </motion.div>
+          )}
 
-          {/* BLOG TAB */}
-          {activeTab === 'blog' && (
-            <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-10">
-              <div className="bg-white dark:bg-[#0a0a0a] p-8 rounded-3xl border border-slate-200 dark:border-white/10 space-y-12 text-sm leading-relaxed text-slate-600 dark:text-white/70 shadow-sm">
-                <section className="space-y-4">
-                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">The Visionary Purpose of NSG (Nuell Study Guide)</h3>
-                  <p>In the rapidly evolving landscape of modern education, students are often overwhelmed by the sheer volume of information they are expected to process, retain, and apply. Traditional methods of note-taking—scribbling in notebooks or typing frantically on laptops—frequently fall short in capturing the nuances of a live lecture. This is where NSG (Nuell Study Guide) steps in. Developed by Nuell Graphics, NSG is not just another app; it is a comprehensive ecosystem designed to bridge the gap between human cognition and artificial intelligence. The core purpose of NSG is empowerment. We believe that every student possesses the potential for greatness, but that potential is often hindered by inefficient study habits or the stress of missing critical information during class. By providing a platform that allows for high-fidelity audio recording and seamless image capture of lecture slides, we ensure that no detail is lost. But capturing data is only the first step. The true magic of NSG lies in its ability to transform that raw data into actionable knowledge. Our vision extends beyond simple transcription. We aim to create a "digital brain" for every user—a repository of their academic journey that is searchable, interactive, and intelligent. By integrating the latest advancements in Large Language Models (LLMs), specifically the Gemini 3.1 Flash Lite series, we provide students with an AI executive assistant that can summarize hours of lectures in seconds, extract complex technical concepts, and even generate personalized study plans. This level of automation allows students to focus on what truly matters: understanding and critical thinking, rather than the mechanical task of data entry. Furthermore, NSG is built with accessibility in mind. We recognize that students come from diverse backgrounds and have varying levels of access to high-end hardware. By optimizing our application to run efficiently on a wide range of devices, we are democratizing elite-level study tools. Whether you are a medical student navigating the complexities of anatomy or an engineering student tackling advanced calculus, NSG is designed to be your steadfast study partner, guiding you toward academic excellence with precision and clarity. In conclusion, the purpose of NSG is to revolutionize the way we learn. It is a commitment to innovation, a tribute to the hard work of students everywhere, and a testament to the power of technology when applied with a human-centric focus. We are not just building a study guide; we are building the future of education, one lecture at a time.</p>
-                  <p>As we continue to develop NSG, our focus remains on the user. Every feature, from the high-intensity recording engine to the interactive quiz generator, is designed with the student's success in mind. We understand the pressures of academic life—the late nights, the complex subjects, and the high stakes of examinations. NSG is our answer to these challenges. It is a tool that grows with you, learning your study patterns and providing increasingly tailored assistance. The future of NSG is one of constant evolution. We are already exploring real-time collaborative study rooms, advanced diagram recognition, and deeper integrations with academic databases. Our goal is to make NSG the central hub of your intellectual life, a place where information is not just stored, but synthesized into wisdom. We invite you to join us on this journey. Together, we can redefine what it means to be a student in the 21st century. With NSG, the path to academic dominance is clearer than ever before. Thank you for choosing us as your study partner.</p>
-                </section>
-                <section className="space-y-4">
-                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter italic border-l-4 border-red-600 pl-4">How to Enjoy the NSG Experience: A Masterclass in Efficiency</h3>
-                  <p>To truly "enjoy" NSG is to experience the profound relief that comes from knowing your study materials are perfectly organized and understood. Mastery of the NSG platform begins with a shift in mindset: seeing the app not as a tool you use *after* class, but as an active participant *during* your learning process. Here is how you can maximize your experience and unlock your full academic potential. First, embrace the multi-modal nature of the app. During a lecture, don't just record audio; use the image capture feature to snap photos of the whiteboard, the projector screen, or even your own handwritten diagrams. The AI is designed to correlate these images with the audio context, providing a much richer analysis than text alone could ever achieve. When you upload these slides, ensure they are clear and well-lit; the better the input, the more "brilliant" the AI's output will be. Second, engage with the AI Chat as if it were a private tutor. After the initial analysis is generated, don't stop there. Ask follow-up questions. If a concept like "Quantum Entanglement" or "Macroeconomic Equilibrium" isn't clear, ask the AI to explain it using a real-world analogy. Use the chat to brainstorm essay outlines, clarify confusing formulas, or even ask for a list of potential exam questions. The more you interact, the more the AI "learns" your specific needs and provides more tailored assistance. Third, utilize the Quiz Engine for active recall. Scientific research has shown that testing yourself is one of the most effective ways to move information from short-term to long-term memory. Once you've analyzed a lecture, generate a 100-question quiz. Don't be afraid to fail; use the results to identify your weak spots and go back to the AI Chat for further clarification. This iterative process of learning, testing, and refining is the hallmark of a master student. Finally, keep your Library organized. The history tab is your personal academic archive. Regularly review your past sessions, use the delete button to clear out redundant or practice recordings, and keep only the most high-value content. By maintaining a clean and focused library, you reduce cognitive load and make your revision sessions much more efficient. Master NSG, and you master your education.</p>
-                  <p>Efficiency is not just about doing things faster; it's about doing the right things better. NSG is designed to automate the low-value tasks of learning—like transcription and basic summarization—so you can spend your time on high-value activities like critical analysis and creative problem-solving. Imagine being able to walk out of a two-hour lecture with a perfectly formatted executive summary, a list of key terms, and a 50-question practice quiz already waiting for you. That is the NSG promise. It's about reclaiming your time and your mental energy. We also recommend using the "New Chat" feature frequently to keep your sessions focused. If you're switching from a Physics lecture to a History seminar, start a fresh chat to ensure the AI's context remains sharp. Use the "Scroll to Bottom" button to stay on top of the conversation, and don't forget to download your recordings for offline review. By integrating these habits into your daily routine, you'll find that studying becomes less of a chore and more of a rewarding intellectual journey. NSG is more than an app; it's a lifestyle choice for the ambitious student. It's a commitment to excellence and a refusal to settle for mediocrity. As you explore the features of NSG, remember that you are in control. The AI is your executive assistant, but you are the CEO of your own education. Use the tools we've provided to build a foundation of knowledge that will last a lifetime. We are honored to be part of your success story.</p>
-                </section>
+          {/* ADMIN PANEL */}
+          {adminMode && (
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="fixed inset-0 z-[110] bg-black/95 backdrop-blur-xl p-6 overflow-y-auto">
+              <div className="max-w-6xl mx-auto space-y-8 pb-20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic flex items-center gap-3"><LayoutDashboard className="text-red-600" /> Admin Control Panel</h2>
+                    <div className="px-3 py-1 bg-red-600/20 border border-red-600/30 rounded-full flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse" />
+                      <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">{registeredStudents.filter(s => s.isActive).length} Active Now</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <AnimatePresence>
+                      {adminNotification && (
+                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20">
+                          {adminNotification}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    <button onClick={() => setAdminMode(false)} className="text-white/50 hover:text-red-600 transition-all"><XCircle size={32} /></button>
+                  </div>
+                </div>
+
+                <div className="grid lg:grid-cols-3 gap-6">
+                  {/* Student Management */}
+                  <div className="lg:col-span-2 space-y-6">
+                    <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
+                      <h3 className="font-bold text-white flex items-center gap-2"><UserPlus size={18} className="text-red-600" /> Student Registration</h3>
+                      <div className="flex gap-3">
+                        <input type="text" value={newStudentMatric} onChange={(e) => setNewStudentMatric(e.target.value)} placeholder="Matric Number" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-red-600/50" />
+                        <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} placeholder="Full Name" className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-red-600/50" />
+                        <button onClick={addStudent} className="bg-red-600 hover:bg-red-700 text-white px-6 rounded-xl text-xs font-black transition-all">ADD</button>
+                      </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-[10px]">
+                          <thead>
+                            <tr className="text-white/30 uppercase tracking-widest border-b border-white/5">
+                              <th className="py-3 px-2">Matric</th>
+                              <th className="py-3 px-2">Name</th>
+                              <th className="py-3 px-2">Status</th>
+                              <th className="py-3 px-2">Payment</th>
+                              <th className="py-3 px-2 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-white/70">
+                            {registeredStudents.map(student => (
+                              <tr key={student.matric} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                <td className="py-3 px-2 font-mono">{student.matric}</td>
+                                <td className="py-3 px-2 font-bold">{student.name}</td>
+                                <td className="py-3 px-2">
+                                  <div className="flex flex-col">
+                                    <span className={`text-[10px] font-black uppercase ${student.isActive ? 'text-green-500' : 'text-white/20'}`}>
+                                      {student.isActive ? 'Active' : 'Offline'}
+                                    </span>
+                                    {student.lastActive && (
+                                      <span className="text-[8px] text-white/20">
+                                        {new Date(student.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-2">
+                                  <button onClick={() => togglePayment(student.matric)} className={`px-2 py-1 rounded-md font-black uppercase tracking-tighter ${student.paymentEnabled ? 'bg-green-600/20 text-green-500' : 'bg-red-600/20 text-red-500'}`}>
+                                    {student.paymentEnabled ? 'Enabled' : 'Disabled'}
+                                  </button>
+                                </td>
+                                <td className="py-3 px-2 text-right space-x-2">
+                                  <button onClick={() => restartStudentTimer(student.matric)} className="p-2 text-white/30 hover:text-red-600 transition-all" title="Reset Session"><RefreshCcw size={12} /></button>
+                                  <button onClick={() => deleteStudent(student.matric)} className="p-2 text-white/30 hover:text-red-600 transition-all" title="Delete Student"><Trash2 size={12} /></button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Exam Config */}
+                      <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
+                        <h3 className="font-bold text-white flex items-center gap-2"><Settings size={18} className="text-red-600" /> Exam Configuration</h3>
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[8px] font-black text-white/30 uppercase mb-1">Question Count</p>
+                            <input type="number" value={examConfig.questionCount} onChange={(e) => setExamConfig({...examConfig, questionCount: parseInt(e.target.value)})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none" />
+                          </div>
+                          <div>
+                            <p className="text-[8px] font-black text-white/30 uppercase mb-1">Duration (Seconds)</p>
+                            <input type="number" value={examConfig.duration} onChange={(e) => setExamConfig({...examConfig, duration: parseInt(e.target.value)})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none" />
+                          </div>
+                          <div>
+                            <p className="text-[8px] font-black text-white/30 uppercase mb-1">Price (Naira)</p>
+                            <input type="number" value={examConfig.price} onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              if (val === 400 || val === 700) {
+                                setAdminNotification("Price cannot be 400 or 700 Naira.");
+                                return;
+                              }
+                              setExamConfig({...examConfig, price: val});
+                            }} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Question Generation */}
+                      <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
+                        <h3 className="font-bold text-white flex items-center gap-2"><PlusCircle size={18} className="text-red-600" /> Question Pool</h3>
+                        <textarea value={adminQuestionsRaw} onChange={(e) => setAdminQuestionsRaw(e.target.value)} placeholder="Paste raw text here to generate MCQs..." className="w-full h-32 bg-white/5 border border-white/10 rounded-2xl p-4 text-[10px] text-white outline-none focus:border-red-600/50" />
+                        <button onClick={generateAdminQuestions} disabled={isGeneratingAdminQuestions} className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50">
+                          {isGeneratingAdminQuestions ? <RefreshCcw size={16} className="animate-spin" /> : <Cpu size={16} />} GENERATE QUESTIONS
+                        </button>
+                        <p className="text-[10px] text-white/30 text-center">Current Pool: {examQuestions.length} Questions</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Score Sheet & Question Log */}
+                  <div className="grid grid-rows-2 gap-4 h-full">
+                    <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4 flex flex-col overflow-hidden">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-bold text-white flex items-center gap-2"><ListChecks size={18} className="text-red-600" /> Real-time Scores</h3>
+                        <button onClick={downloadResults} className="text-red-600 hover:text-red-500 transition-all"><FileDown size={20} /></button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                        {scoreSheet.length === 0 ? (
+                          <p className="text-[10px] text-white/20 text-center py-10">No results recorded yet</p>
+                        ) : (
+                          scoreSheet.map((res, i) => (
+                            <div key={i} className="bg-white/5 p-3 rounded-xl border border-white/5 flex items-center justify-between group">
+                              <div>
+                                <p className="text-[10px] font-bold text-white">{res.name}</p>
+                                <p className="text-[8px] text-white/40 font-mono">{res.matric} • {res.score}/{res.total}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[10px] font-black text-red-600">{Math.round((res.score/res.total)*100)}%</p>
+                                <p className="text-[6px] text-white/20 uppercase">{res.timestamp}</p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4 flex flex-col overflow-hidden">
+                      <h3 className="font-bold text-white flex items-center gap-2"><FileText size={18} className="text-red-600" /> Question Log</h3>
+                      <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                        {examQuestions.length === 0 ? (
+                          <p className="text-[10px] text-white/20 text-center py-10">No questions in pool</p>
+                        ) : (
+                          examQuestions.map((q, i) => (
+                            <div key={i} className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-2">
+                              <p className="text-[10px] font-bold text-white leading-tight">{i + 1}. {q.question}</p>
+                              <div className="grid grid-cols-2 gap-1">
+                                {q.options.map((opt, idx) => (
+                                  <p key={idx} className={`text-[8px] px-2 py-1 rounded ${idx === q.correctAnswer ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40'}`}>{opt}</p>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -833,6 +1697,7 @@ export default function App() {
             { id: 'ai', icon: Brain, label: 'AI Chat' },
             { id: 'history', icon: History, label: 'Library' },
             { id: 'quiz', icon: Zap, label: 'Quiz' },
+            { id: 'exam', icon: ListChecks, label: 'Exam' },
             { id: 'blog', icon: FileText, label: 'Blog' }
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-col items-center py-2 px-4 transition-all relative ${activeTab === tab.id ? 'text-red-600' : 'text-slate-400 dark:text-white/30 hover:text-red-500'}`}>
@@ -843,6 +1708,57 @@ export default function App() {
           ))}
         </div>
       </nav>
+
+      {/* SHARE MODAL */}
+      <AnimatePresence>
+        {showShareModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#0a0a0a] rounded-3xl p-8 max-w-sm w-full border border-slate-200 dark:border-white/10 space-y-6">
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Share Your Result</h3>
+                <p className="text-xs text-slate-500 dark:text-white/40">Enter your name to generate your score card.</p>
+              </div>
+              
+              <input type="text" value={shareName} onChange={(e) => setShareName(e.target.value)} placeholder="Your Full Name" className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-slate-900 dark:text-white focus:border-red-600/50 transition-all" />
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowShareModal(false)} className="flex-1 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm">CANCEL</button>
+                <button onClick={generateShareImage} disabled={!shareName.trim()} className="flex-[2] bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-600/20 transition-all disabled:opacity-50">GENERATE IMAGE</button>
+              </div>
+
+              {/* HIDDEN SHARE CARD FOR GENERATION */}
+              <div className="fixed -left-[9999px] top-0">
+                <div ref={shareCardRef} className="w-[600px] h-[400px] bg-white p-10 flex flex-col items-center justify-center text-center relative overflow-hidden border-[10px] border-red-600">
+                  <div className="absolute top-0 left-0 w-32 h-32 bg-red-600/5 rounded-full -translate-x-16 -translate-y-16" />
+                  <div className="absolute bottom-0 right-0 w-48 h-48 bg-red-600/5 rounded-full translate-x-24 translate-y-24" />
+                  
+                  <div className="mb-6">
+                    <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter mb-1">NSG STUDY GUIDE</h1>
+                    <p className="text-[10px] font-black text-red-600 uppercase tracking-[0.3em]">Official Assessment Certificate</p>
+                  </div>
+
+                  <div className="space-y-2 mb-8">
+                    <p className="text-xs text-slate-400 uppercase font-bold tracking-widest">This certifies that</p>
+                    <p className="text-3xl font-black text-slate-900 uppercase">{shareName || 'Student'}</p>
+                    <p className="text-xs text-slate-400 uppercase font-bold tracking-widest">has achieved a score of</p>
+                  </div>
+
+                  <div className="bg-red-600 text-white px-10 py-4 rounded-2xl">
+                    <p className="text-5xl font-black">{quizScore} / {quizQuestions.length}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest mt-1">{Math.round((quizScore/quizQuestions.length)*100)}% Proficiency</p>
+                  </div>
+
+                  <div className="mt-10 flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-red-600 rounded-full" />
+                    <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Generated by NSG AI Executive • {new Date().toLocaleDateString()}</p>
+                    <div className="w-1.5 h-1.5 bg-red-600 rounded-full" />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* FOOTER */}
       <footer className="max-w-4xl mx-auto px-4 py-8 border-t border-slate-200 dark:border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/20">
