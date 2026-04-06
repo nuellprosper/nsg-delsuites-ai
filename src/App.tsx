@@ -293,12 +293,7 @@ const GeminiLive = ({ onClose }: { onClose: () => void }) => {
 
       // 1fps frame capture for 2GB RAM optimization
       const interval = setInterval(() => {
-        if (!sessionRef.current || !videoRef.current || !canvasRef.current) {
-          clearInterval(interval);
-          return;
-        }
-        // Use the video element's srcObject to detect if video is still active
-        if (!videoRef.current.srcObject) {
+        if (!videoRef.current?.srcObject || !sessionRef.current || !videoRef.current || !canvasRef.current) {
           clearInterval(interval);
           return;
         }
@@ -1715,15 +1710,9 @@ export default function App() {
   };
 
   const sendQuizReportToAI = () => {
-    const report = `
-      I just completed a quiz on ${quizTopic}.
-      Score: ${quizScore}/${quizQuestions.length}.
-      Difficulty: ${quizDifficulty}.
-      Please analyze my performance and provide a study plan based on these results.
-    `;
-    setChatHistory(prev => [...prev, { role: 'user', text: report, timestamp: new Date().toLocaleTimeString() }]);
+    const report = `I just completed a quiz on ${quizTopic}. Score: ${quizScore}/${quizQuestions.length}. Difficulty: ${quizDifficulty}. Please analyze my performance and provide a study plan based on these results.`;
+    setChatInput(report);
     setActiveTab('ai');
-    handleSendMessage();
   };
 
   const handleOptionSelect = (index: number) => {
@@ -3096,10 +3085,6 @@ export default function App() {
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {/* EDIT USER MODAL */}
-      <AnimatePresence>
         {editingUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#0A0F1C] rounded-3xl p-8 max-w-md w-full border border-white/10 space-y-6">
@@ -3107,7 +3092,7 @@ export default function App() {
                 <h3 className="text-xl font-black text-white uppercase tracking-tighter">Edit User Information</h3>
                 <p className="text-xs text-white/40">Modify user details directly in the database.</p>
               </div>
-
+              
               <form onSubmit={handleEditUser} className="space-y-4">
                 <div className="space-y-1">
                   <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Full Name</p>
