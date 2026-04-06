@@ -1,0 +1,128 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required) - User's unique ID
+//   - email: string (required) - User's email
+//   - displayName: string - User's name
+//   - photoURL: string - User's photo
+//   - role: string (required, ['admin', 'student']) - User's role
+//   - matric: string - User's matric number
+//   - createdAt: string (format: date-time) - Creation timestamp
+//
+// Collection: examQuestions
+// Document ID: {questionId}
+// Fields:
+//   - id: string
+//   - question: string (required)
+//   - options: list (required)
+//   - correctAnswer: number (required)
+//   - explanation: string
+//
+// Collection: scoreSheet
+// Document ID: {resultId}
+// Fields:
+//   - matric: string (required)
+//   - name: string (required)
+//   - score: number (required)
+//   - total: number (required)
+//   - timestamp: string (required, format: date-time)
+//
+// Collection: registeredStudents
+// Document ID: {matric}
+// Fields:
+//   - matric: string (required)
+//   - name: string (required)
+//   - paymentEnabled: bool
+//   - isActive: bool
+//   - lastActive: number
+//
+// Collection: config
+// Document ID: exam
+// Fields:
+//   - questionCount: number
+//   - duration: number
+//   - price: number
+//
+// Collection: users/{uid}/chatSessions
+// Document ID: {sessionId}
+// Fields:
+//   - id: string
+//   - title: string
+//   - history: list
+//   - timestamp: string
+//   - isPinned: bool
+//   - uid: string
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "nuellkelechi@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidUser(data) {
+      return data.uid is string && data.email is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isAuthenticated() && (isOwner(uid) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(uid) && isValidUser(request.resource.data);
+      allow update: if isAuthenticated() && (isOwner(uid) || isAdmin()) && isValidUser(request.resource.data);
+      
+      match /chatSessions/{sessionId} {
+        allow read, write: if isAuthenticated() && isOwner(uid);
+      }
+      
+      match /lectureSessions/{sessionId} {
+        allow read, write: if isAuthenticated() && isOwner(uid);
+      }
+    }
+
+    match /exams/{examId} {
+      allow read: if true; // Exams are public for anyone with the link
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (resource.data.hostUid == request.auth.uid || isAdmin());
+      
+      match /results/{resultId} {
+        allow read: if isAuthenticated() && (resource.data.hostUid == request.auth.uid || isAdmin());
+        allow create: if true; // Anyone can submit results if they take the exam
+      }
+    }
+
+    match /config/exam {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /quizzes/{quizId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+    }
+  }
+}
