@@ -293,7 +293,12 @@ const GeminiLive = ({ onClose }: { onClose: () => void }) => {
 
       // 1fps frame capture for 2GB RAM optimization
       const interval = setInterval(() => {
-        if (videoSource === 'none' || !sessionRef.current || !videoRef.current || !canvasRef.current) {
+        if (!sessionRef.current || !videoRef.current || !canvasRef.current) {
+          clearInterval(interval);
+          return;
+        }
+        // Use the video element's srcObject to detect if video is still active
+        if (!videoRef.current.srcObject) {
           clearInterval(interval);
           return;
         }
@@ -3090,13 +3095,19 @@ export default function App() {
               </div>
             </div>
           </motion.div>
-        )}          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        )}
+      </AnimatePresence>
+
+      {/* EDIT USER MODAL */}
+      <AnimatePresence>
+        {editingUser && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#0A0F1C] rounded-3xl p-8 max-w-md w-full border border-white/10 space-y-6">
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-black text-white uppercase tracking-tighter">Edit User Information</h3>
                 <p className="text-xs text-white/40">Modify user details directly in the database.</p>
               </div>
-              
+
               <form onSubmit={handleEditUser} className="space-y-4">
                 <div className="space-y-1">
                   <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Full Name</p>
@@ -3118,10 +3129,6 @@ export default function App() {
                 <div className="flex gap-2 pt-4">
                   <button type="button" onClick={() => setEditingUser(null)} className="flex-1 bg-white/5 text-white/60 font-bold py-4 rounded-2xl text-sm">CANCEL</button>
                   <button type="submit" className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">SAVE CHANGES</button>
-                </div>
-              </form>
-            </motion.div>
-          </div>VE CHANGES</button>
                 </div>
               </form>
             </motion.div>
