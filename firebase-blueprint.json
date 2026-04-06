@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user profile information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "fullName": { "type": "string" },
+        "dob": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "student"] },
+        "matric": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "ExamQuestion": {
+      "title": "Exam Question",
+      "description": "A single question in the exam pool.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correctAnswer": { "type": "integer" },
+        "explanation": { "type": "string" }
+      },
+      "required": ["question", "options", "correctAnswer"]
+    },
+    "ScoreSheetEntry": {
+      "title": "Score Sheet Entry",
+      "description": "A record of a student's exam result.",
+      "type": "object",
+      "properties": {
+        "matric": { "type": "string" },
+        "name": { "type": "string" },
+        "score": { "type": "integer" },
+        "total": { "type": "integer" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["matric", "name", "score", "total", "timestamp"]
+    },
+    "RegisteredStudent": {
+      "title": "Registered Student",
+      "description": "A student allowed to take the exam.",
+      "type": "object",
+      "properties": {
+        "matric": { "type": "string" },
+        "name": { "type": "string" },
+        "paymentEnabled": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "lastActive": { "type": "integer" }
+      },
+      "required": ["matric", "name"]
+    },
+    "ExamConfig": {
+      "title": "Exam Configuration",
+      "description": "Global settings for the exam.",
+      "type": "object",
+      "properties": {
+        "questionCount": { "type": "integer" },
+        "duration": { "type": "integer" },
+        "price": { "type": "integer" }
+      }
+    },
+    "ChatSession": {
+      "title": "Chat Session",
+      "description": "A single AI chat session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "history": { "type": "array" },
+        "timestamp": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "uid": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "/examQuestions/{questionId}": {
+      "schema": "ExamQuestion",
+      "description": "The pool of exam questions."
+    },
+    "/scoreSheet/{resultId}": {
+      "schema": "ScoreSheetEntry",
+      "description": "Student exam results."
+    },
+    "/registeredStudents/{matric}": {
+      "schema": "RegisteredStudent",
+      "description": "Students allowed to take the exam."
+    },
+    "/config/exam": {
+      "schema": "ExamConfig",
+      "description": "Global exam configuration."
+    },
+    "/users/{uid}/chatSessions/{sessionId}": {
+      "schema": "ChatSession",
+      "description": "User-specific chat history."
+    },
+    "/quizzes/{quizId}": {
+      "schema": "object",
+      "description": "Shared quiz questions."
+    }
+  }
+}
