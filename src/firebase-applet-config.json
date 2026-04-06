@@ -1,10 +1,11 @@
-{
-  "projectId": "gen-lang-client-0216655413",
-  "appId": "1:780956680320:web:9b5d20e4fb6227a1a4a665",
-  "apiKey": 
-  "authDomain": "gen-lang-client-0216655413.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-8970f663-fa3e-4f2c-ace4-27b35d99b0b9",
-  "storageBucket": "gen-lang-client-0216655413.firebasestorage.app",
-  "messagingSenderId": "780956680320",
-  "measurementId": ""
-}
+export const firebaseConfig = {
+  projectId: "gen-lang-client-0216655413",
+  appId: "1:780956680320:web:9b5d20e4fb6227a1a4a665",
+  // This tells the app to look for the key in Render's environment settings
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY, 
+  authDomain: "gen-lang-client-0216655413.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-8970f663-fa3e-4f2c-ace4-27b35d99b0b9",
+  storageBucket: "gen-lang-client-0216655413.firebasestorage.app",
+  messagingSenderId: "780956680320",
+  measurementId: ""
+};
