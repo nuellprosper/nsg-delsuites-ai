@@ -33,12 +33,13 @@ import {
  */
 
 const getApiKey = () => {
-  const key = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
+  // Check for Vite environment variables first, then process.env (for Node/Render), then fallback
+  const key = (import.meta.env?.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : "") || "";
   return key.trim();
 };
 
 const getHfKey = () => {
-  const key = import.meta.env.VITE_HUGGINGFACE_API_KEY || "";
+  const key = (import.meta.env?.VITE_HUGGINGFACE_API_KEY) || (typeof process !== 'undefined' ? process.env.HUGGINGFACE_API_KEY : "") || "";
   return key.trim();
 };
 
@@ -198,6 +199,11 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
 
   useEffect(() => {
     const startLive = async () => {
+      if (!getApiKey()) {
+        setUserNotification("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
+        onClose();
+        return;
+      }
       try {
         const session = await ai.live.connect({
           model: "gemini-3.1-flash-live-preview",
@@ -302,10 +308,14 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
         }
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
       } else {
-        if (!navigator.mediaDevices?.getDisplayMedia) {
+        // Fallback for older browsers or specific iframe restrictions
+        const getDisplayMedia = navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices) || 
+                                (navigator as any).getDisplayMedia?.bind(navigator);
+        
+        if (!getDisplayMedia) {
           throw new Error("Screen sharing is not supported in this browser or environment (try opening in a new tab).");
         }
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        stream = await getDisplayMedia({ video: true });
       }
       
       if (videoRef.current) videoRef.current.srcObject = stream;
@@ -339,7 +349,7 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0A0F1C] p-6 space-y-6">
+    <div className="flex-1 flex flex-col bg-[#0A0F1C] p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex-1 flex gap-6">
         <div className="flex-1 bg-white/5 rounded-3xl border border-white/10 relative overflow-hidden flex flex-col">
           <div className="absolute top-4 left-4 z-10 flex gap-2">
@@ -393,6 +403,9 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
         </button>
         <button onClick={() => toggleVideo('screen')} className={`p-6 rounded-full transition-all shadow-2xl ${videoSource === 'screen' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
           <Monitor size={28} />
+        </button>
+        <button onClick={() => window.open(window.location.href, '_blank')} className="p-6 bg-white/5 text-white/40 rounded-full hover:bg-white/10 transition-all border border-white/10" title="Open in new tab for screen sharing">
+          <Share2 size={28} />
         </button>
         <button onClick={onClose} className="p-6 bg-white/5 text-white/40 rounded-full hover:bg-[#DC2626] hover:text-white transition-all border border-white/10">
           <X size={28} />
@@ -1710,6 +1723,12 @@ export default function App() {
   const handleSendMessage = async (msgOverride?: string) => {
     const textToSend = msgOverride || chatInput;
     if (!textToSend.trim() && uploadedImages.length === 0) return;
+    
+    if (!getApiKey()) {
+      setUserNotification("API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
+      return;
+    }
+
     if (!user) {
       setShowAuthModal(true);
       return;
@@ -1721,6 +1740,11 @@ export default function App() {
     if (isImageRequest && !isPremium) {
       setShowPremiumModal(true);
       setUserNotification("Image generation is a premium feature.");
+      return;
+    }
+
+    if (isImageRequest && !getHfKey()) {
+      setUserNotification("HuggingFace API Key is missing. Please set VITE_HUGGINGFACE_API_KEY in your environment.");
       return;
     }
 
@@ -2136,8 +2160,8 @@ export default function App() {
             <Brain size={22} className="text-[#DC2626]" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter italic leading-none text-white">NSG <span className="text-[#DC2626]">(NUELL STUDY GUIDE)</span></h1>
-            <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 4.0</span>
+            <h1 className="text-sm sm:text-xl font-black tracking-tighter italic leading-none text-white">NSG <span className="text-[#DC2626]">(NUELL STUDY GUIDE)</span></h1>
+            <span className="text-[8px] sm:text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 4.0</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -2352,24 +2376,24 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <button onClick={() => copyToClipboard(analysisResult)} className="flex items-center justify-center gap-2 bg-white/5 text-white/70 py-4 rounded-2xl text-[10px] font-black hover:bg-white/10 transition-all">
-                          <Copy size={16} /> COPY
-                        </button>
-                        <button onClick={() => shareAnalysis(analysisResult || '')} className="flex items-center justify-center gap-2 bg-white/5 text-white/70 py-4 rounded-2xl text-[10px] font-black hover:bg-white/10 transition-all">
-                          <Share2 size={16} /> SHARE
-                        </button>
-                        <button 
-                          onClick={() => {
-                            const newHistory: ChatMessage[] = [...chatHistory, { role: 'model', text: analysisResult, timestamp: new Date().toLocaleTimeString() }];
-                            setChatHistory(newHistory);
-                            setActiveTab('ai');
-                          }} 
-                          className="flex items-center justify-center gap-2 bg-[#DC2626] text-white py-4 rounded-2xl text-[10px] font-black hover:bg-[#DC2626]/90 transition-all shadow-lg shadow-[#DC2626]/20"
-                        >
-                          <Brain size={16} /> CHAT
-                        </button>
-                      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button onClick={() => copyToClipboard(analysisResult)} className="flex items-center justify-center gap-2 bg-white/5 text-white/70 py-4 rounded-2xl text-[10px] font-black hover:bg-white/10 transition-all">
+          <Copy size={16} /> COPY
+        </button>
+        <button onClick={() => shareAnalysis(analysisResult || '')} className="flex items-center justify-center gap-2 bg-white/5 text-white/70 py-4 rounded-2xl text-[10px] font-black hover:bg-white/10 transition-all">
+          <Share2 size={16} /> SHARE
+        </button>
+        <button 
+          onClick={() => {
+            const newHistory: ChatMessage[] = [...chatHistory, { role: 'model', text: analysisResult, timestamp: new Date().toLocaleTimeString() }];
+            setChatHistory(newHistory);
+            setActiveTab('ai');
+          }} 
+          className="flex items-center justify-center gap-2 bg-[#DC2626] text-white py-4 rounded-2xl text-[10px] font-black hover:bg-[#DC2626]/90 transition-all shadow-lg shadow-[#DC2626]/20"
+        >
+          <Brain size={16} /> CHAT
+        </button>
+      </div>
                     </div>
                   </motion.div>
                 )}
@@ -2379,7 +2403,7 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl">
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-180px)] sm:h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl">
               
               {/* Sidebar Drawer */}
               <AnimatePresence>
@@ -2484,7 +2508,7 @@ export default function App() {
                 </div>
 
                 {/* Messages Area */}
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth">
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 scroll-smooth">
                   {chatHistory.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-20">
                       <Brain size={64} />
@@ -2535,7 +2559,7 @@ export default function App() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
+                <div className="p-4 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
                   <div className="max-w-3xl mx-auto space-y-4">
                     {/* Mode Selector */}
                     <div className="flex items-center gap-2 px-2 overflow-x-auto no-scrollbar">
@@ -3079,15 +3103,15 @@ export default function App() {
                         </div>
                       )}
 
-                      <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4 shadow-sm">
+                      <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-3xl space-y-4 shadow-sm">
                         <div className="flex items-center justify-between">
                           <h3 className="font-bold flex items-center gap-2 text-white"><UserPlus size={18} className="text-[#DC2626]" /> Register Students</h3>
                           <button onClick={saveHostedExam} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-500/20">Save Exam Changes</button>
                         </div>
-                        <div className="flex gap-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
                           <input type="text" value={newStudentMatric} onChange={(e) => setNewStudentMatric(e.target.value)} placeholder="Matric Number" className="flex-1 border rounded-xl px-4 py-3 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
                           <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} placeholder="Full Name" className="flex-1 border rounded-xl px-4 py-3 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
-                          <button onClick={addStudent} className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white px-6 rounded-xl text-xs font-black transition-all shadow-lg shadow-[#DC2626]/20 uppercase tracking-widest">ADD</button>
+                          <button onClick={addStudent} className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white px-6 py-3 sm:py-0 rounded-xl text-xs font-black transition-all shadow-lg shadow-[#DC2626]/20 uppercase tracking-widest">ADD</button>
                         </div>
                         
                         <div className="overflow-x-auto max-h-[300px]">
@@ -3116,7 +3140,7 @@ export default function App() {
 
                       <div className="grid md:grid-cols-2 gap-6">
                         {/* Exam Config */}
-                        <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4 shadow-sm">
+                        <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-3xl space-y-4 shadow-sm">
                           <h3 className="font-bold flex items-center gap-2 text-white"><Settings size={18} className="text-[#DC2626]" /> Exam Configuration</h3>
                           <div className="space-y-3">
                             <div>
@@ -3135,7 +3159,7 @@ export default function App() {
                         </div>
 
                         {/* Question Generation */}
-                        <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4 shadow-sm">
+                        <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-3xl space-y-4 shadow-sm">
                           <h3 className="font-bold flex items-center gap-2 text-white"><PlusCircle size={18} className="text-[#DC2626]" /> Question Pool</h3>
                           <textarea value={adminQuestionsRaw} onChange={(e) => setAdminQuestionsRaw(e.target.value)} placeholder="Paste raw text here to generate MCQs..." className="w-full h-32 border rounded-2xl p-4 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
                           <button onClick={generateAdminQuestions} disabled={isGeneratingAdminQuestions} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-3 rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#DC2626]/20 uppercase tracking-widest">
