@@ -1947,7 +1947,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-4xl mx-auto px-4 pt-6">
+      <main className={activeTab === 'ai' ? 'overflow-hidden' : 'max-w-4xl mx-auto px-4 pt-6'}>
         <AnimatePresence mode="wait">
           
           {/* RECORD TAB */}
@@ -2159,7 +2159,7 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl">
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-130px)] bg-[#0A0F1C] overflow-hidden relative">
               
               {/* Sliding Chat Sidebar Drawer (80% width on mobile) */}
               <AnimatePresence>
@@ -2265,7 +2265,7 @@ export default function App() {
               </AnimatePresence>
 
               <div className="flex-1 flex flex-col relative">
-                <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-[#0A0F1C]/80 backdrop-blur-xl z-50">
+                <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between bg-[#0A0F1C]/80 backdrop-blur-xl z-50 flex-shrink-0">
                   <div className="flex items-center gap-4">
                     <button onClick={() => setShowChatSidebar(true)} className="p-3 bg-white/5 rounded-xl text-white/60 hover:text-[#DC2626] transition-all border border-white/10 shadow-xl">
                       <Menu size={20} />
@@ -2293,7 +2293,7 @@ export default function App() {
                   <GeminiLive onClose={() => setIsLiveActive(false)} />
                 ) : (
                   <>
-                    <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth bg-[#0A0F1C] flex flex-col items-center">
+                    <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-6 space-y-6 scroll-smooth bg-[#0A0F1C] flex flex-col items-center">
                       <div className="w-full max-w-3xl space-y-8">
                         {chatHistory.length === 0 && (
                           <div className="py-20 text-center space-y-6">
@@ -2358,7 +2358,7 @@ export default function App() {
                       )}
                     </AnimatePresence>
 
-                    <div className="p-6 bg-[#0A0F1C] border-t border-white/10 flex justify-center">
+                    <div className="p-3 md:p-6 bg-[#0A0F1C] border-t border-white/10 flex justify-center flex-shrink-0">
                       <div className="w-full max-w-3xl space-y-4">
                         {uploadedImages.length > 0 && (
                           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
@@ -2992,31 +2992,35 @@ export default function App() {
       {/* GOD MODE PANEL */}
       <AnimatePresence>
         {showGodMode && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-[200] p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
-            <div className="max-w-7xl mx-auto space-y-8 pb-20">
-              <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
-                    <ShieldCheck size={24} className="text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-3xl font-black text-[#DC2626] uppercase tracking-tighter italic">God Mode</h1>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">Omnipotent User Control</p>
-                  </div>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-[200] flex flex-col bg-[#0A0F1C]/98 backdrop-blur-xl">
+            {/* Fixed Header */}
+            <div className="flex-shrink-0 flex items-center justify-between border-b border-[#DC2626]/20 px-4 py-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
+                  <ShieldCheck size={20} className="text-white" />
                 </div>
-                <div className="flex items-center gap-4">
-                  <AnimatePresence>
-                    {godModeNotification && (
-                      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#DC2626]/20">
-                        {godModeNotification}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  <button onClick={() => setShowGodMode(false)} className="p-3 rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
-                    <XCircle size={24} />
-                  </button>
+                <div>
+                  <h1 className="text-xl font-black text-[#DC2626] uppercase tracking-tighter italic">God Mode</h1>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40">Omnipotent User Control</p>
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+                <AnimatePresence>
+                  {godModeNotification && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-[#DC2626] text-white px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-[#DC2626]/20">
+                      {godModeNotification}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <button onClick={() => setShowGodMode(false)} className="p-2.5 rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
+                  <XCircle size={22} />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-6 pb-24">
+              <div className="max-w-7xl mx-auto space-y-6">
 
               <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -3080,6 +3084,7 @@ export default function App() {
                       ))}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
             </div>
