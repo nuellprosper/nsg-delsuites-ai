@@ -25,11 +25,11 @@ import {
 
 /**
  * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
- * ✅ Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
- * ✅ Admin Backend Control (Score Sheet, Timer Restart, Results Download)
- * ✅ Advanced AI Chat (Copy Response, History Sidebar)
- * ✅ Enhanced Quiz (Customization, Deep Assessment, Report to AI)
- * ✅ Paystack Payment Integration
+ * âœ… Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
+ * âœ… Admin Backend Control (Score Sheet, Timer Restart, Results Download)
+ * âœ… Advanced AI Chat (Copy Response, History Sidebar)
+ * âœ… Enhanced Quiz (Customization, Deep Assessment, Report to AI)
+ * âœ… Paystack Payment Integration
  */
 
 const getApiKey = () => {
@@ -394,21 +394,21 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-6">
-        <button onClick={() => setIsMicOn(!isMicOn)} className={`p-6 rounded-full transition-all shadow-2xl ${isMicOn ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
-          {isMicOn ? <Mic size={28} /> : <Mic size={28} className="opacity-20" />}
+      <div className="flex items-center justify-center gap-3 sm:gap-6">
+        <button onClick={() => setIsMicOn(!isMicOn)} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${isMicOn ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
+          {isMicOn ? <Mic size={20} className="sm:size-[28px]" /> : <Mic size={20} className="sm:size-[28px] opacity-20" />}
         </button>
-        <button onClick={() => toggleVideo('camera')} className={`p-6 rounded-full transition-all shadow-2xl ${videoSource === 'camera' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
-          <Camera size={28} />
+        <button onClick={() => toggleVideo('camera')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'camera' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
+          <Camera size={20} className="sm:size-[28px]" />
         </button>
-        <button onClick={() => toggleVideo('screen')} className={`p-6 rounded-full transition-all shadow-2xl ${videoSource === 'screen' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
-          <Monitor size={28} />
+        <button onClick={() => toggleVideo('screen')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'screen' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
+          <Monitor size={20} className="sm:size-[28px]" />
         </button>
-        <button onClick={() => window.open(window.location.href, '_blank')} className="p-6 bg-white/5 text-white/40 rounded-full hover:bg-white/10 transition-all border border-white/10" title="Open in new tab for screen sharing">
-          <Share2 size={28} />
+        <button onClick={() => window.open(window.location.href, '_blank')} className="p-4 sm:p-6 bg-white/5 text-white/40 rounded-full hover:bg-white/10 transition-all border border-white/10" title="Open in new tab for screen sharing">
+          <Share2 size={20} className="sm:size-[28px]" />
         </button>
-        <button onClick={onClose} className="p-6 bg-white/5 text-white/40 rounded-full hover:bg-[#DC2626] hover:text-white transition-all border border-white/10">
-          <X size={28} />
+        <button onClick={onClose} className="p-4 sm:p-6 bg-white/5 text-white/40 rounded-full hover:bg-[#DC2626] hover:text-white transition-all border border-white/10">
+          <X size={20} className="sm:size-[28px]" />
         </button>
       </div>
     </div>
@@ -416,7 +416,7 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
 };
 
 export default function App() {
-  // --- 🔐 AUTH STATE ---
+  // --- ðŸ” AUTH STATE ---
   const [user, setUser] = useState<any>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [isAdminUser, setIsAdminUser] = useState(false);
@@ -427,7 +427,7 @@ export default function App() {
   const [isTakingPaid, setIsTakingPaid] = useState(false);
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
-  // --- 📱 APP STATE ---
+  // --- ðŸ“± APP STATE ---
   const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam'>('record');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -455,12 +455,12 @@ export default function App() {
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
 
-  // --- 💎 PREMIUM STATE ---
+  // --- ðŸ’Ž PREMIUM STATE ---
   const [isPremium, setIsPremium] = useState(false);
   const [premiumTimeLeft, setPremiumTimeLeft] = useState<string>("");
   const [showPremiumModal, setShowPremiumModal] = useState(false);
 
-  // --- 👑 GOD MODE LOGIC ---
+  // --- ðŸ‘‘ GOD MODE LOGIC ---
   useEffect(() => {
     if (currentUserData) {
       const isGod = currentUserData.bypassAllPayments || currentUserData.bypassTakingPayment || currentUserData.bypassHostingPayment;
@@ -574,7 +574,7 @@ export default function App() {
     }
   };
 
-  // --- 🎙️ RECORDING ENGINE ---
+  // --- ðŸŽ™ï¸ RECORDING ENGINE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -583,10 +583,10 @@ export default function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 📂 MEDIA & UPLOAD ---
+  // --- ðŸ“‚ MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
 
-  // --- 🤖 AI CHAT SYSTEM ---
+  // --- ðŸ¤– AI CHAT SYSTEM ---
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -598,11 +598,11 @@ export default function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInstanceRef = useRef<any>(null);
 
-  // --- 📚 PERSISTENCE ---
+  // --- ðŸ“š PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
-  // --- 📝 QUIZ STATE ---
+  // --- ðŸ“ QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
   const [shareQuizLink, setShareQuizLink] = useState<string | null>(null);
   const [quizDifficulty, setQuizDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | 'Professional'>('Medium');
@@ -615,7 +615,7 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
 
-  // --- 🎓 CBT EXAM STATE ---
+  // --- ðŸŽ“ CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
   const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result'>('login');
@@ -628,7 +628,7 @@ export default function App() {
   const [currentExamIndex, setCurrentExamIndex] = useState(0);
   const examTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 🛠️ ADMIN STATE ---
+  // --- ðŸ› ï¸ ADMIN STATE ---
   const [adminMode, setAdminMode] = useState(false);
   const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
   const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
@@ -655,7 +655,7 @@ export default function App() {
     }
   };
 
-  // --- 💳 PAYSTACK INTEGRATION ---
+  // --- ðŸ’³ PAYSTACK INTEGRATION ---
   const handleSubscriptionSuccess = async (plan: 'monthly' | 'yearly') => {
     if (!user) return;
     const duration = plan === 'monthly' ? 30 : 365;
@@ -704,7 +704,7 @@ export default function App() {
         >
           <motion.div 
             initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-            className="bg-[#0A0F1C] border border-white/10 p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden"
+            className="bg-[#0A0F1C] border border-white/10 p-6 sm:p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden"
           >
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent" />
             <button onClick={() => setShowPremiumModal(false)} className="absolute top-4 right-4 text-white/40 hover:text-yellow-500 transition-colors"><XCircle size={24} /></button>
@@ -759,7 +759,7 @@ export default function App() {
       )}
     </AnimatePresence>
   );
-  // --- 📱 INITIALIZATION & FIREBASE SYNC ---
+  // --- ðŸ“± INITIALIZATION & FIREBASE SYNC ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -907,6 +907,9 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     try {
+      // NOTE: For Google Sign-in to work on your custom domain (nuellstudyguide.name.ng),
+      // you MUST add it to the "Authorized domains" list in your Firebase Console:
+      // Authentication -> Settings -> Authorized domains
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       
@@ -1067,7 +1070,7 @@ export default function App() {
     setUserNotification("Copied to clipboard!");
   };
 
-  // --- 🎓 CBT & ADMIN LOGIC ---
+  // --- ðŸŽ“ CBT & ADMIN LOGIC ---
   const shuffleArray = (array: any[]) => {
     const newArr = [...array];
     for (let i = newArr.length - 1; i > 0; i--) {
@@ -1339,7 +1342,7 @@ export default function App() {
     a.click();
   };
 
-  // --- 💳 PAYSTACK INTEGRATION ---
+  // --- ðŸ’³ PAYSTACK INTEGRATION ---
   const handleExamPaymentSuccess = (reference: any) => {
     setPaymentVerified(true);
     setExamLobbyState('briefing');
@@ -1436,7 +1439,7 @@ export default function App() {
     }
   };
 
-  // --- 🎤 RECORDING LOGIC ---
+  // --- ðŸŽ¤ RECORDING LOGIC ---
   const handleToggleRecording = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
@@ -1476,7 +1479,7 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // --- 🖼️ IMAGE HANDLER ---
+  // --- ðŸ–¼ï¸ IMAGE HANDLER ---
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (uploadedImages.length + files.length > 50) {
@@ -1492,7 +1495,7 @@ export default function App() {
     setUploadedImages([...uploadedImages, ...mapped]);
   };
 
-  // --- 🧠 GEMINI ANALYSIS ---
+  // --- ðŸ§  GEMINI ANALYSIS ---
   const triggerFullAnalysis = async () => {
     if (uploadedImages.length === 0 && !recordedBlob) {
       setUserNotification("No data provided for analysis.");
@@ -1565,7 +1568,7 @@ export default function App() {
       setIsAnalyzing(false);
       setUserNotification("Analysis complete! View it below.");
     } catch (error: any) {
-      console.error('🚨 Gemini Analysis Error:', error);
+      console.error('ðŸš¨ Gemini Analysis Error:', error);
       setUserNotification(`Analysis failed: ${error.message || 'Unknown error'}`);
     } finally {
       setIsAnalyzing(false);
@@ -1673,7 +1676,7 @@ export default function App() {
     }
   };
 
-  // --- 💬 CHAT ROUTING ENGINE ---
+  // --- ðŸ’¬ CHAT ROUTING ENGINE ---
   const [isRecordingChat, setIsRecordingChat] = useState(false);
   const chatMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
@@ -1827,7 +1830,7 @@ export default function App() {
     }
   };
 
-  // --- 📝 QUIZ LOGIC ---
+  // --- ðŸ“ QUIZ LOGIC ---
   const loadSharedQuiz = async (quizId: string) => {
     try {
       const quizDoc = await getDoc(doc(db, 'quizzes', quizId));
@@ -2191,7 +2194,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-4xl mx-auto px-4 pt-6">
+      <main className="max-w-4xl mx-auto px-2 sm:px-4 pt-4 sm:pt-6">
         <AnimatePresence mode="wait">
           
           {/* RECORD TAB */}
@@ -2248,7 +2251,7 @@ export default function App() {
                               {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
                               <div className="flex flex-col overflow-hidden">
                                 <span className="text-[10px] font-bold truncate">{session.title}</span>
-                                <span className="text-[8px] opacity-60">{session.date} • {session.duration}</span>
+                                <span className="text-[8px] opacity-60">{session.date} â€¢ {session.duration}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 transition-opacity">
@@ -2403,7 +2406,7 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-180px)] sm:h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl">
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-150px)] sm:h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-2xl sm:rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0">
               
               {/* Sidebar Drawer */}
               <AnimatePresence>
@@ -2508,7 +2511,7 @@ export default function App() {
                 </div>
 
                 {/* Messages Area */}
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 scroll-smooth">
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-8 scroll-smooth">
                   {chatHistory.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-20">
                       <Brain size={64} />
@@ -2559,8 +2562,8 @@ export default function App() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
-                  <div className="max-w-3xl mx-auto space-y-4">
+                <div className="p-3 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
+                  <div className="max-w-3xl mx-auto space-y-3 sm:space-y-4">
                     {/* Mode Selector */}
                     <div className="flex items-center gap-2 px-2 overflow-x-auto no-scrollbar">
                       {[
@@ -2658,7 +2661,7 @@ export default function App() {
                   <div>
                     <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
                     <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                      {isPremium ? `Active • ${premiumTimeLeft} Remaining` : "Inactive • Upgrade for full access"}
+                      {isPremium ? `Active â€¢ ${premiumTimeLeft} Remaining` : "Inactive â€¢ Upgrade for full access"}
                     </p>
                   </div>
                 </div>
@@ -2683,7 +2686,7 @@ export default function App() {
                           <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
                             {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
                           </div>
-                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration}</p></div>
+                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} â€¢ {session.duration}</p></div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
@@ -2837,7 +2840,7 @@ export default function App() {
               </div>
 
               {examLobbyState === 'login' && (
-                <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
+                <div className="bg-[#0A0F1C] p-5 sm:p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
                   <div className="text-center space-y-2">
                     <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><User size={24} className="text-[#DC2626]" /></div>
                     <h3 className="font-bold text-lg text-white">Student Verification</h3>
@@ -2875,7 +2878,7 @@ export default function App() {
                             </div>
                           ) : (
                             <div className="pt-4 space-y-3 border-t border-white/10">
-                              <p className="text-[10px] text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-white">₦100</span>. Please complete payment to proceed.</p>
+                              <p className="text-[10px] text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-white">â‚¦100</span>. Please complete payment to proceed.</p>
                               <button 
                                 onClick={() => {
                                   if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
@@ -2886,7 +2889,7 @@ export default function App() {
                                 }} 
                                 className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                               >
-                                <CreditCard size={18} /> PAY ₦100 & PROCEED
+                                <CreditCard size={18} /> PAY â‚¦100 & PROCEED
                               </button>
                               <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className="w-full text-[10px] font-black text-white/30 uppercase hover:text-[#DC2626] transition-all">Not you? Switch Account</button>
                             </div>
@@ -2896,7 +2899,7 @@ export default function App() {
                         <div className="space-y-4">
                           <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
                           <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">VERIFY MATRIC</button>
-                          <button onClick={() => setAdminMode(true)} className="w-full bg-white/5 text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-white/10 transition-all">HOST AN EXAM (₦200)</button>
+                          <button onClick={() => setAdminMode(true)} className="w-full bg-white/5 text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-white/10 transition-all">HOST AN EXAM (â‚¦200)</button>
                         </div>
                       )}
                     </div>
@@ -2913,7 +2916,7 @@ export default function App() {
               )}
 
               {examLobbyState === 'briefing' && (
-                <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
+                <div className="bg-[#0A0F1C] p-5 sm:p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
                   <div className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/10">
                     <div className="w-12 h-12 bg-[#DC2626] rounded-full flex items-center justify-center text-white font-black text-xl">{studentName.charAt(0)}</div>
                     <div><p className="font-black text-white uppercase tracking-tighter">{studentName}</p><p className="text-[10px] text-white/40 font-mono">{matricNumber}</p></div>
@@ -2932,18 +2935,18 @@ export default function App() {
               )}
 
               {examLobbyState === 'exam' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between bg-[#0A0F1C] p-4 rounded-2xl border border-white/10 shadow-sm sticky top-20 z-30">
+                <div className="space-y-4 sm:space-y-6">
+                  <div className="flex items-center justify-between bg-[#0A0F1C] p-3 sm:p-4 rounded-2xl border border-white/10 shadow-sm sticky top-16 sm:top-20 z-30">
                     <div className="flex items-center gap-2 text-[#DC2626] font-black">
-                      <Clock size={18} />
-                      <span className="font-mono text-lg">{Math.floor(examTimer / 60)}:{(examTimer % 60).toString().padStart(2, '0')}</span>
+                      <Clock size={16} className="sm:size-[18px]" />
+                      <span className="font-mono text-base sm:text-lg">{Math.floor(examTimer / 60)}:{(examTimer % 60).toString().padStart(2, '0')}</span>
                     </div>
-                    <div className="text-center"><p className="text-[10px] font-black text-white/30 uppercase">Question</p><p className="text-sm font-black text-white">{currentExamIndex + 1} / {examQuestions.length}</p></div>
-                    <button onClick={submitExam} disabled={Object.keys(examAnswers).length < (examQuestions.length * 0.5)} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-30">Submit</button>
+                    <div className="text-center"><p className="text-[8px] sm:text-[10px] font-black text-white/30 uppercase">Question</p><p className="text-xs sm:text-sm font-black text-white">{currentExamIndex + 1} / {examQuestions.length}</p></div>
+                    <button onClick={submitExam} disabled={Object.keys(examAnswers).length < (examQuestions.length * 0.5)} className="bg-[#DC2626] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[8px] sm:text-[10px] font-black uppercase tracking-widest disabled:opacity-30">Submit</button>
                   </div>
 
-                  <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 space-y-8 shadow-sm">
-                    <h3 className="text-lg font-bold leading-tight text-white">{examQuestions[currentExamIndex].question}</h3>
+                  <div className="bg-[#0A0F1C] p-5 sm:p-8 rounded-3xl border border-white/10 space-y-6 sm:space-y-8 shadow-sm">
+                    <h3 className="text-base sm:text-lg font-bold leading-tight text-white">{examQuestions[currentExamIndex].question}</h3>
                     <div className="space-y-3">
                       {examQuestions[currentExamIndex].options.map((option, idx) => (
                         <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}>
@@ -2984,7 +2987,7 @@ export default function App() {
             <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-20">
               <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 shadow-sm space-y-10">
                 <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION — REDEFINING THE STUDENT EXPERIENCE</h2>
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION â€” REDEFINING THE STUDENT EXPERIENCE</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
                     The current state of education requires more than just reading and memorizing; it requires high-level tools that actually work. The primary goal is to become the number one student study application in the country by offering premium, world-class academic services that bridge the gap between local challenges and global standards. The aim is to provide a seamless, high-tech environment where advanced AI tutors and professional testing infrastructures are available to every student at an almost free cost.
                   </p>
@@ -3010,17 +3013,17 @@ export default function App() {
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 3: WHY THIS WILL BE THE #1 STUDY APP</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesn’t just give answers; it provides deep, logical explanations that simplify complex topics.
+                    This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesnâ€™t just give answers; it provides deep, logical explanations that simplify complex topics.
                   </p>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    The testing engine is built for the real world. With features like the 50% Submission Rule—which prevents accidental submission before a student is ready—and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
+                    The testing engine is built for the real world. With features like the 50% Submission Ruleâ€”which prevents accidental submission before a student is readyâ€”and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 4: THE NECESSITY OF SPONSORSHIP</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    To keep these services "almost free" while maintaining world-class quality, a robust support system is essential. The "API Problem" is a constant factor—every time the AI thinks or generates a response, it costs money in global currency. Sponsorship is the bridge that allows these costs to be covered without passing the burden onto the student.
+                    To keep these services "almost free" while maintaining world-class quality, a robust support system is essential. The "API Problem" is a constant factorâ€”every time the AI thinks or generates a response, it costs money in global currency. Sponsorship is the bridge that allows these costs to be covered without passing the burden onto the student.
                   </p>
                   <p className="text-sm text-white/70 leading-relaxed">
                     Support is also needed to fuel the scholarship fund. By partnering with sponsors and stakeholders, the platform can move faster toward the goal of paying tuition for thousands of students. Support isn't just about money; it's about providing the resources and data needed to make the AI smarter for everyone. When a community supports this project, it is investing in a future where financial status no longer limits how far a student can go. This is a collective effort to ensure that the best minds have the best tools to succeed.
@@ -3032,16 +3035,17 @@ export default function App() {
 
           {/* HOST EXAM PANEL (FORMERLY ADMIN) */}
           {adminMode && (
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="fixed inset-0 z-[110] p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
-              <div className="max-w-6xl mx-auto space-y-8 pb-20">
-                <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
-                      <LayoutDashboard size={24} className="text-white" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="fixed inset-0 z-[110] p-3 sm:p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
+              <div className="max-w-6xl mx-auto space-y-4 sm:space-y-8 pb-24">
+                <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-4 sm:pb-6">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#DC2626] rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
+                      <LayoutDashboard size={20} className="text-white sm:hidden" />
+                      <LayoutDashboard size={24} className="text-white hidden sm:block" />
                     </div>
                     <div>
-                      <h1 className="text-3xl font-black text-[#DC2626] uppercase tracking-tighter italic">Host Exam</h1>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">Professional Examination Infrastructure</p>
+                      <h1 className="text-xl sm:text-3xl font-black text-[#DC2626] uppercase tracking-tighter italic">Host Exam</h1>
+                      <p className="text-[8px] sm:text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">Professional Infrastructure</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -3065,7 +3069,7 @@ export default function App() {
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Host Your Own Exam</h2>
-                      <p className="text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">₦200</span> per session.</p>
+                      <p className="text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">â‚¦200</span> per session.</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -3080,7 +3084,7 @@ export default function App() {
                       }} 
                       className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                     >
-                      <CreditCard size={20} /> PAY ₦200 TO START
+                      <CreditCard size={20} /> PAY â‚¦200 TO START
                     </button>
                   </div>
                 ) : (
@@ -3172,12 +3176,12 @@ export default function App() {
 
                     {/* Results & Question Log */}
                     <div className="grid grid-rows-2 gap-4 h-full">
-                      <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4 flex flex-col overflow-hidden shadow-sm">
+                      <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-4 shadow-sm">
                         <div className="flex items-center justify-between">
                           <h3 className="font-bold flex items-center gap-2 text-white"><ListChecks size={18} className="text-[#DC2626]" /> Exam Results</h3>
                           <button onClick={downloadResults} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-all"><FileDown size={20} /></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 max-h-[250px] sm:max-h-none">
                           {scoreSheet.length === 0 ? (
                             <p className="text-[10px] text-center py-10 text-white/20">No results recorded yet</p>
                           ) : (
@@ -3185,7 +3189,7 @@ export default function App() {
                               <div key={i} className="p-3 rounded-xl border flex items-center justify-between group bg-white/5 border-white/5">
                                 <div>
                                   <p className="text-[10px] font-bold text-white">{res.name}</p>
-                                  <p className="text-[8px] font-mono text-white/40">{res.matric} • {res.score}/{res.total}</p>
+                                  <p className="text-[8px] font-mono text-white/40">{res.matric} â€¢ {res.score}/{res.total}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] font-black text-[#DC2626]">{Math.round((res.score/res.total)*100)}%</p>
@@ -3197,9 +3201,9 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4 flex flex-col overflow-hidden shadow-sm">
+                      <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-4 shadow-sm">
                         <h3 className="font-bold flex items-center gap-2 text-white"><FileText size={18} className="text-[#DC2626]" /> Question Log</h3>
-                        <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-2 max-h-[250px] sm:max-h-none">
                           {examQuestions.length === 0 ? (
                             <p className="text-[10px] text-center py-10 text-white/20">No questions in pool</p>
                           ) : (
@@ -3302,7 +3306,7 @@ export default function App() {
                               <div>
                                 <p className="font-bold text-white">{u.fullName || u.displayName || 'Anonymous'}</p>
                                 <p className="text-[8px] font-mono opacity-50">{u.email}</p>
-                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} • {u.dob || 'No DOB'}</p>
+                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} â€¢ {u.dob || 'No DOB'}</p>
                               </div>
                             </div>
                           </td>
@@ -3429,7 +3433,7 @@ export default function App() {
 
                   <div className="mt-10 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
-                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai • {new Date().toLocaleDateString()}</p>
+                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai â€¢ {new Date().toLocaleDateString()}</p>
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
                   </div>
                 </div>
@@ -3449,7 +3453,7 @@ export default function App() {
         <button onClick={() => setLegalPage('about')} className="hover:text-[#DC2626] transition-colors">About Us</button>
         <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
         <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
-        <span>© 2026 Nuell Graphics</span>
+        <span>Â© 2026 Nuell Graphics</span>
       </footer>
     </div>
   );
