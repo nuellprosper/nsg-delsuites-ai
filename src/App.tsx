@@ -428,7 +428,7 @@ export default function App() {
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
   // --- ðŸ“± APP STATE ---
-  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam'>('record');
+  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam' | 'profile'>('record');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -919,13 +919,29 @@ export default function App() {
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           email: user.email,
+          fullName: user.displayName || '',
           displayName: user.displayName,
           photoURL: user.photoURL,
           role: user.email === 'nuellkelechi@gmail.com' ? 'admin' : 'student',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          status: 'active',
+          matric: '',
+          dob: '',
+          bypassHostingPayment: false,
+          bypassTakingPayment: false,
+          bypassAllPayments: false
+        });
+      } else {
+        // Update existing user with Google data if missing
+        const existingData = userDoc.data();
+        await updateDoc(doc(db, 'users', user.uid), {
+          photoURL: existingData.photoURL || user.photoURL,
+          displayName: existingData.displayName || user.displayName,
+          fullName: existingData.fullName || user.displayName
         });
       }
       setShowAuthModal(false);
+      setUserNotification("Logged in with Google!");
     } catch (error) {
       console.error("Login Error:", error);
       setUserNotification("Failed to login with Google.");
@@ -1021,6 +1037,35 @@ export default function App() {
     } finally {
       setIsAuthLoading(false);
     }
+  };
+
+  const handleProfileUpdate = async (updates: any) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), updates);
+      setUserNotification("Profile updated!");
+    } catch (error) {
+      console.error("Profile Update Error:", error);
+      setUserNotification("Failed to update profile.");
+    }
+  };
+
+  const handleProfileImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user || !e.target.files?.[0]) return;
+    const file = e.target.files[0];
+    
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
+      try {
+        await updateDoc(doc(db, 'users', user.uid), { photoURL: base64String });
+        setUserNotification("Profile image updated!");
+      } catch (error) {
+        console.error("Image Upload Error:", error);
+        setUserNotification("Failed to upload image.");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   useEffect(() => {
@@ -2406,7 +2451,7 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-150px)] sm:h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-2xl sm:rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0">
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-140px)] sm:h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-2xl sm:rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0">
               
               {/* Sidebar Drawer */}
               <AnimatePresence>
@@ -2511,35 +2556,35 @@ export default function App() {
                 </div>
 
                 {/* Messages Area */}
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-8 scroll-smooth">
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2 sm:p-6 space-y-3 sm:space-y-8 scroll-smooth">
                   {chatHistory.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-20">
-                      <Brain size={64} />
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4 sm:space-y-6 opacity-20 px-4">
+                      <Brain size={48} className="sm:size-[64px]" />
                       <div>
-                        <h4 className="text-xl font-black uppercase italic tracking-tighter">How can I help you today?</h4>
-                        <p className="text-xs font-bold uppercase tracking-widest mt-2">Omni AI is ready to assist</p>
+                        <h4 className="text-lg sm:text-xl font-black uppercase italic tracking-tighter">How can I help you today?</h4>
+                        <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest mt-1 sm:mt-2">Omni AI is ready to assist</p>
                       </div>
                     </div>
                   ) : (
                     chatHistory.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                          <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${msg.role === 'user' ? 'bg-[#DC2626]' : 'bg-white/10'}`}>
-                            {msg.role === 'user' ? <User size={16} /> : <Brain size={16} className="text-[#DC2626]" />}
+                        <div className={`max-w-[90%] sm:max-w-[85%] flex gap-2 sm:gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${msg.role === 'user' ? 'bg-[#DC2626]' : 'bg-white/10'}`}>
+                            {msg.role === 'user' ? <User size={12} className="sm:size-[16px]" /> : <Brain size={12} className="sm:size-[16px] text-[#DC2626]" />}
                           </div>
-                          <div className={`space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`p-4 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : 'bg-white/5 text-white/90 border border-white/10 rounded-tl-none'}`}>
+                          <div className={`space-y-1 sm:space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            <div className={`p-3 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : 'bg-white/5 text-white/90 border border-white/10 rounded-tl-none'}`}>
                               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
                               {msg.image && (
-                                <div className="mt-4 space-y-3">
+                                <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
                                   <img src={msg.image} alt="Generated" className="rounded-xl border border-white/10 max-w-full h-auto shadow-2xl" />
-                                  <a href={msg.image} download="NSG_Generated_Image.png" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border border-white/10">
-                                    <Download size={14} /> Download Image
+                                  <a href={msg.image} download="NSG_Generated_Image.png" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[8px] sm:text-[10px] font-black uppercase transition-all border border-white/10">
+                                    <Download size={12} className="sm:size-[14px]" /> Download Image
                                   </a>
                                 </div>
                               )}
                             </div>
-                            <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">{msg.timestamp}</span>
+                            <span className="text-[7px] sm:text-[8px] font-bold text-white/20 uppercase tracking-widest">{msg.timestamp}</span>
                           </div>
                         </div>
                       </div>
@@ -2562,10 +2607,10 @@ export default function App() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-3 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
-                  <div className="max-w-3xl mx-auto space-y-3 sm:space-y-4">
+                <div className="p-2 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
+                  <div className="max-w-3xl mx-auto space-y-2 sm:space-y-4">
                     {/* Mode Selector */}
-                    <div className="flex items-center gap-2 px-2 overflow-x-auto no-scrollbar">
+                    <div className="flex items-center gap-1.5 sm:gap-2 px-1 overflow-x-auto no-scrollbar">
                       {[
                         { id: 'General', icon: Brain, label: 'General' },
                         { id: 'Vision', icon: Camera, label: 'Vision' },
@@ -2574,22 +2619,22 @@ export default function App() {
                         <button 
                           key={mode.id}
                           onClick={() => setChatMode(mode.id as any)}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all whitespace-nowrap border ${chatMode === mode.id ? 'bg-[#DC2626] text-white border-[#DC2626]' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
+                          className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-[8px] sm:text-[10px] font-black uppercase transition-all whitespace-nowrap border ${chatMode === mode.id ? 'bg-[#DC2626] text-white border-[#DC2626]' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
                         >
-                          <mode.icon size={14} /> {mode.label}
+                          <mode.icon size={12} className="sm:size-[14px]" /> {mode.label}
                         </button>
                       ))}
                     </div>
 
                     <div className="relative group">
-                      <div className="absolute -inset-1 bg-gradient-to-r from-[#DC2626]/20 to-blue-500/20 rounded-[2rem] blur opacity-0 group-focus-within:opacity-100 transition duration-500" />
-                      <div className="relative flex items-center bg-white/5 border border-white/10 rounded-[2rem] p-2 backdrop-blur-xl focus-within:border-[#DC2626]/50 transition-all">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => isRecordingChat ? stopChatRecording() : startChatRecording()} className={`p-4 rounded-2xl transition-all ${isRecordingChat ? 'bg-[#DC2626] text-white animate-pulse' : 'text-white/40 hover:text-white'}`}>
-                            {isRecordingChat ? <StopCircle size={22} /> : <Mic size={22} />}
+                      <div className="absolute -inset-1 bg-gradient-to-r from-[#DC2626]/20 to-blue-500/20 rounded-2xl sm:rounded-3xl blur opacity-0 group-focus-within:opacity-100 transition duration-500" />
+                      <div className="relative flex items-end bg-white/5 border border-white/10 rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 backdrop-blur-xl focus-within:border-[#DC2626]/50 transition-all">
+                        <div className="flex items-center">
+                          <button onClick={() => isRecordingChat ? stopChatRecording() : startChatRecording()} className={`p-2 sm:p-3 rounded-xl transition-all ${isRecordingChat ? 'bg-[#DC2626] text-white animate-pulse' : 'text-white/40 hover:text-white'}`}>
+                            {isRecordingChat ? <StopCircle size={18} className="sm:size-[22px]" /> : <Mic size={18} className="sm:size-[22px]" />}
                           </button>
-                          <label className="p-4 rounded-2xl text-white/40 hover:text-white cursor-pointer transition-all">
-                            <Upload size={22} />
+                          <label className="p-2 sm:p-3 rounded-xl text-white/40 hover:text-white cursor-pointer transition-all">
+                            <Upload size={18} className="sm:size-[22px]" />
                             <input 
                               type="file" 
                               multiple 
@@ -2609,17 +2654,20 @@ export default function App() {
                             />
                           </label>
                         </div>
-                        <input 
+                        <textarea 
                           value={chatInput} 
                           onChange={(e) => setChatInput(e.target.value)} 
-                          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} 
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                           placeholder={chatMode === 'Vision' ? "Ask about these images..." : chatMode === 'Creative' ? "Describe the image you want to generate..." : "Message Omni AI..."} 
-                          className="flex-1 bg-transparent border-none outline-none px-4 text-sm text-white placeholder:text-white/20" 
+                          className="flex-1 bg-transparent border-none outline-none px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white placeholder:text-white/20 resize-none min-h-[40px] max-h-32" 
                         />
-                        <button onClick={() => handleSendMessage()} className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white p-4 rounded-2xl transition-all shadow-xl shadow-[#DC2626]/20">
-                          <ChevronRight size={22} />
+                        <button onClick={() => handleSendMessage()} className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all shadow-xl shadow-[#DC2626]/20 mb-0.5 sm:mb-1">
+                          <Zap size={18} className="sm:size-[22px]" />
                         </button>
                       </div>
+                    </div>
+                  </div>
+                </div>
 
                       {uploadedImages.length > 0 && (
                         <div className="absolute bottom-full left-0 right-0 mb-4 flex gap-2 p-4 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-x-auto no-scrollbar">
@@ -2638,12 +2686,9 @@ export default function App() {
                       )}
                       
                       <p className="text-[8px] text-center mt-3 text-white/20 font-bold uppercase tracking-widest">Omni AI can make mistakes. Verify important info.</p>
-                    </div>
                   </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
+              </motion.div>
+            )}
 
           {activeTab === 'history' && (
             <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
@@ -2825,6 +2870,147 @@ export default function App() {
                       <Share2 size={18} /> SHARE SCORE CARD
                     </button>
                     <button onClick={() => setQuizState('idle')} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all">TRY ANOTHER TOPIC</button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* PROFILE TAB */}
+          {activeTab === 'profile' && (
+            <motion.div key="profile" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity: 0}} className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter text-white">My Profile</h2>
+                <User size={20} className="text-[#DC2626]" />
+              </div>
+
+              {!user ? (
+                <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 text-center space-y-6">
+                  <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto"><User size={32} className="text-white/20" /></div>
+                  <p className="text-sm text-white/60">Please login to view and edit your profile.</p>
+                  <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-[#DC2626]/20">LOGIN NOW</button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Profile Header Card */}
+                  <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 relative overflow-hidden shadow-sm">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#DC2626]/5 rounded-full translate-x-16 -translate-y-16" />
+                    <div className="flex flex-col items-center text-center relative z-10">
+                      <div className="relative mb-4 group">
+                        <div className="w-24 h-24 rounded-full border-4 border-[#DC2626] overflow-hidden bg-white/5">
+                          {currentUserData?.photoURL ? (
+                            <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white/20 font-black text-3xl">{currentUserData?.fullName?.charAt(0) || user.email?.charAt(0)}</div>
+                          )}
+                        </div>
+                        <label className="absolute bottom-0 right-0 bg-[#DC2626] text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-all">
+                          <Camera size={16} />
+                          <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 200000) { // 200KB limit for Firestore doc safety
+                                setUserNotification("Image too large. Please use an image under 200KB.");
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onloadend = async () => {
+                                const base64 = reader.result as string;
+                                try {
+                                  await updateDoc(doc(db, 'users', user.uid), { photoURL: base64 });
+                                  setUserNotification("Profile picture updated!");
+                                } catch (err) {
+                                  console.error("Update photo error:", err);
+                                  setUserNotification("Failed to update photo.");
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }} />
+                        </label>
+                      </div>
+                      <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic">{currentUserData?.fullName || "Student Name"}</h3>
+                      <p className="text-[10px] font-black text-[#DC2626] uppercase tracking-[0.3em] mt-1">{isAdminUser ? "System Administrator" : "Verified Student"}</p>
+                    </div>
+                  </div>
+
+                  {/* Profile Details Form */}
+                  <div className="bg-[#0A0F1C] p-6 sm:p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Full Name</label>
+                        <input 
+                          type="text" 
+                          value={currentUserData?.fullName || ''} 
+                          onChange={async (e) => {
+                            const val = e.target.value;
+                            setCurrentUserData((prev: any) => ({ ...prev, fullName: val }));
+                          }}
+                          onBlur={async () => {
+                            await updateDoc(doc(db, 'users', user.uid), { fullName: currentUserData.fullName });
+                          }}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Matric Number</label>
+                        <input 
+                          type="text" 
+                          value={currentUserData?.matric || ''} 
+                          onChange={async (e) => {
+                            const val = e.target.value;
+                            setCurrentUserData((prev: any) => ({ ...prev, matric: val }));
+                          }}
+                          onBlur={async () => {
+                            await updateDoc(doc(db, 'users', user.uid), { matric: currentUserData.matric });
+                          }}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Date of Birth</label>
+                        <input 
+                          type="date" 
+                          value={currentUserData?.dob || ''} 
+                          onChange={async (e) => {
+                            const val = e.target.value;
+                            setCurrentUserData((prev: any) => ({ ...prev, dob: val }));
+                          }}
+                          onBlur={async () => {
+                            await updateDoc(doc(db, 'users', user.uid), { dob: currentUserData.dob });
+                          }}
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Email Address</label>
+                        <input 
+                          type="email" 
+                          value={user.email || ''} 
+                          disabled
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white/40 cursor-not-allowed" 
+                        />
+                      </div>
+                    </div>
+                    <div className="pt-4 border-t border-white/5">
+                      <p className="text-[8px] text-white/20 uppercase font-bold text-center">Data is synced in real-time with your secure cloud profile.</p>
+                    </div>
+                  </div>
+
+                  {/* Account Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                      <p className="text-[8px] font-black text-white/30 uppercase mb-1">Lectures</p>
+                      <p className="text-xl font-black text-white">{sessions.length}</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                      <p className="text-[8px] font-black text-white/30 uppercase mb-1">Chats</p>
+                      <p className="text-xl font-black text-white">{chatSessions.length}</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center col-span-2 sm:col-span-1">
+                      <p className="text-[8px] font-black text-white/30 uppercase mb-1">Status</p>
+                      <p className={`text-xl font-black ${isPremium ? 'text-yellow-500' : 'text-white/40'}`}>{isPremium ? 'PREMIUM' : 'FREE'}</p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3033,43 +3219,121 @@ export default function App() {
             </motion.div>
           )}
 
+          {/* PROFILE TAB */}
+          {activeTab === 'profile' && (
+            <motion.div key="profile" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="max-w-2xl mx-auto space-y-6 sm:space-y-8 pb-32 px-2 sm:px-0">
+              <div className="bg-[#0A0F1C] p-6 sm:p-10 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-[#DC2626]/20 to-transparent opacity-50" />
+                
+                <div className="relative flex flex-col items-center text-center space-y-6 sm:space-y-8">
+                  <div className="relative group">
+                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-[#DC2626] overflow-hidden bg-white/5 shadow-2xl shadow-[#DC2626]/20">
+                      {currentUserData?.photoURL ? (
+                        <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white/20"><User size={48} className="sm:size-[64px]" /></div>
+                      )}
+                    </div>
+                    <label className="absolute bottom-0 right-0 p-2 sm:p-3 bg-[#DC2626] text-white rounded-full cursor-pointer shadow-xl hover:scale-110 active:scale-95 transition-all border-2 border-[#0A0F1C]">
+                      <Camera size={16} className="sm:size-[20px]" />
+                      <input type="file" className="hidden" accept="image/*" onChange={handleProfileImageUpload} />
+                    </label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tighter italic">{currentUserData?.displayName || 'Student Name'}</h2>
+                    <p className="text-[10px] sm:text-xs font-bold text-[#DC2626] uppercase tracking-[0.3em]">{currentUserData?.email || 'email@example.com'}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full">
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                      <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Status</p>
+                      <p className={`text-xs font-black uppercase ${isPremium ? 'text-yellow-500' : 'text-white/60'}`}>{isPremium ? 'Premium' : 'Free User'}</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                      <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Joined</p>
+                      <p className="text-xs font-black text-white/60 uppercase">2026</p>
+                    </div>
+                  </div>
+
+                  <div className="w-full space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-white/10">
+                    <div className="space-y-2 text-left">
+                      <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Display Name</label>
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          defaultValue={currentUserData?.displayName || ''} 
+                          onBlur={(e) => handleProfileUpdate({ displayName: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                          placeholder="Enter your name"
+                        />
+                        <Edit3 size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-left">
+                      <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Matric Number (Optional)</label>
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          defaultValue={currentUserData?.matricNumber || ''} 
+                          onBlur={(e) => handleProfileUpdate({ matricNumber: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                          placeholder="e.g. DEL/2024/001"
+                        />
+                        <ShieldCheck size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20" />
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => signOut(auth)}
+                      className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-[#DC2626]/10 text-white/40 hover:text-[#DC2626] py-4 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all border border-white/10 hover:border-[#DC2626]/20"
+                    >
+                      <LogOut size={16} className="sm:size-[18px]" /> LOGOUT FROM ACCOUNT
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* HOST EXAM PANEL (FORMERLY ADMIN) */}
           {adminMode && (
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="fixed inset-0 z-[110] p-3 sm:p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
-              <div className="max-w-6xl mx-auto space-y-4 sm:space-y-8 pb-24">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="fixed inset-0 z-[110] p-2 sm:p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
+              <div className="max-w-6xl mx-auto space-y-4 sm:space-y-8 pb-32">
                 <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-4 sm:pb-6">
-                  <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#DC2626] rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
                       <LayoutDashboard size={20} className="text-white sm:hidden" />
                       <LayoutDashboard size={24} className="text-white hidden sm:block" />
                     </div>
                     <div>
-                      <h1 className="text-xl sm:text-3xl font-black text-[#DC2626] uppercase tracking-tighter italic">Host Exam</h1>
-                      <p className="text-[8px] sm:text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">Professional Infrastructure</p>
+                      <h1 className="text-lg sm:text-3xl font-black text-[#DC2626] uppercase tracking-tighter italic">Host Exam</h1>
+                      <p className="text-[7px] sm:text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">Professional Infrastructure</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
                     <AnimatePresence>
                       {adminNotification && (
-                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#DC2626]/20">
+                        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-[#DC2626] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[8px] sm:text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#DC2626]/20">
                           {adminNotification}
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    <button onClick={() => setAdminMode(false)} className="p-3 rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
-                      <XCircle size={24} />
+                    <button onClick={() => setAdminMode(false)} className="p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
+                      <XCircle size={20} className="sm:size-[24px]" />
                     </button>
                   </div>
                 </div>
 
                 {!isHostPaid ? (
-                  <div className="max-w-md mx-auto py-20 text-center space-y-6">
-                    <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
-                      <ShieldCheck size={40} className="text-[#DC2626]" />
+                  <div className="max-w-md mx-auto py-10 sm:py-20 text-center space-y-6 px-4">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
+                      <ShieldCheck size={32} className="text-[#DC2626] sm:size-[40px]" />
                     </div>
                     <div className="space-y-2">
-                      <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Host Your Own Exam</h2>
-                      <p className="text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">â‚¦200</span> per session.</p>
+                      <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tighter">Host Your Own Exam</h2>
+                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">â‚¦200</span> per session.</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -3082,27 +3346,27 @@ export default function App() {
                           });
                         }
                       }} 
-                      className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
+                      className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 sm:py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                     >
-                      <CreditCard size={20} /> PAY â‚¦200 TO START
+                      <CreditCard size={18} className="sm:size-[20px]" /> PAY â‚¦200 TO START
                     </button>
                   </div>
                 ) : (
-                  <div className="grid lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                     {/* Student Management */}
-                    <div className="lg:col-span-2 space-y-6">
+                    <div className="lg:col-span-2 space-y-4 sm:space-y-6">
                       {hostExamId && (
-                        <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-2xl flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white"><Share2 size={16} /></div>
-                            <div>
-                              <p className="text-[10px] font-black text-green-500 uppercase tracking-widest">Exam Share Link</p>
-                              <p className="text-xs font-mono text-white/60">{window.location.origin}?examId={hostExamId}</p>
+                        <div className="bg-green-500/10 border border-green-500/20 p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full sm:w-auto">
+                            <div className="w-8 h-8 bg-green-500 rounded-lg flex-shrink-0 flex items-center justify-center text-white"><Share2 size={16} /></div>
+                            <div className="overflow-hidden">
+                              <p className="text-[8px] sm:text-[10px] font-black text-green-500 uppercase tracking-widest">Exam Share Link</p>
+                              <p className="text-[10px] sm:text-xs font-mono text-white/60 truncate">{window.location.origin}?examId={hostExamId}</p>
                             </div>
                           </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => copyToClipboard(`${window.location.origin}?examId=${hostExamId}`)} className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all"><Copy size={16} /></button>
-                            <button onClick={() => { setIsHostPaid(false); setHostExamId(''); setRegisteredStudents([]); setExamQuestions([]); }} className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all" title="Host Another"><Plus size={16} /></button>
+                          <div className="flex gap-2 w-full sm:w-auto">
+                            <button onClick={() => copyToClipboard(`${window.location.origin}?examId=${hostExamId}`)} className="flex-1 sm:flex-none p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold"><Copy size={14} /> COPY</button>
+                            <button onClick={() => { setIsHostPaid(false); setHostExamId(''); setRegisteredStudents([]); setExamQuestions([]); }} className="flex-1 sm:flex-none p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all flex items-center justify-center gap-2 text-[10px] font-bold" title="Host Another"><Plus size={14} /> RESET</button>
                           </div>
                         </div>
                       )}
@@ -3231,19 +3495,19 @@ export default function App() {
 
       {/* NAVIGATION */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#0A0F1C]/95 backdrop-blur-xl border-t border-white/10 z-50 shadow-2xl">
-        <div className="flex items-center justify-around py-2 max-w-lg mx-auto">
+        <div className="flex items-center justify-around py-1 sm:py-2 max-w-2xl mx-auto px-2">
           {[
-            { id: 'record', icon: Mic, label: 'Record' },
-            { id: 'ai', icon: Brain, label: 'AI Chat' },
+            { id: 'record', icon: Mic, label: 'Capture' },
+            { id: 'ai', icon: Brain, label: 'Omni AI' },
             { id: 'history', icon: History, label: 'Library' },
             { id: 'quiz', icon: Zap, label: 'Quiz' },
-            { id: 'exam', icon: ListChecks, label: 'Exam' },
-            { id: 'blog', icon: FileText, label: 'Blog' }
+            { id: 'exam', icon: ShieldCheck, label: 'Exam' },
+            { id: 'profile', icon: User, label: 'Profile' }
           ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-col items-center py-2 px-4 transition-all relative ${activeTab === tab.id ? 'text-[#DC2626]' : 'text-white/30 hover:text-[#DC2626]'}`}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-col items-center py-2 px-2 sm:px-4 transition-all relative ${activeTab === tab.id ? 'text-[#DC2626]' : 'text-white/30 hover:text-[#DC2626]'}`}>
               {activeTab === tab.id && <motion.div layoutId="nav-active" className="absolute inset-0 bg-[#DC2626]/5 rounded-2xl -z-10" />}
-              <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
-              <span className="text-[9px] font-black mt-1 uppercase tracking-tighter">{tab.label}</span>
+              <tab.icon size={18} className="sm:size-[22px]" strokeWidth={activeTab === tab.id ? 2.5 : 2} />
+              <span className="text-[7px] sm:text-[9px] font-black mt-1 uppercase tracking-tighter">{tab.label}</span>
             </button>
           ))}
         </div>
