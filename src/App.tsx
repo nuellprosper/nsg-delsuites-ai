@@ -33,9 +33,7 @@ import {
  */
 
 const getApiKey = () => {
-  // Check for Vite environment variables first, then process.env (for Node/Render), then fallback
-  const key = (import.meta.env?.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : "") || "";
-  return key.trim();
+  return import.meta.env.VITE_GEMINI_API_KEY || "";
 };
 
 const getHfKey = () => {
