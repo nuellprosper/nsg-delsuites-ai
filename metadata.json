@@ -1,0 +1,5 @@
+{
+  "name": "NSG (Nuell Study Guide)",
+  "description": "The ultimate AI-powered study companion for lecture capturing, analysis, and interactive quiz generation.",
+  "requestFramePermissions": ["camera", "microphone", "display-capture"]
+}
