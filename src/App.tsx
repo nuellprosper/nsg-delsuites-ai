@@ -45,6 +45,8 @@ const getHfKey = () => {
 const ai = new GoogleGenAI({ apiKey: getApiKey() });
 const hf = new HfInference(getHfKey());
 
+const MODEL_NAME = "gemini-3-flash-preview";
+
 const HF_MODELS = {
   TEXT: "Qwen/Qwen2.5-72B-Instruct",
   VISION: "meta-llama/Llama-3.2-11B-Vision-Instruct",
@@ -64,6 +66,7 @@ interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+  image?: string;
 }
 
 interface ChatSession {
@@ -181,10 +184,11 @@ const BlinkingBrain = ({ size = 24, className = "" }: { size?: number, className
   </motion.div>
 );
 
-const GeminiLive = ({ onClose }: { onClose: () => void }) => {
+const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, setUserNotification: (msg: string | null) => void }) => {
   const [isConnecting, setIsConnecting] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [videoSource, setVideoSource] = useState<'camera' | 'screen' | 'none'>('none');
+  const videoSourceRef = useRef<'camera' | 'screen' | 'none'>('none');
   const [transcript, setTranscript] = useState<string[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -200,17 +204,23 @@ const GeminiLive = ({ onClose }: { onClose: () => void }) => {
           config: {
             responseModalities: [Modality.AUDIO],
             systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, and academic.",
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } }
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
+            inputAudioTranscription: {},
+            outputAudioTranscription: {}
           },
           callbacks: {
             onopen: () => setIsConnecting(false),
             onmessage: async (msg: LiveServerMessage) => {
-              if (msg.serverContent?.modelTurn?.parts?.[0]?.inlineData) {
-                const audioData = msg.serverContent.modelTurn.parts[0].inlineData.data;
+              const serverContent = (msg as any).serverContent;
+              if (serverContent?.modelTurn?.parts?.[0]?.inlineData) {
+                const audioData = serverContent.modelTurn.parts[0].inlineData.data;
                 playAudio(audioData);
               }
-              if (msg.serverContent?.modelTurn?.parts?.[0]?.text) {
-                setTranscript(prev => [...prev, msg.serverContent!.modelTurn!.parts[0].text!]);
+              if (serverContent?.modelTurn?.parts?.[0]?.text) {
+                setTranscript(prev => [...prev, `AI: ${serverContent.modelTurn.parts[0].text!}`]);
+              }
+              if (serverContent?.userTurn?.parts?.[0]?.text) {
+                setTranscript(prev => [...prev, `You: ${serverContent.userTurn.parts[0].text!}`]);
               }
             },
             onerror: (err) => console.error("Live Error:", err),
@@ -277,23 +287,34 @@ const GeminiLive = ({ onClose }: { onClose: () => void }) => {
   };
 
   const toggleVideo = async (type: 'camera' | 'screen') => {
-    if (videoSource === type) {
+    if (videoSourceRef.current === type) {
       setVideoSource('none');
+      videoSourceRef.current = 'none';
       if (videoRef.current) videoRef.current.srcObject = null;
       return;
     }
 
     try {
-      const stream = type === 'camera' 
-        ? await navigator.mediaDevices.getUserMedia({ video: true })
-        : await navigator.mediaDevices.getDisplayMedia({ video: true });
+      let stream: MediaStream;
+      if (type === 'camera') {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Camera is not supported in this browser or environment.");
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } else {
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+          throw new Error("Screen sharing is not supported in this browser or environment (try opening in a new tab).");
+        }
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      }
       
       if (videoRef.current) videoRef.current.srcObject = stream;
       setVideoSource(type);
+      videoSourceRef.current = type;
 
       // 1fps frame capture for 2GB RAM optimization
       const interval = setInterval(() => {
-        if (!videoRef.current?.srcObject || !sessionRef.current || !videoRef.current || !canvasRef.current) {
+        if (videoSourceRef.current === 'none' || !sessionRef.current || !videoRef.current || !canvasRef.current) {
           clearInterval(interval);
           return;
         }
@@ -304,8 +325,16 @@ const GeminiLive = ({ onClose }: { onClose: () => void }) => {
           sessionRef.current.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
         }
       }, 1000);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Video error:", err);
+      const msg = err.message || String(err);
+      if (msg.includes("Permission denied") || msg.includes("NotAllowedError")) {
+        setUserNotification("Permission denied. Please allow camera/screen access in your browser settings.");
+      } else if (msg.includes("getDisplayMedia is not a function")) {
+        setUserNotification("Screen sharing is not supported in this iframe. Please open the app in a new tab.");
+      } else {
+        setUserNotification(`Video error: ${msg}`);
+      }
     }
   };
 
@@ -320,11 +349,22 @@ const GeminiLive = ({ onClose }: { onClose: () => void }) => {
           
           <div className="flex-1 flex items-center justify-center">
             {videoSource === 'none' ? (
-              <div className="text-center space-y-4">
-                <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border border-[#DC2626]/20">
-                  <Activity size={40} className="text-[#DC2626]" />
+              <div className="text-center space-y-8">
+                <motion.div 
+                  animate={{ scale: [1, 1.1, 1], opacity: [0.5, 1, 0.5] }}
+                  transition={{ repeat: Infinity, duration: 2 }}
+                  className="w-32 h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border border-[#DC2626]/20 shadow-[0_0_50px_rgba(220,38,38,0.2)]"
+                >
+                  <Brain size={64} className="text-[#DC2626]" />
+                </motion.div>
+                <div>
+                  <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Omni AI is Listening</p>
+                  <div className="flex gap-1 justify-center mt-4">
+                    {[0, 1, 2].map(i => (
+                      <motion.div key={i} animate={{ height: [4, 16, 4] }} transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }} className="w-1 bg-[#DC2626] rounded-full" />
+                    ))}
+                  </div>
                 </div>
-                <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Awaiting Visual Input</p>
               </div>
             ) : (
               <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
@@ -399,10 +439,19 @@ export default function App() {
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [userNotification, setUserNotification] = useState<string | null>(null);
+  const [adminNotification, setAdminNotification] = useState<string | null>(null);
+
+  // --- 💎 PREMIUM STATE ---
+  const [isPremium, setIsPremium] = useState(false);
+  const [premiumTimeLeft, setPremiumTimeLeft] = useState<string>("");
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   // --- 👑 GOD MODE LOGIC ---
   useEffect(() => {
     if (currentUserData) {
+      const isGod = currentUserData.bypassAllPayments || currentUserData.bypassTakingPayment || currentUserData.bypassHostingPayment;
+      
       if (currentUserData.bypassAllPayments || currentUserData.bypassTakingPayment) {
         setIsTakingPaid(true);
       } else {
@@ -414,9 +463,44 @@ export default function App() {
       } else {
         setIsHostPaid(false);
       }
+
+      // Premium logic
+      if (currentUserData.bypassAllPayments || isGod) {
+        setIsPremium(true);
+        setPremiumTimeLeft("GOD MODE ACTIVE");
+      } else if (currentUserData.premiumUntil) {
+        const until = new Date(currentUserData.premiumUntil).getTime();
+        const now = new Date().getTime();
+        if (until > now) {
+          setIsPremium(true);
+          const updateTimer = () => {
+            const diff = until - new Date().getTime();
+            if (diff <= 0) {
+              setIsPremium(false);
+              setPremiumTimeLeft("");
+              return;
+            }
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            setPremiumTimeLeft(`${days}d ${hours}h ${mins}m`);
+          };
+          updateTimer();
+          const interval = setInterval(updateTimer, 60000);
+          return () => clearInterval(interval);
+        } else {
+          setIsPremium(false);
+          setPremiumTimeLeft("");
+        }
+      } else {
+        setIsPremium(false);
+        setPremiumTimeLeft("");
+      }
     } else {
       setIsTakingPaid(false);
       setIsHostPaid(false);
+      setIsPremium(false);
+      setPremiumTimeLeft("");
     }
   }, [currentUserData]);
 
@@ -559,6 +643,109 @@ export default function App() {
   };
 
   // --- 💳 PAYSTACK INTEGRATION ---
+  const handleSubscriptionSuccess = async (plan: 'monthly' | 'yearly') => {
+    if (!user) return;
+    const duration = plan === 'monthly' ? 30 : 365;
+    const newUntil = new Date();
+    newUntil.setDate(newUntil.getDate() + duration);
+    
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        premiumUntil: newUntil.toISOString()
+      });
+      setUserNotification(`Subscription successful! Premium active until ${newUntil.toLocaleDateString()}`);
+      setShowPremiumModal(false);
+    } catch (error) {
+      console.error("Error updating premium status:", error);
+      setUserNotification("Payment successful, but failed to update status. Contact support.");
+    }
+  };
+
+  const configMonthly = {
+    reference: (new Date()).getTime().toString(),
+    email: user?.email || "user@example.com",
+    amount: 300 * 100, // 300 Naira
+    publicKey: PAYSTACK_PUBLIC_KEY,
+    onSuccess: () => handleSubscriptionSuccess('monthly'),
+    onClose: () => setUserNotification("Payment cancelled.")
+  };
+
+  const configYearly = {
+    reference: (new Date()).getTime().toString(),
+    email: user?.email || "user@example.com",
+    amount: 3600 * 100, // 3600 Naira
+    publicKey: PAYSTACK_PUBLIC_KEY,
+    onSuccess: () => handleSubscriptionSuccess('yearly'),
+    onClose: () => setUserNotification("Payment cancelled.")
+  };
+
+  const initializeMonthly = usePaystackPayment(configMonthly);
+  const initializeYearly = usePaystackPayment(configYearly);
+
+  const PremiumModal = () => (
+    <AnimatePresence>
+      {showPremiumModal && (
+        <motion.div 
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        >
+          <motion.div 
+            initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+            className="bg-[#0A0F1C] border border-white/10 p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent" />
+            <button onClick={() => setShowPremiumModal(false)} className="absolute top-4 right-4 text-white/40 hover:text-yellow-500 transition-colors"><XCircle size={24} /></button>
+            
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-yellow-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Sparkles size={32} className="text-yellow-500" />
+              </div>
+              <h2 className="text-2xl font-black tracking-tighter uppercase italic text-white">Upgrade to Premium</h2>
+              <p className="text-xs text-white/40 mt-1">Unlock all features and remove limitations</p>
+            </div>
+
+            <div className="space-y-4 mb-8">
+              <div className="flex items-center gap-3 text-sm text-white/70">
+                <CheckCircle2 size={18} className="text-green-500" />
+                <span>No Ads & Unlimited Tokens</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-white/70">
+                <CheckCircle2 size={18} className="text-green-500" />
+                <span>Access to all CBT Exams</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-white/70">
+                <CheckCircle2 size={18} className="text-green-500" />
+                <span>Advanced AI Image Generation</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-white/70">
+                <CheckCircle2 size={18} className="text-green-500" />
+                <span>Priority Support</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => initializeMonthly({ onSuccess: () => handleSubscriptionSuccess('monthly'), onClose: () => setUserNotification("Payment cancelled.") })}
+                className="bg-white/5 border border-white/10 p-4 rounded-2xl hover:border-yellow-500/50 transition-all text-center group"
+              >
+                <p className="text-[10px] font-black text-white/40 uppercase mb-1">Monthly</p>
+                <p className="text-xl font-black text-white">N300</p>
+                <p className="text-[8px] font-bold text-yellow-500 uppercase mt-1">Save 0%</p>
+              </button>
+              <button 
+                onClick={() => initializeYearly({ onSuccess: () => handleSubscriptionSuccess('yearly'), onClose: () => setUserNotification("Payment cancelled.") })}
+                className="bg-yellow-500 text-black p-4 rounded-2xl hover:bg-yellow-400 transition-all text-center group"
+              >
+                <p className="text-[10px] font-black text-black/40 uppercase mb-1">Yearly</p>
+                <p className="text-xl font-black text-black">N3,600</p>
+                <p className="text-[8px] font-bold text-black/60 uppercase mt-1">Best Value</p>
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
   // --- 📱 INITIALIZATION & FIREBASE SYNC ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -920,8 +1107,6 @@ export default function App() {
     }
   };
 
-  const [userNotification, setUserNotification] = useState<string | null>(null);
-
   useEffect(() => {
     if (userNotification) {
       const timer = setTimeout(() => setUserNotification(null), 3000);
@@ -1095,15 +1280,6 @@ export default function App() {
     }
   };
 
-  const [adminNotification, setAdminNotification] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (adminNotification) {
-      const timer = setTimeout(() => setAdminNotification(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [adminNotification]);
-
   const restartStudentTimer = (matric: string) => {
     localStorage.removeItem(`nsg_exam_session_${matric}`);
     setRegisteredStudents(prev => prev.map(s => 
@@ -1151,7 +1327,7 @@ export default function App() {
   };
 
   // --- 💳 PAYSTACK INTEGRATION ---
-  const handlePaystackSuccess = (reference: any) => {
+  const handleExamPaymentSuccess = (reference: any) => {
     setPaymentVerified(true);
     setExamLobbyState('briefing');
   };
@@ -1165,7 +1341,7 @@ export default function App() {
     email: user?.email || (matricNumber ? `${matricNumber}@nsg.com` : "nuellkelechi@gmail.com"),
     amount: (adminMode ? 200 : 100) * 100, // 200 for hosting, 100 for taking
     publicKey: PAYSTACK_PUBLIC_KEY,
-    onSuccess: handlePaystackSuccess,
+    onSuccess: handleExamPaymentSuccess,
     onClose: handlePaystackClose
   };
 
@@ -1343,7 +1519,7 @@ export default function App() {
       ` });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: MODEL_NAME,
         contents: [{ parts }]
       });
 
@@ -1485,108 +1661,145 @@ export default function App() {
   };
 
   // --- 💬 CHAT ROUTING ENGINE ---
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() && uploadedImages.length === 0) return;
-    const msg = chatInput;
-    setChatInput('');
+  const [isRecordingChat, setIsRecordingChat] = useState(false);
+  const chatMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
-    const newHistory: ChatMessage[] = [...chatHistory, { role: 'user', text: msg || "Analyze this image", timestamp: new Date().toLocaleTimeString() }];
+  const startChatRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      chatMediaRecorderRef.current = recorder;
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        setIsTyping(true);
+        try {
+          const part = await fileToGenerativePart(blob);
+          const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: [{ parts: [part, { text: "Transcribe this audio exactly. If it's a question, just transcribe it." }] }]
+          });
+          if (response.text) {
+            handleSendMessage(response.text);
+          }
+        } catch (err) {
+          console.error("Voice Chat Error:", err);
+          setUserNotification("Failed to process voice input.");
+        } finally {
+          setIsTyping(false);
+        }
+      };
+
+      recorder.start();
+      setIsRecordingChat(true);
+    } catch (err) {
+      console.error("Mic access error:", err);
+      setUserNotification("Microphone access denied.");
+    }
+  };
+
+  const stopChatRecording = () => {
+    if (chatMediaRecorderRef.current && isRecordingChat) {
+      chatMediaRecorderRef.current.stop();
+      setIsRecordingChat(false);
+    }
+  };
+
+  const handleSendMessage = async (msgOverride?: string) => {
+    const textToSend = msgOverride || chatInput;
+    if (!textToSend.trim() && uploadedImages.length === 0) return;
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    // Check for image generation request
+    const isImageRequest = chatMode === 'Creative' || textToSend.toLowerCase().includes("generate image") || textToSend.toLowerCase().includes("create image") || textToSend.toLowerCase().includes("draw");
+    
+    if (isImageRequest && !isPremium) {
+      setShowPremiumModal(true);
+      setUserNotification("Image generation is a premium feature.");
+      return;
+    }
+
+    const newHistory: ChatMessage[] = [...chatHistory, { 
+      role: 'user', 
+      text: textToSend || "Analyze this image", 
+      timestamp: new Date().toLocaleTimeString() 
+    }];
+    
     setChatHistory(newHistory);
-
+    setChatInput('');
     setIsTyping(true);
+
     try {
       let responseText = "";
-      
-      // 1. Creative Mode (Image Generation)
-      const isCreative = chatMode === 'Creative' || msg.toLowerCase().includes('generate') || msg.toLowerCase().includes('create');
-      
-      if (isCreative && !msg.toLowerCase().includes('text')) {
-        const imageBlob = await hf.textToImage({
-          model: HF_MODELS.IMAGE,
-          inputs: msg,
-        });
-        const reader = new FileReader();
-        reader.readAsDataURL(imageBlob as any);
-        await new Promise(resolve => reader.onload = resolve);
-        const base64Image = reader.result as string;
-        responseText = `![Generated Image](${base64Image})`;
-      } 
-      // 2. Visual Analysis (Vision Mode)
-      else if (uploadedImages.length > 0 || chatMode === 'Vision') {
-        const imageParts = await Promise.all(uploadedImages.map(async (img) => {
-          const compressed = await compressImage(img.file);
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-            reader.readAsDataURL(compressed);
+      let generatedImage = "";
+
+      if (isImageRequest) {
+        try {
+          const imageBlob = await hf.textToImage({
+            model: HF_MODELS.IMAGE,
+            inputs: textToSend,
           });
-          return {
-            type: "image_url",
-            image_url: { url: `data:image/jpeg;base64,${base64}` }
-          };
-        }));
+          const reader = new FileReader();
+          reader.readAsDataURL(imageBlob as any);
+          await new Promise(resolve => reader.onload = resolve);
+          generatedImage = reader.result as string;
+          responseText = "Here is your generated image:";
+        } catch (hfError) {
+          console.error("HF Image Gen Error:", hfError);
+          responseText = "Failed to generate image. Please try again.";
+        }
+      } else {
+        const parts: any[] = [{ text: textToSend || "Analyze this content." }];
+        
+        if (uploadedImages.length > 0) {
+          const imageParts = await Promise.all(
+            uploadedImages.map(img => fileToGenerativePart(img.file))
+          );
+          imageParts.forEach(p => parts.push(p));
+        }
 
-        const response = await hf.chatCompletion({
-          model: HF_MODELS.VISION,
-          messages: [
-            { role: "user", content: [
-              { type: "text", text: msg || "What is in this image?" },
-              ...imageParts as any
-            ]}
-          ],
-          max_tokens: 500,
+        const response = await ai.models.generateContent({
+          model: MODEL_NAME,
+          contents: [{ role: 'user', parts }],
+          config: {
+            systemInstruction: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. Use LaTeX for math."
+          }
         });
-        responseText = response.choices[0].message.content || "I couldn't analyze the image.";
-        setUploadedImages([]);
-      }
-      // 3. Primary Chat (HF Text)
-      else {
-        const response = await hf.chatCompletion({
-          model: HF_MODELS.TEXT,
-          messages: newHistory.map(m => ({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: m.text
-          })),
-          max_tokens: 1000,
-        });
-        responseText = response.choices[0].message.content || "I couldn't process that request.";
+        responseText = response.text || "I'm sorry, I couldn't generate a response.";
       }
 
-      const modelMsg: ChatMessage = { 
+      const updatedHistory: ChatMessage[] = [...newHistory, { 
         role: 'model', 
         text: responseText, 
-        timestamp: new Date().toLocaleTimeString() 
-      };
+        timestamp: new Date().toLocaleTimeString(),
+        ...(generatedImage ? { image: generatedImage } : {})
+      }];
       
-      const finalHistory = [...newHistory, modelMsg];
-      setChatHistory(finalHistory);
-      setAiUsage(prev => Math.max(0, prev - 1));
-      setIsTyping(false);
+      setChatHistory(updatedHistory);
 
-      // Update Session in Firestore
-      if (user && activeChatSessionId) {
-        const session = chatSessions.find(s => s.id === activeChatSessionId);
-        if (session) {
-          let newTitle = session.title;
-          if (session.history.length <= 1) {
-            newTitle = await generateChatTitle(finalHistory);
-          }
-          
-          await updateDoc(doc(db, 'users', user.uid, 'chatSessions', activeChatSessionId), {
-            title: newTitle,
-            history: finalHistory
-          });
-        }
+      if (activeChatSessionId) {
+        await updateDoc(doc(db, 'users', user.uid, 'chatSessions', activeChatSessionId), {
+          history: updatedHistory,
+          timestamp: new Date().toLocaleString()
+        });
       }
-
-    } catch (e: any) {
-      setIsTyping(false);
-      console.error('🚨 AI Routing Error:', e);
+      
+      if (uploadedImages.length > 0) setUploadedImages([]);
+      
+    } catch (error: any) {
+      console.error("Chat Error:", error);
       setChatHistory(prev => [...prev, { 
         role: 'model', 
-        text: `Connection interrupted: ${e.message || 'Unknown error'}. Please check your Hugging Face API key.`,
+        text: `Error: ${error.message || "Failed to connect to AI"}`, 
         timestamp: new Date().toLocaleTimeString() 
       }]);
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -1666,7 +1879,7 @@ export default function App() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: MODEL_NAME,
         contents: [{ parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",
@@ -1710,9 +1923,15 @@ export default function App() {
   };
 
   const sendQuizReportToAI = () => {
-    const report = `I just completed a quiz on ${quizTopic}. Score: ${quizScore}/${quizQuestions.length}. Difficulty: ${quizDifficulty}. Please analyze my performance and provide a study plan based on these results.`;
-    setChatInput(report);
+    const report = `
+      I just completed a quiz on ${quizTopic}.
+      Score: ${quizScore}/${quizQuestions.length}.
+      Difficulty: ${quizDifficulty}.
+      Please analyze my performance and provide a study plan based on these results.
+    `;
+    setChatHistory(prev => [...prev, { role: 'user', text: report, timestamp: new Date().toLocaleTimeString() }]);
     setActiveTab('ai');
+    handleSendMessage();
   };
 
   const handleOptionSelect = (index: number) => {
@@ -1855,6 +2074,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* LEGAL MODAL */}
+      <PremiumModal />
       <AnimatePresence>
         {legalPage && (
           <motion.div 
@@ -1947,7 +2167,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTENT */}
-      <main className={activeTab === 'ai' ? 'overflow-hidden' : 'max-w-4xl mx-auto px-4 pt-6'}>
+      <main className="max-w-4xl mx-auto px-4 pt-6">
         <AnimatePresence mode="wait">
           
           {/* RECORD TAB */}
@@ -2159,249 +2379,241 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-130px)] bg-[#0A0F1C] overflow-hidden relative">
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl">
               
-              {/* Sliding Chat Sidebar Drawer (80% width on mobile) */}
+              {/* Sidebar Drawer */}
               <AnimatePresence>
                 {showChatSidebar && (
                   <>
                     <motion.div 
-                      initial={{ opacity: 0 }} 
-                      animate={{ opacity: 1 }} 
-                      exit={{ opacity: 0 }}
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                       onClick={() => setShowChatSidebar(false)}
                       className="absolute inset-0 bg-black/60 backdrop-blur-md z-[60]"
                     />
                     <motion.div 
-                      initial={{ x: '-100%' }} 
-                      animate={{ x: 0 }} 
-                      exit={{ x: '-100%' }}
+                      initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
                       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                       className="absolute left-0 top-0 bottom-0 w-[80%] max-w-[320px] z-[70] border-r border-white/10 flex flex-col bg-[#0A0F1C] shadow-2xl"
                     >
-                      {/* Sidebar Header: AI Usage */}
                       <div className="p-6 border-b border-white/10">
-                        <div className="bg-white/5 p-4 rounded-2xl border border-white/10 mb-6">
+                        <button onClick={resetChat} className="w-full flex items-center justify-center gap-2 bg-[#DC2626] text-white py-3 rounded-xl text-xs font-black shadow-lg shadow-[#DC2626]/20 mb-6">
+                          <Plus size={18} /> NEW CHAT
+                        </button>
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">AI Usage</span>
-                            <span className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest">{aiUsage}%</span>
+                            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Premium Status</span>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${isPremium ? 'text-yellow-500' : 'text-white/20'}`}>{isPremium ? 'Active' : 'Free'}</span>
                           </div>
                           <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                            <motion.div 
-                              initial={{ width: 0 }} 
-                              animate={{ width: `${aiUsage}%` }} 
-                              className="h-full bg-[#DC2626]" 
-                            />
+                            <motion.div initial={{ width: 0 }} animate={{ width: isPremium ? '100%' : '10%' }} className={`h-full ${isPremium ? 'bg-yellow-500' : 'bg-[#DC2626]'}`} />
                           </div>
-                          <p className="text-[9px] text-white/30 mt-2 font-medium">Premium tokens remaining</p>
                         </div>
-
-                        <button onClick={resetChat} className="w-full flex items-center justify-center gap-3 bg-[#DC2626] text-white py-4 rounded-2xl text-sm font-black shadow-xl shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all">
-                          <Plus size={20} /> NEW CHAT
-                        </button>
                       </div>
-
-                      {/* Sidebar Navigation */}
                       <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest px-4 py-2">Modes</p>
-                        {[
-                          { id: 'General', icon: MessageSquare, label: 'General Chat' },
-                          { id: 'Vision', icon: Camera, label: 'Visual Analysis' },
-                          { id: 'Creative', icon: Sparkles, label: 'Creative Mode' },
-                          { id: 'Live', icon: Activity, label: 'Live Multimodal' }
-                        ].map(mode => (
-                          <button 
-                            key={mode.id}
-                            onClick={() => {
-                              setChatMode(mode.id as any);
-                              if (mode.id === 'Live') setIsLiveActive(true);
-                              else setIsLiveActive(false);
-                              setShowChatSidebar(false);
-                            }}
-                            className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all ${chatMode === mode.id ? 'bg-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/20' : 'text-white/40 hover:bg-white/5'}`}
-                          >
-                            <mode.icon size={20} />
-                            <span className="text-xs font-bold">{mode.label}</span>
-                          </button>
-                        ))}
-
-                        <div className="pt-6">
-                          <p className="text-[10px] font-black text-white/20 uppercase tracking-widest px-4 py-2">History</p>
-                          {chatSessions
-                            .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
-                            .map(session => (
-                            <div key={session.id} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${activeChatSessionId === session.id ? 'bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626]' : 'hover:bg-white/5 text-white/40'}`}>
-                              <div onClick={() => loadChatSession(session.id)} className="flex items-center gap-2 overflow-hidden flex-1">
-                                {session.isPinned ? <Pin size={12} className="text-[#DC2626]" /> : <FileText size={14} className="flex-shrink-0" />}
-                                <span className="text-[10px] font-bold truncate">{session.title}</span>
-                              </div>
-                              <div className="flex items-center gap-1 transition-opacity">
-                                <button onClick={(e) => { e.stopPropagation(); togglePinChatSession(session.id); }} className="p-1.5 hover:text-[#DC2626] bg-white/5 rounded-lg transition-all">
-                                  <Pin size={12} className={session.isPinned ? 'fill-[#DC2626] text-[#DC2626]' : 'text-white/20'} />
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); deleteChatSession(session.id); }} className="p-1.5 hover:text-[#DC2626] bg-white/5 rounded-lg transition-all">
-                                  <Trash2 size={12} className="text-white/20" />
-                                </button>
-                              </div>
+                        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest px-2 mb-2">Recent Conversations</p>
+                        {chatSessions.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)).map(session => (
+                          <div key={session.id} onClick={() => loadChatSession(session.id)} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${activeChatSessionId === session.id ? 'bg-white/5 border border-white/10 text-white' : 'text-white/40 hover:bg-white/5'}`}>
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <MessageSquare size={14} className={`flex-shrink-0 ${session.isPinned ? 'text-yellow-500' : ''}`} />
+                              <span className="text-xs font-bold truncate">{session.title}</span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Sidebar Footer */}
-                      <div className="p-6 border-t border-white/10 space-y-3">
-                        <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/40 hover:bg-white/5 transition-all">
-                          <Settings size={18} />
-                          <span className="text-xs font-bold uppercase tracking-tighter">Settings</span>
-                        </button>
-                        <button onClick={() => setShowChatSidebar(false)} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/40 hover:bg-white/5 transition-all">
-                          <ArrowLeft size={18} />
-                          <span className="text-xs font-bold uppercase tracking-tighter">Return</span>
-                        </button>
+                            <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-all flex-shrink-0">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); togglePinChatSession(session.id); }} 
+                                className={`p-1.5 hover:text-yellow-500 transition-all ${session.isPinned ? 'text-yellow-500' : 'text-white/40'}`}
+                              >
+                                <Pin size={14} />
+                              </button>
+                              <button 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  const newTitle = prompt("Rename chat:", session.title);
+                                  if (newTitle) renameChatSession(session.id, newTitle);
+                                }} 
+                                className="p-1.5 hover:text-blue-500 transition-all text-white/40"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); deleteChatSession(session.id); }} 
+                                className="p-1.5 hover:text-[#DC2626] transition-all text-white/40"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </motion.div>
                   </>
                 )}
               </AnimatePresence>
 
+              {/* Main Chat Area */}
               <div className="flex-1 flex flex-col relative">
-                <div className="px-3 py-3 border-b border-white/10 flex items-center justify-between bg-[#0A0F1C]/80 backdrop-blur-xl z-50 flex-shrink-0">
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => setShowChatSidebar(true)} className="p-3 bg-white/5 rounded-xl text-white/60 hover:text-[#DC2626] transition-all border border-white/10 shadow-xl">
-                      <Menu size={20} />
-                    </button>
-                    <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center border border-[#DC2626]/20">
-                      {isTyping ? <BlinkingBrain size={22} className="text-[#DC2626]" /> : <Brain size={22} className="text-[#DC2626]" />}
-                    </div>
+                <AnimatePresence>
+                  {isLiveActive && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className="absolute inset-0 z-[100] bg-[#0A0F1C]"
+                    >
+                      <GeminiLive onClose={() => setIsLiveActive(false)} setUserNotification={setUserNotification} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {/* Chat Header */}
+                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/20 backdrop-blur-md">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setShowChatSidebar(true)} className="p-2 hover:bg-white/5 rounded-xl transition-all"><Menu size={20} className="text-white/60" /></button>
                     <div>
-                      <p className="font-black text-sm text-white tracking-tight uppercase">Omni Ai <span className="text-[10px] text-[#DC2626] ml-1">PRO</span></p>
-                      <p className="text-[9px] text-white/30 uppercase font-black tracking-widest">{chatMode} Engine Active</p>
+                      <h3 className="text-sm font-black text-white uppercase tracking-tight">Omni AI</h3>
+                      <p className="text-[8px] font-bold text-green-500 uppercase tracking-widest">Neural Engine V4.0</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {chatMode === 'Live' && (
-                      <div className="flex items-center gap-2 bg-[#DC2626]/10 px-3 py-1.5 rounded-full border border-[#DC2626]/20">
-                        <div className="w-2 h-2 bg-[#DC2626] rounded-full animate-pulse" />
-                        <span className="text-[10px] font-black text-[#DC2626] uppercase">Live</span>
-                      </div>
-                    )}
-                    <button onClick={() => setChatHistory([])} className="p-2.5 text-white/20 hover:text-[#DC2626] transition-colors"><Trash2 size={20} /></button>
+                <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setIsLiveActive(true)}
+                      className="flex items-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626]/20 text-[#DC2626] px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all border border-[#DC2626]/20"
+                    >
+                      <Activity size={14} className="animate-pulse" /> LIVE TUTOR
+                    </button>
+                    {isPremium && <div className="bg-yellow-500/10 text-yellow-500 px-2 py-1 rounded-md text-[8px] font-black uppercase border border-yellow-500/20">Premium</div>}
                   </div>
                 </div>
 
-                {isLiveActive ? (
-                  <GeminiLive onClose={() => setIsLiveActive(false)} />
-                ) : (
-                  <>
-                    <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-6 space-y-6 scroll-smooth bg-[#0A0F1C] flex flex-col items-center">
-                      <div className="w-full max-w-3xl space-y-8">
-                        {chatHistory.length === 0 && (
-                          <div className="py-20 text-center space-y-6">
-                            <div className="w-20 h-20 bg-[#DC2626]/10 rounded-3xl flex items-center justify-center mx-auto border border-[#DC2626]/20 shadow-2xl">
-                              <Sparkles size={40} className="text-[#DC2626]" />
-                            </div>
-                            <div>
-                              <h2 className="text-2xl font-black text-white uppercase tracking-tighter">How can I help you today?</h2>
-                              <p className="text-white/30 text-sm mt-2 max-w-md mx-auto">Experience the next generation of academic intelligence with Omni AI's multimodal routing engine.</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto pt-8">
-                              {[
-                                { icon: Cpu, label: 'Solve Complex Equations', desc: 'Step-by-step logic' },
-                                { icon: ImageIcon, label: 'Analyze Diagrams', desc: 'Visual recognition' },
-                                { icon: Zap, label: 'Generate Flashcards', desc: 'Instant active recall' },
-                                { icon: Activity, label: 'Live Tutoring', desc: 'Real-time multimodal' }
-                              ].map((item, i) => (
-                                <button key={i} className="p-5 bg-white/5 border border-white/10 rounded-3xl text-left hover:border-[#DC2626]/50 transition-all group">
-                                  <item.icon size={20} className="text-[#DC2626] mb-3" />
-                                  <p className="text-xs font-black text-white uppercase tracking-tight">{item.label}</p>
-                                  <p className="text-[10px] text-white/30 mt-1">{item.desc}</p>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {chatHistory.map((msg, i) => (
-                          <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] px-6 py-5 rounded-3xl relative group shadow-2xl ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : 'bg-white/5 border border-white/10 rounded-tl-none'}`}>
-                              <div className={`markdown-body ${msg.role === 'user' ? 'text-white' : 'text-white/90'}`}>
-                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
-                              </div>
-                              <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
-                                <p className={`text-[8px] font-black uppercase tracking-widest ${msg.role === 'user' ? 'text-white/60' : 'text-white/20'}`}>{msg.timestamp}</p>
-                                <button onClick={() => copyToClipboard(msg.text)} className={`p-2 rounded-xl transition-all ${msg.role === 'user' ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-white/20 hover:text-[#DC2626] hover:bg-[#DC2626]/5'}`} title="Copy message">
-                                  <Copy size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                        {isTyping && (
-                          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-start items-start gap-4">
-                            <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center flex-shrink-0 mt-1 border border-[#DC2626]/20">
-                              <BlinkingBrain size={20} className="text-[#DC2626]" />
-                            </div>
-                            <div className="bg-white/5 border border-white/10 px-6 py-4 rounded-3xl rounded-tl-none shadow-2xl">
-                              <div className="flex gap-1.5">
-                                <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0 }} className="w-2 h-2 bg-[#DC2626] rounded-full" />
-                                <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-2 h-2 bg-[#DC2626] rounded-full" />
-                                <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-2 h-2 bg-[#DC2626] rounded-full" />
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
+                {/* Messages Area */}
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth">
+                  {chatHistory.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-6 opacity-20">
+                      <Brain size={64} />
+                      <div>
+                        <h4 className="text-xl font-black uppercase italic tracking-tighter">How can I help you today?</h4>
+                        <p className="text-xs font-bold uppercase tracking-widest mt-2">Omni AI is ready to assist</p>
                       </div>
                     </div>
-
-                    <AnimatePresence>
-                      {showScrollButton && (
-                        <motion.button initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} onClick={scrollToBottom} className="absolute bottom-32 right-8 p-4 bg-[#DC2626] text-white rounded-full shadow-2xl z-20 border border-white/10"><ArrowDown size={24} /></motion.button>
-                      )}
-                    </AnimatePresence>
-
-                    <div className="p-3 md:p-6 bg-[#0A0F1C] border-t border-white/10 flex justify-center flex-shrink-0">
-                      <div className="w-full max-w-3xl space-y-4">
-                        {uploadedImages.length > 0 && (
-                          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                            {uploadedImages.map((img) => (
-                              <div key={img.id} className="relative flex-shrink-0 group">
-                                <img src={img.preview} alt="upload" className="w-16 h-16 object-cover rounded-2xl border border-white/10 shadow-xl" />
-                                <button onClick={() => setUploadedImages(prev => prev.filter(i => i.id !== img.id))} className="absolute -top-2 -right-2 bg-[#DC2626] text-white rounded-full p-1.5 shadow-xl opacity-0 group-hover:opacity-100 transition-all"><X size={10} /></button>
-                              </div>
-                            ))}
+                  ) : (
+                    chatHistory.map((msg, i) => (
+                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                          <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${msg.role === 'user' ? 'bg-[#DC2626]' : 'bg-white/10'}`}>
+                            {msg.role === 'user' ? <User size={16} /> : <Brain size={16} className="text-[#DC2626]" />}
                           </div>
-                        )}
-                        <div className="flex gap-3 bg-white/5 p-3 rounded-3xl border border-white/10 shadow-2xl focus-within:border-[#DC2626]/50 transition-all">
-                          <label className="p-3 bg-white/5 rounded-2xl text-white/40 hover:text-[#DC2626] hover:bg-[#DC2626]/10 transition-all cursor-pointer border border-white/10">
-                            <Upload size={20} />
-                            <input type="file" multiple accept="image/*" className="hidden" onChange={handleImages} />
-                          </label>
-                          <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder={`Ask Omni Ai (${chatMode})...`} className="flex-1 bg-transparent border-none outline-none px-4 text-sm text-white placeholder:text-white/20 font-medium" />
-                          <button onClick={handleSendMessage} className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white p-4 rounded-2xl transition-all shadow-xl shadow-[#DC2626]/20 flex items-center justify-center"><ChevronRight size={22} /></button>
+                          <div className={`space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                            <div className={`p-4 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : 'bg-white/5 text-white/90 border border-white/10 rounded-tl-none'}`}>
+                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
+                              {msg.image && (
+                                <div className="mt-4 space-y-3">
+                                  <img src={msg.image} alt="Generated" className="rounded-xl border border-white/10 max-w-full h-auto shadow-2xl" />
+                                  <a href={msg.image} download="NSG_Generated_Image.png" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border border-white/10">
+                                    <Download size={14} /> Download Image
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">{msg.timestamp}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-center gap-6">
-                          {[
-                            { id: 'General', icon: MessageSquare, label: 'Chat' },
-                            { id: 'Vision', icon: Camera, label: 'Vision' },
-                            { id: 'Creative', icon: Sparkles, label: 'Creative' },
-                            { id: 'Live', icon: Activity, label: 'Live' }
-                          ].map(mode => (
-                            <button 
-                              key={mode.id}
-                              onClick={() => {
-                                setChatMode(mode.id as any);
-                                if (mode.id === 'Live') setIsLiveActive(true);
-                              }}
-                              className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${chatMode === mode.id ? 'text-[#DC2626]' : 'text-white/20 hover:text-white/40'}`}
-                            >
-                              <mode.icon size={14} />
-                              {mode.label}
-                            </button>
+                      </div>
+                    ))
+                  )}
+                  {isTyping && (
+                    <div className="flex justify-start">
+                      <div className="flex gap-4">
+                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center"><Brain size={16} className="text-[#DC2626] animate-pulse" /></div>
+                        <div className="bg-white/5 p-4 rounded-2xl rounded-tl-none border border-white/10">
+                          <div className="flex gap-1">
+                            <motion.div animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
+                            <motion.div animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
+                            <motion.div animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Input Area */}
+                <div className="p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
+                  <div className="max-w-3xl mx-auto space-y-4">
+                    {/* Mode Selector */}
+                    <div className="flex items-center gap-2 px-2 overflow-x-auto no-scrollbar">
+                      {[
+                        { id: 'General', icon: Brain, label: 'General' },
+                        { id: 'Vision', icon: Camera, label: 'Vision' },
+                        { id: 'Creative', icon: Sparkles, label: 'Creative' }
+                      ].map(mode => (
+                        <button 
+                          key={mode.id}
+                          onClick={() => setChatMode(mode.id as any)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all whitespace-nowrap border ${chatMode === mode.id ? 'bg-[#DC2626] text-white border-[#DC2626]' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
+                        >
+                          <mode.icon size={14} /> {mode.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-[#DC2626]/20 to-blue-500/20 rounded-[2rem] blur opacity-0 group-focus-within:opacity-100 transition duration-500" />
+                      <div className="relative flex items-center bg-white/5 border border-white/10 rounded-[2rem] p-2 backdrop-blur-xl focus-within:border-[#DC2626]/50 transition-all">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => isRecordingChat ? stopChatRecording() : startChatRecording()} className={`p-4 rounded-2xl transition-all ${isRecordingChat ? 'bg-[#DC2626] text-white animate-pulse' : 'text-white/40 hover:text-white'}`}>
+                            {isRecordingChat ? <StopCircle size={22} /> : <Mic size={22} />}
+                          </button>
+                          <label className="p-4 rounded-2xl text-white/40 hover:text-white cursor-pointer transition-all">
+                            <Upload size={22} />
+                            <input 
+                              type="file" 
+                              multiple 
+                              className="hidden" 
+                              onChange={(e) => {
+                                if (e.target.files) {
+                                  const files = Array.from(e.target.files).map(f => ({
+                                    id: Math.random().toString(36).substr(2, 9),
+                                    file: f,
+                                    preview: URL.createObjectURL(f),
+                                    type: f.type.startsWith('image/') ? 'image' : 'audio'
+                                  }));
+                                  setUploadedImages(prev => [...prev, ...files as any]);
+                                  if (files.some(f => f.type === 'image')) setChatMode('Vision');
+                                }
+                              }} 
+                            />
+                          </label>
+                        </div>
+                        <input 
+                          value={chatInput} 
+                          onChange={(e) => setChatInput(e.target.value)} 
+                          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} 
+                          placeholder={chatMode === 'Vision' ? "Ask about these images..." : chatMode === 'Creative' ? "Describe the image you want to generate..." : "Message Omni AI..."} 
+                          className="flex-1 bg-transparent border-none outline-none px-4 text-sm text-white placeholder:text-white/20" 
+                        />
+                        <button onClick={() => handleSendMessage()} className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white p-4 rounded-2xl transition-all shadow-xl shadow-[#DC2626]/20">
+                          <ChevronRight size={22} />
+                        </button>
+                      </div>
+
+                      {uploadedImages.length > 0 && (
+                        <div className="absolute bottom-full left-0 right-0 mb-4 flex gap-2 p-4 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-x-auto no-scrollbar">
+                          {uploadedImages.map(img => (
+                            <div key={img.id} className="relative group flex-shrink-0">
+                              <img src={img.preview} className="w-16 h-16 object-cover rounded-lg border border-white/20" />
+                              <button 
+                                onClick={() => setUploadedImages(prev => prev.filter(i => i.id !== img.id))}
+                                className="absolute -top-2 -right-2 bg-[#DC2626] text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
                           ))}
                         </div>
-                      </div>
+                      )}
+                      
+                      <p className="text-[8px] text-center mt-3 text-white/20 font-bold uppercase tracking-widest">Omni AI can make mistakes. Verify important info.</p>
                     </div>
-                  </>
-                )}
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -2411,6 +2623,26 @@ export default function App() {
               <div className="flex items-center justify-between px-2">
                 <h2 className="text-xl font-black uppercase tracking-tighter text-white">Library</h2>
                 {selectedSession && <button onClick={() => setSelectedSession(null)} className="text-[#DC2626] text-xs font-bold flex items-center gap-1"><ArrowLeft size={14} /> Back</button>}
+              </div>
+
+              {/* Premium Status Widget */}
+              <div className="bg-gradient-to-br from-yellow-500/20 to-transparent p-6 rounded-3xl border border-yellow-500/20 mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-yellow-500/10 rounded-2xl flex items-center justify-center">
+                    <Sparkles size={24} className="text-yellow-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
+                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                      {isPremium ? `Active • ${premiumTimeLeft} Remaining` : "Inactive • Upgrade for full access"}
+                    </p>
+                  </div>
+                </div>
+                {!isPremium ? (
+                  <button onClick={() => setShowPremiumModal(true)} className="bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20">Upgrade</button>
+                ) : (
+                  <div className="bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-green-500/20">Active</div>
+                )}
               </div>
 
               {!selectedSession ? (
@@ -2992,35 +3224,31 @@ export default function App() {
       {/* GOD MODE PANEL */}
       <AnimatePresence>
         {showGodMode && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-[200] flex flex-col bg-[#0A0F1C]/98 backdrop-blur-xl">
-            {/* Fixed Header */}
-            <div className="flex-shrink-0 flex items-center justify-between border-b border-[#DC2626]/20 px-4 py-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
-                  <ShieldCheck size={20} className="text-white" />
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-[200] p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
+            <div className="max-w-7xl mx-auto space-y-8 pb-20">
+              <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
+                    <ShieldCheck size={24} className="text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-3xl font-black text-[#DC2626] uppercase tracking-tighter italic">God Mode</h1>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">Omnipotent User Control</p>
+                  </div>
                 </div>
-                <div>
-                  <h1 className="text-xl font-black text-[#DC2626] uppercase tracking-tighter italic">God Mode</h1>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40">Omnipotent User Control</p>
+                <div className="flex items-center gap-4">
+                  <AnimatePresence>
+                    {godModeNotification && (
+                      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#DC2626]/20">
+                        {godModeNotification}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <button onClick={() => setShowGodMode(false)} className="p-3 rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
+                    <XCircle size={24} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <AnimatePresence>
-                  {godModeNotification && (
-                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-[#DC2626] text-white px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-[#DC2626]/20">
-                      {godModeNotification}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                <button onClick={() => setShowGodMode(false)} className="p-2.5 rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
-                  <XCircle size={22} />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable Body */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-6 pb-24">
-              <div className="max-w-7xl mx-auto space-y-6">
 
               <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -3085,11 +3313,11 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
-                </div>
               </div>
             </div>
           </motion.div>
         )}
+
         {editingUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#0A0F1C] rounded-3xl p-8 max-w-md w-full border border-white/10 space-y-6">
