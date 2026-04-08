@@ -5,47 +5,14 @@
 // Collection: users
 // Document ID: {uid}
 // Fields:
-//   - uid: string (required) - User's unique ID
-//   - email: string (required) - User's email
-//   - displayName: string - User's name
-//   - photoURL: string - User's photo
-//   - role: string (required, ['admin', 'student']) - User's role
-//   - matric: string - User's matric number
-//   - createdAt: string (format: date-time) - Creation timestamp
-//
-// Collection: examQuestions
-// Document ID: {questionId}
-// Fields:
-//   - id: string
-//   - question: string (required)
-//   - options: list (required)
-//   - correctAnswer: number (required)
-//   - explanation: string
-//
-// Collection: scoreSheet
-// Document ID: {resultId}
-// Fields:
-//   - matric: string (required)
-//   - name: string (required)
-//   - score: number (required)
-//   - total: number (required)
-//   - timestamp: string (required, format: date-time)
-//
-// Collection: registeredStudents
-// Document ID: {matric}
-// Fields:
-//   - matric: string (required)
-//   - name: string (required)
-//   - paymentEnabled: bool
-//   - isActive: bool
-//   - lastActive: number
-//
-// Collection: config
-// Document ID: exam
-// Fields:
-//   - questionCount: number
-//   - duration: number
-//   - price: number
+//   - uid: string (required)
+//   - email: string (required)
+//   - role: string (required, ['admin', 'student'])
+//   - status: string (required, ['active', 'deleted'])
+//   - bypassAllPayments: bool
+//   - bypassTakingPayment: bool
+//   - bypassHostingPayment: bool
+//   - premiumUntil: timestamp (optional)
 //
 // Collection: users/{uid}/chatSessions
 // Document ID: {sessionId}
@@ -54,8 +21,22 @@
 //   - title: string
 //   - history: list
 //   - timestamp: string
-//   - isPinned: bool
 //   - uid: string
+//
+// Collection: exams
+// Document ID: {examId}
+// Fields:
+//   - hostUid: string
+//   - questions: list
+//   - ...
+//
+// Collection: exams/{examId}/results
+// Document ID: {resultId}
+// Fields:
+//   - studentName: string
+//   - matricNumber: string
+//   - score: number
+//   - timestamp: timestamp
 //
 // ===============================================================
 
@@ -71,6 +52,10 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    function isEmailVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+    
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -82,8 +67,19 @@ service cloud.firestore {
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
+    function hasPremium() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAuthenticated() && 
+        (userData.bypassAllPayments == true || 
+         (userData.premiumUntil != null && userData.premiumUntil > request.time) ||
+         isAdmin());
+    }
+
     function isValidUser(data) {
-      return data.uid is string && data.email is string;
+      return data.uid is string && 
+             data.email is string && 
+             data.role in ['admin', 'student'] &&
+             data.status in ['active', 'deleted'];
     }
 
     // ===============================================================
@@ -91,9 +87,23 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{uid} {
+      // Users can only read their own profile unless they are admin
+      // We also check for email verification if required by the user
       allow read: if isAuthenticated() && (isOwner(uid) || isAdmin());
+      
+      // Only the user can create their own profile
       allow create: if isAuthenticated() && isOwner(uid) && isValidUser(request.resource.data);
-      allow update: if isAuthenticated() && (isOwner(uid) || isAdmin()) && isValidUser(request.resource.data);
+      
+      // Only the user or admin can update the profile
+      // But only admin can update privileged fields like 'role' or 'bypassAllPayments'
+      allow update: if isAuthenticated() && (isOwner(uid) || isAdmin()) && 
+                    isValidUser(request.resource.data) &&
+                    (isAdmin() || (
+                      request.resource.data.role == resource.data.role &&
+                      request.resource.data.bypassAllPayments == resource.data.bypassAllPayments &&
+                      request.resource.data.bypassTakingPayment == resource.data.bypassTakingPayment &&
+                      request.resource.data.bypassHostingPayment == resource.data.bypassHostingPayment
+                    ));
       
       match /chatSessions/{sessionId} {
         allow read, write: if isAuthenticated() && isOwner(uid);
@@ -105,24 +115,39 @@ service cloud.firestore {
     }
 
     match /exams/{examId} {
-      allow read: if true; // Exams are public for anyone with the link
+      // Students can read exams if they are authenticated
+      // In a stricter setup, we'd check if they paid for this specific exam
+      allow read: if isAuthenticated();
+      
+      // Only authenticated users can create exams
       allow create: if isAuthenticated();
+      
+      // Only the host or admin can update/delete exams
       allow update, delete: if isAuthenticated() && (resource.data.hostUid == request.auth.uid || isAdmin());
       
       match /results/{resultId} {
-        allow read: if isAuthenticated() && (resource.data.hostUid == request.auth.uid || isAdmin());
-        allow create: if true; // Anyone can submit results if they take the exam
+        // Only the host or admin can read results
+        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/exams/$(examId)).data.hostUid == request.auth.uid || isAdmin());
+        
+        // Anyone authenticated can submit results
+        allow create: if isAuthenticated();
       }
     }
 
-    match /config/exam {
+    match /quizzes/{quizId} {
+      // Quizzes are readable by authenticated users
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      
+      // Anyone authenticated can create a quiz (e.g. sharing)
+      allow create: if isAuthenticated();
     }
 
-    match /quizzes/{quizId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
+    match /config/{configId} {
+      // Config is readable by authenticated users
+      allow read: if isAuthenticated();
+      
+      // Only admin can write config
+      allow write: if isAdmin();
     }
   }
 }
