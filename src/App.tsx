@@ -77,7 +77,7 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3.1-flash-lite-Preview";
+const MODEL_NAME = "gemini-3.1-flash-lite-preview";
 
 const HF_MODELS = {
   TEXT: "Qwen/Qwen2.5-72B-Instruct",
