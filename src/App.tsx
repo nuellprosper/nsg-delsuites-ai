@@ -25,24 +25,16 @@ import {
 
 /**
  * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
- * ✅ Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
- * ✅ Admin Backend Control (Score Sheet, Timer Restart, Results Download)
- * ✅ Advanced AI Chat (Copy Response, History Sidebar)
- * ✅ Enhanced Quiz (Customization, Deep Assessment, Report to AI)
- * ✅ Paystack Payment Integration
+ * âœ… Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
+ * âœ… Admin Backend Control (Score Sheet, Timer Restart, Results Download)
+ * âœ… Advanced AI Chat (Copy Response, History Sidebar)
+ * âœ… Enhanced Quiz (Customization, Deep Assessment, Report to AI)
+ * âœ… Paystack Payment Integration
  */
 
 const getApiKey = () => {
-  // Try Vite env first (for Render/Production)
-  // Then try process.env (for AI Studio/Local Dev)
-  let key = import.meta.env.VITE_GEMINI_API_KEY;
-  
-  if (!key || key === "undefined" || key === "null") {
-    if (typeof process !== 'undefined' && process.env.GEMINI_API_KEY) {
-      key = process.env.GEMINI_API_KEY;
-    }
-  }
-  
+  // Only use Vite env (for Render/Production)
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
   const finalKey = (key || "").trim();
   if (!finalKey) {
     console.warn("Gemini API Key is missing. Ensure VITE_GEMINI_API_KEY is set in your environment.");
@@ -51,12 +43,8 @@ const getApiKey = () => {
 };
 
 const getHfKey = () => {
-  let key = import.meta.env.VITE_HUGGINGFACE_API_KEY;
-  if (!key || key === "undefined" || key === "null") {
-    if (typeof process !== 'undefined' && process.env.HUGGINGFACE_API_KEY) {
-      key = process.env.HUGGINGFACE_API_KEY;
-    }
-  }
+  // Only use Vite env (for Render/Production)
+  const key = import.meta.env.VITE_HUGGINGFACE_API_KEY;
   const finalKey = (key || "").trim();
   if (!finalKey) {
     console.warn("HuggingFace API Key is missing. Ensure VITE_HUGGINGFACE_API_KEY is set in your environment.");
@@ -78,6 +66,14 @@ const getHfInstance = () => {
 };
 
 const MODEL_NAME = "gemini-3.1-flash-lite-preview";
+
+const formatAiError = (error: any) => {
+  const message = error.message || "Unknown error";
+  if (message.toLowerCase().includes("model") || message.includes("404") || message.includes("not found")) {
+    return `Model Error: The selected AI model (${MODEL_NAME}) might be unavailable or retired. Please check the configuration. Original error: ${message}`;
+  }
+  return `AI Error: ${message}`;
+};
 
 const HF_MODELS = {
   TEXT: "Qwen/Qwen2.5-72B-Instruct",
@@ -241,7 +237,7 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
           model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
-            systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, friendly and academic.",
+            systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, and academic.",
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
             inputAudioTranscription: {},
             outputAudioTranscription: {}
@@ -448,7 +444,7 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
 };
 
 export default function App() {
-  // --- 🔐 AUTH STATE ---
+  // --- ðŸ” AUTH STATE ---
   const [user, setUser] = useState<any>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [isAdminUser, setIsAdminUser] = useState(false);
@@ -459,7 +455,7 @@ export default function App() {
   const [isTakingPaid, setIsTakingPaid] = useState(false);
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
-  // --- 📱 APP STATE ---
+  // --- ðŸ“± APP STATE ---
   const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam' | 'profile'>('record');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -487,12 +483,12 @@ export default function App() {
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
 
-  // --- 💎 PREMIUM STATE ---
+  // --- ðŸ’Ž PREMIUM STATE ---
   const [isPremium, setIsPremium] = useState(false);
   const [premiumTimeLeft, setPremiumTimeLeft] = useState<string>("");
   const [showPremiumModal, setShowPremiumModal] = useState(false);
 
-  // --- 👑 GOD MODE LOGIC ---
+  // --- ðŸ‘‘ GOD MODE LOGIC ---
   useEffect(() => {
     if (currentUserData) {
       const isGod = currentUserData.bypassAllPayments || currentUserData.bypassTakingPayment || currentUserData.bypassHostingPayment;
@@ -606,7 +602,7 @@ export default function App() {
     }
   };
 
-  // --- 🎙️ RECORDING ENGINE ---
+  // --- ðŸŽ™ï¸ RECORDING ENGINE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -615,10 +611,10 @@ export default function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 📂 MEDIA & UPLOAD ---
+  // --- ðŸ“‚ MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
 
-  // --- 🤖 AI CHAT SYSTEM ---
+  // --- ðŸ¤– AI CHAT SYSTEM ---
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -630,11 +626,11 @@ export default function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInstanceRef = useRef<any>(null);
 
-  // --- 📚 PERSISTENCE ---
+  // --- ðŸ“š PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
-  // --- 📝 QUIZ STATE ---
+  // --- ðŸ“ QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
   const [shareQuizLink, setShareQuizLink] = useState<string | null>(null);
   const [quizDifficulty, setQuizDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | 'Professional'>('Medium');
@@ -647,7 +643,7 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
 
-  // --- 🎓 CBT EXAM STATE ---
+  // --- ðŸŽ“ CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
   const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result'>('login');
@@ -660,7 +656,7 @@ export default function App() {
   const [currentExamIndex, setCurrentExamIndex] = useState(0);
   const examTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 🛠️ ADMIN STATE ---
+  // --- ðŸ› ï¸ ADMIN STATE ---
   const [adminMode, setAdminMode] = useState(false);
   const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
   const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
@@ -687,7 +683,7 @@ export default function App() {
     }
   };
 
-  // --- 💳 PAYSTACK INTEGRATION ---
+  // --- ðŸ’³ PAYSTACK INTEGRATION ---
   const handleSubscriptionSuccess = async (plan: 'monthly' | 'yearly') => {
     if (!user) return;
     const duration = plan === 'monthly' ? 30 : 365;
@@ -791,7 +787,7 @@ export default function App() {
       )}
     </AnimatePresence>
   );
-  // --- 📱 INITIALIZATION & FIREBASE SYNC ---
+  // --- ðŸ“± INITIALIZATION & FIREBASE SYNC ---
   useEffect(() => {
     console.log("App Initialized. Checking API Keys...");
     console.log("Gemini Key Found:", !!getApiKey());
@@ -1155,7 +1151,7 @@ export default function App() {
     setUserNotification("Copied to clipboard!");
   };
 
-  // --- 🎓 CBT & ADMIN LOGIC ---
+  // --- ðŸŽ“ CBT & ADMIN LOGIC ---
   const shuffleArray = (array: any[]) => {
     const newArr = [...array];
     for (let i = newArr.length - 1; i > 0; i--) {
@@ -1195,7 +1191,7 @@ export default function App() {
       `;
       const aiInstance = getAiInstance();
       const response = await aiInstance.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: MODEL_NAME,
         contents: [{ parts: [{ text: prompt }] }],
         config: { responseMimeType: "application/json" }
       });
@@ -1435,7 +1431,7 @@ export default function App() {
     a.click();
   };
 
-  // --- 💳 PAYSTACK INTEGRATION ---
+  // --- ðŸ’³ PAYSTACK INTEGRATION ---
   const handleExamPaymentSuccess = (reference: any) => {
     setPaymentVerified(true);
     setExamLobbyState('briefing');
@@ -1532,7 +1528,7 @@ export default function App() {
     }
   };
 
-  // --- 🎤 RECORDING LOGIC ---
+  // --- ðŸŽ¤ RECORDING LOGIC ---
   const handleToggleRecording = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
@@ -1572,7 +1568,7 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // --- 🖼️ IMAGE HANDLER ---
+  // --- ðŸ–¼ï¸ IMAGE HANDLER ---
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (uploadedImages.length + files.length > 50) {
@@ -1588,7 +1584,7 @@ export default function App() {
     setUploadedImages([...uploadedImages, ...mapped]);
   };
 
-  // --- 🧠 GEMINI ANALYSIS ---
+  // --- ðŸ§  GEMINI ANALYSIS ---
   const triggerFullAnalysis = async () => {
     if (uploadedImages.length === 0 && !recordedBlob) {
       setUserNotification("No data provided for analysis.");
@@ -1662,7 +1658,7 @@ export default function App() {
       setIsAnalyzing(false);
       setUserNotification("Analysis complete! View it below.");
     } catch (error: any) {
-      console.error('🚨 Gemini Analysis Error:', error);
+      console.error('ðŸš¨ Gemini Analysis Error:', error);
       setUserNotification(`Analysis failed: ${error.message || 'Unknown error'}`);
     } finally {
       setIsAnalyzing(false);
@@ -1675,7 +1671,7 @@ export default function App() {
       const prompt = `Based on this chat history, generate a very short (max 5 words) title for this conversation. Return ONLY the title text. Do not include quotes or any other text.\n\nHistory:\n${history.map(m => `${m.role}: ${m.text}`).join('\n')}`;
       const aiInstance = getAiInstance();
       const response = await aiInstance.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: MODEL_NAME,
         contents: [{ parts: [{ text: prompt }] }]
       });
       return response.text?.trim() || "New Chat Session";
@@ -1771,7 +1767,7 @@ export default function App() {
     }
   };
 
-  // --- 💬 CHAT ROUTING ENGINE ---
+  // --- ðŸ’¬ CHAT ROUTING ENGINE ---
   const [isRecordingChat, setIsRecordingChat] = useState(false);
   const chatMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
@@ -1929,7 +1925,7 @@ export default function App() {
       console.error("Chat Error:", error);
       setChatHistory(prev => [...prev, { 
         role: 'model', 
-        text: `Error: ${error.message || "Failed to connect to AI"}`, 
+        text: formatAiError(error), 
         timestamp: new Date().toLocaleTimeString() 
       }]);
     } finally {
@@ -1937,7 +1933,7 @@ export default function App() {
     }
   };
 
-  // --- 📝 QUIZ LOGIC ---
+  // --- ðŸ“ QUIZ LOGIC ---
   const loadSharedQuiz = async (quizId: string) => {
     try {
       const quizDoc = await getDoc(doc(db, 'quizzes', quizId));
@@ -2057,7 +2053,7 @@ export default function App() {
       }
     } catch (error) {
       console.error("Quiz Generation Error:", error);
-      setUserNotification("Failed to generate quiz. Please try again.");
+      setUserNotification(formatAiError(error));
     } finally {
       setIsGeneratingQuiz(false);
     }
@@ -2386,7 +2382,7 @@ export default function App() {
                               {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
                               <div className="flex flex-col overflow-hidden">
                                 <span className="text-[10px] font-bold truncate">{session.title}</span>
-                                <span className="text-[8px] opacity-60">{session.date} • {session.duration}</span>
+                                <span className="text-[8px] opacity-60">{session.date} â€¢ {session.duration}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 transition-opacity">
@@ -2800,7 +2796,7 @@ export default function App() {
                   <div>
                     <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
                     <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                      {isPremium ? `Active • ${premiumTimeLeft} Remaining` : "Inactive • Upgrade for full access"}
+                      {isPremium ? `Active â€¢ ${premiumTimeLeft} Remaining` : "Inactive â€¢ Upgrade for full access"}
                     </p>
                   </div>
                 </div>
@@ -2825,7 +2821,7 @@ export default function App() {
                           <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
                             {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
                           </div>
-                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration}</p></div>
+                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} â€¢ {session.duration}</p></div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
@@ -3151,7 +3147,7 @@ export default function App() {
                             </div>
                           ) : (
                             <div className="pt-4 space-y-3 border-t border-white/10">
-                              <p className="text-[10px] text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-white">₦100</span>. Please complete payment to proceed.</p>
+                              <p className="text-[10px] text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-white">â‚¦100</span>. Please complete payment to proceed.</p>
                               <button 
                                 onClick={() => {
                                   if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
@@ -3162,7 +3158,7 @@ export default function App() {
                                 }} 
                                 className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                               >
-                                <CreditCard size={18} /> PAY ₦100 & PROCEED
+                                <CreditCard size={18} /> PAY â‚¦100 & PROCEED
                               </button>
                               <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className="w-full text-[10px] font-black text-white/30 uppercase hover:text-[#DC2626] transition-all">Not you? Switch Account</button>
                             </div>
@@ -3172,7 +3168,7 @@ export default function App() {
                         <div className="space-y-4">
                           <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
                           <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">VERIFY MATRIC</button>
-                          <button onClick={() => setAdminMode(true)} className="w-full bg-white/5 text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-white/10 transition-all">HOST AN EXAM (₦200)</button>
+                          <button onClick={() => setAdminMode(true)} className="w-full bg-white/5 text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-white/10 transition-all">HOST AN EXAM (â‚¦200)</button>
                         </div>
                       )}
                     </div>
@@ -3260,7 +3256,7 @@ export default function App() {
             <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-20">
               <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 shadow-sm space-y-10">
                 <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION — REDEFINING THE STUDENT EXPERIENCE</h2>
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION â€” REDEFINING THE STUDENT EXPERIENCE</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
                     The current state of education requires more than just reading and memorizing; it requires high-level tools that actually work. The primary goal is to become the number one student study application in the country by offering premium, world-class academic services that bridge the gap between local challenges and global standards. The aim is to provide a seamless, high-tech environment where advanced AI tutors and professional testing infrastructures are available to every student at an almost free cost.
                   </p>
@@ -3286,17 +3282,17 @@ export default function App() {
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 3: WHY THIS WILL BE THE #1 STUDY APP</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesn’t just give answers; it provides deep, logical explanations that simplify complex topics.
+                    This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesnâ€™t just give answers; it provides deep, logical explanations that simplify complex topics.
                   </p>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    The testing engine is built for the real world. With features like the 50% Submission Rule—which prevents accidental submission before a student is ready—and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
+                    The testing engine is built for the real world. With features like the 50% Submission Ruleâ€”which prevents accidental submission before a student is readyâ€”and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 4: THE NECESSITY OF SPONSORSHIP</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    To keep these services "almost free" while maintaining world-class quality, a robust support system is essential. The "API Problem" is a constant factor—every time the AI thinks or generates a response, it costs money in global currency. Sponsorship is the bridge that allows these costs to be covered without passing the burden onto the student.
+                    To keep these services "almost free" while maintaining world-class quality, a robust support system is essential. The "API Problem" is a constant factorâ€”every time the AI thinks or generates a response, it costs money in global currency. Sponsorship is the bridge that allows these costs to be covered without passing the burden onto the student.
                   </p>
                   <p className="text-sm text-white/70 leading-relaxed">
                     Support is also needed to fuel the scholarship fund. By partnering with sponsors and stakeholders, the platform can move faster toward the goal of paying tuition for thousands of students. Support isn't just about money; it's about providing the resources and data needed to make the AI smarter for everyone. When a community supports this project, it is investing in a future where financial status no longer limits how far a student can go. This is a collective effort to ensure that the best minds have the best tools to succeed.
@@ -3483,7 +3479,7 @@ export default function App() {
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tighter">Host Your Own Exam</h2>
-                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">₦200</span> per session.</p>
+                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">â‚¦200</span> per session.</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -3498,7 +3494,7 @@ export default function App() {
                       }} 
                       className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 sm:py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                     >
-                      <CreditCard size={18} className="sm:size-[20px]" /> PAY ₦200 TO START
+                      <CreditCard size={18} className="sm:size-[20px]" /> PAY â‚¦200 TO START
                     </button>
                   </div>
                 ) : (
@@ -3603,7 +3599,7 @@ export default function App() {
                               <div key={i} className="p-3 rounded-xl border flex items-center justify-between group bg-white/5 border-white/5">
                                 <div>
                                   <p className="text-[10px] font-bold text-white">{res.name}</p>
-                                  <p className="text-[8px] font-mono text-white/40">{res.matric} • {res.score}/{res.total}</p>
+                                  <p className="text-[8px] font-mono text-white/40">{res.matric} â€¢ {res.score}/{res.total}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] font-black text-[#DC2626]">{Math.round((res.score/res.total)*100)}%</p>
@@ -3721,7 +3717,7 @@ export default function App() {
                               <div>
                                 <p className="font-bold text-white">{u.fullName || u.displayName || 'Anonymous'}</p>
                                 <p className="text-[8px] font-mono opacity-50">{u.email}</p>
-                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} • {u.dob || 'No DOB'}</p>
+                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} â€¢ {u.dob || 'No DOB'}</p>
                               </div>
                             </div>
                           </td>
@@ -3848,7 +3844,7 @@ export default function App() {
 
                   <div className="mt-10 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
-                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai • {new Date().toLocaleDateString()}</p>
+                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai â€¢ {new Date().toLocaleDateString()}</p>
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
                   </div>
                 </div>
@@ -3868,7 +3864,7 @@ export default function App() {
         <button onClick={() => setLegalPage('about')} className="hover:text-[#DC2626] transition-colors">About Us</button>
         <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
         <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
-        <span>© 2026 Nuell Graphics</span>
+        <span>Â© 2026 Nuell Graphics</span>
       </footer>
     </div>
   );
