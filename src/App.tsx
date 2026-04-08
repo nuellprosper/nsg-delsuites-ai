@@ -3,7 +3,7 @@ import {
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
-  Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText,
+  Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare
 } from 'lucide-react';
@@ -77,7 +77,7 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3-flash-preview";
+const MODEL_NAME = "gemini-1.5-flash";
 
 const HF_MODELS = {
   TEXT: "Qwen/Qwen2.5-72B-Instruct",
@@ -238,7 +238,7 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
       try {
         const aiInstance = getAiInstance();
         const session = await aiInstance.live.connect({
-          model: "gemini-3.1-flash-live-preview",
+          model: "gemini-2.0-flash-exp",
           config: {
             responseModalities: [Modality.AUDIO],
             systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, and academic.",
@@ -793,6 +793,9 @@ export default function App() {
   );
   // --- 📱 INITIALIZATION & FIREBASE SYNC ---
   useEffect(() => {
+    console.log("App Initialized. Checking API Keys...");
+    console.log("Gemini Key Found:", !!getApiKey());
+    console.log("HF Key Found:", !!getHfKey());
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setIsAuthLoading(false);
@@ -1163,7 +1166,14 @@ export default function App() {
   };
 
   const generateAdminQuestions = async () => {
+    console.log("Starting Admin Question Generation...");
     if (!adminQuestionsRaw.trim()) return;
+    
+    if (!getApiKey()) {
+      setUserNotification("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
+      return;
+    }
+
     setIsGeneratingAdminQuestions(true);
     try {
       const prompt = `
@@ -1185,7 +1195,7 @@ export default function App() {
       `;
       const aiInstance = getAiInstance();
       const response = await aiInstance.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: "gemini-1.5-flash",
         contents: [{ parts: [{ text: prompt }] }],
         config: { responseMimeType: "application/json" }
       });
@@ -1665,7 +1675,7 @@ export default function App() {
       const prompt = `Based on this chat history, generate a very short (max 5 words) title for this conversation. Return ONLY the title text. Do not include quotes or any other text.\n\nHistory:\n${history.map(m => `${m.role}: ${m.text}`).join('\n')}`;
       const aiInstance = getAiInstance();
       const response = await aiInstance.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: "gemini-1.5-flash",
         contents: [{ parts: [{ text: prompt }] }]
       });
       return response.text?.trim() || "New Chat Session";
@@ -1810,6 +1820,7 @@ export default function App() {
   };
 
   const handleSendMessage = async (msgOverride?: string) => {
+    console.log("Handling Send Message...");
     const textToSend = msgOverride || chatInput;
     if (!textToSend.trim() && uploadedImages.length === 0) return;
     
@@ -1972,12 +1983,18 @@ export default function App() {
     }
   };
   const generateQuiz = async () => {
+    console.log("Starting Quiz Generation...");
     if (!user) {
       setShowAuthModal(true);
       return;
     }
     if (!quizTopic.trim()) {
       setUserNotification("Please enter a topic first.");
+      return;
+    }
+
+    if (!getApiKey()) {
+      setUserNotification("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
       return;
     }
 
@@ -2292,6 +2309,27 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main className="max-w-4xl mx-auto px-2 sm:px-4 pt-4 sm:pt-6">
+        {/* Global Notification System */}
+        <AnimatePresence>
+          {userNotification && (
+            <motion.div 
+              initial={{ opacity: 0, y: -50 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              exit={{ opacity: 0, y: -50 }} 
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[1000] w-[90%] max-w-md"
+            >
+              <div className="bg-[#DC2626] text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center justify-between border border-white/20 backdrop-blur-xl">
+                <div className="flex items-center gap-3">
+                  <AlertCircle size={20} />
+                  <p className="text-xs font-black uppercase tracking-tight">{userNotification}</p>
+                </div>
+                <button onClick={() => setUserNotification(null)} className="p-1 hover:bg-white/10 rounded-lg transition-all">
+                  <XCircle size={18} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <AnimatePresence mode="wait">
           
           {/* RECORD TAB */}
@@ -2713,8 +2751,12 @@ export default function App() {
                           placeholder={chatMode === 'Vision' ? "Ask about these images..." : chatMode === 'Creative' ? "Describe the image you want to generate..." : "Message Omni AI..."} 
                           className="flex-1 bg-transparent border-none outline-none px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white placeholder:text-white/20 resize-none min-h-[40px] max-h-32" 
                         />
-                        <button onClick={() => handleSendMessage()} className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all shadow-xl shadow-[#DC2626]/20 mb-0.5 sm:mb-1">
-                          <Zap size={18} className="sm:size-[22px]" />
+                        <button 
+                          onClick={() => handleSendMessage()} 
+                          disabled={isTyping}
+                          className="bg-[#DC2626] hover:bg-[#DC2626]/90 text-white p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all shadow-xl shadow-[#DC2626]/20 mb-0.5 sm:mb-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isTyping ? <RefreshCcw size={18} className="sm:size-[22px] animate-spin" /> : <Zap size={18} className="sm:size-[22px]" />}
                         </button>
                       </div>
                     </div>
@@ -3083,13 +3125,6 @@ export default function App() {
                     <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><User size={24} className="text-[#DC2626]" /></div>
                     <h3 className="font-bold text-lg text-white">Student Verification</h3>
                     <p className="text-xs text-white/40">Enter your credentials to access the examination hall.</p>
-                    <AnimatePresence>
-                      {userNotification && (
-                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="bg-[#DC2626]/10 text-[#DC2626] px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-[#DC2626]/20 mt-2">
-                          {userNotification}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                   </div>
                   {!showAdminLogin ? (
                     <div className="space-y-4">
