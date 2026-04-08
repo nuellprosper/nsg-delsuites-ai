@@ -33,17 +33,49 @@ import {
  */
 
 const getApiKey = () => {
-  const key = import.meta.env.VITE_GEMINI_API_KEY || "";
-  return key.trim();
+  // Try Vite env first (for Render/Production)
+  // Then try process.env (for AI Studio/Local Dev)
+  let key = import.meta.env.VITE_GEMINI_API_KEY;
+  
+  if (!key || key === "undefined" || key === "null") {
+    if (typeof process !== 'undefined' && process.env.GEMINI_API_KEY) {
+      key = process.env.GEMINI_API_KEY;
+    }
+  }
+  
+  const finalKey = (key || "").trim();
+  if (!finalKey) {
+    console.warn("Gemini API Key is missing. Ensure VITE_GEMINI_API_KEY is set in your environment.");
+  }
+  return finalKey;
 };
 
 const getHfKey = () => {
-  const key = import.meta.env.VITE_HUGGINGFACE_API_KEY || "";
-  return key.trim();
+  let key = import.meta.env.VITE_HUGGINGFACE_API_KEY;
+  if (!key || key === "undefined" || key === "null") {
+    if (typeof process !== 'undefined' && process.env.HUGGINGFACE_API_KEY) {
+      key = process.env.HUGGINGFACE_API_KEY;
+    }
+  }
+  const finalKey = (key || "").trim();
+  if (!finalKey) {
+    console.warn("HuggingFace API Key is missing. Ensure VITE_HUGGINGFACE_API_KEY is set in your environment.");
+  }
+  return finalKey;
 };
 
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
-const hf = new HfInference(getHfKey());
+// Lazy initialization helpers with validation
+const getAiInstance = () => {
+  const key = getApiKey();
+  if (!key) throw new Error("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
+  return new GoogleGenAI({ apiKey: key });
+};
+
+const getHfInstance = () => {
+  const key = getHfKey();
+  if (!key) throw new Error("HuggingFace API Key is missing. Please set VITE_HUGGINGFACE_API_KEY in your environment.");
+  return new HfInference(key);
+};
 
 const MODEL_NAME = "gemini-3-flash-preview";
 
@@ -204,7 +236,8 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
         return;
       }
       try {
-        const session = await ai.live.connect({
+        const aiInstance = getAiInstance();
+        const session = await aiInstance.live.connect({
           model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
@@ -1150,7 +1183,8 @@ export default function App() {
         }
         Raw Text: ${adminQuestionsRaw}
       `;
-      const response = await ai.models.generateContent({
+      const aiInstance = getAiInstance();
+      const response = await aiInstance.models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }] }],
         config: { responseMimeType: "application/json" }
@@ -1583,7 +1617,8 @@ export default function App() {
         IMPORTANT: For any mathematical formulas, use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$E=mc^2$$) or single dollar signs for inline (e.g. $x^2$).
       ` });
 
-      const response = await ai.models.generateContent({
+      const aiInstance = getAiInstance();
+      const response = await aiInstance.models.generateContent({
         model: MODEL_NAME,
         contents: [{ parts }]
       });
@@ -1628,7 +1663,8 @@ export default function App() {
     if (history.length < 2) return "New Chat Session";
     try {
       const prompt = `Based on this chat history, generate a very short (max 5 words) title for this conversation. Return ONLY the title text. Do not include quotes or any other text.\n\nHistory:\n${history.map(m => `${m.role}: ${m.text}`).join('\n')}`;
-      const response = await ai.models.generateContent({
+      const aiInstance = getAiInstance();
+      const response = await aiInstance.models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }] }]
       });
@@ -1742,7 +1778,8 @@ export default function App() {
         setIsTyping(true);
         try {
           const part = await fileToGenerativePart(blob);
-          const response = await ai.models.generateContent({
+          const aiInstance = getAiInstance();
+          const response = await aiInstance.models.generateContent({
             model: MODEL_NAME,
             contents: [{ parts: [part, { text: "Transcribe this audio exactly. If it's a question, just transcribe it." }] }]
           });
@@ -1816,7 +1853,8 @@ export default function App() {
 
       if (isImageRequest) {
         try {
-          const imageBlob = await hf.textToImage({
+          const hfInstance = getHfInstance();
+          const imageBlob = await hfInstance.textToImage({
             model: HF_MODELS.IMAGE,
             inputs: textToSend,
           });
@@ -1839,7 +1877,8 @@ export default function App() {
           imageParts.forEach(p => parts.push(p));
         }
 
-        const response = await ai.models.generateContent({
+        const aiInstance = getAiInstance();
+        const response = await aiInstance.models.generateContent({
           model: MODEL_NAME,
           contents: [{ role: 'user', parts }],
           config: {
@@ -1962,7 +2001,8 @@ export default function App() {
         }
       `;
 
-      const response = await ai.models.generateContent({
+      const aiInstance = getAiInstance();
+      const response = await aiInstance.models.generateContent({
         model: MODEL_NAME,
         contents: [{ parts: [{ text: prompt }] }],
         config: {
