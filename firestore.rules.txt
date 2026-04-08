@@ -149,5 +149,10 @@ service cloud.firestore {
       // Only admin can write config
       allow write: if isAdmin();
     }
+
+    match /test/{docId} {
+      // Allow anyone to read for connection testing
+      allow read: if true;
+    }
   }
 }
