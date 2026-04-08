@@ -25,19 +25,20 @@ import {
 
 /**
  * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
- * âœ… Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
- * âœ… Admin Backend Control (Score Sheet, Timer Restart, Results Download)
- * âœ… Advanced AI Chat (Copy Response, History Sidebar)
- * âœ… Enhanced Quiz (Customization, Deep Assessment, Report to AI)
- * âœ… Paystack Payment Integration
+ * ✅ Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
+ * ✅ Admin Backend Control (Score Sheet, Timer Restart, Results Download)
+ * ✅ Advanced AI Chat (Copy Response, History Sidebar)
+ * ✅ Enhanced Quiz (Customization, Deep Assessment, Report to AI)
+ * ✅ Paystack Payment Integration
  */
 
 const getApiKey = () => {
-  return import.meta.env.VITE_GEMINI_API_KEY || "";
+  const key = import.meta.env.VITE_GEMINI_API_KEY || "";
+  return key.trim();
 };
 
 const getHfKey = () => {
-  const key = (import.meta.env?.VITE_HUGGINGFACE_API_KEY) || (typeof process !== 'undefined' ? process.env.HUGGINGFACE_API_KEY : "") || "";
+  const key = import.meta.env.VITE_HUGGINGFACE_API_KEY || "";
   return key.trim();
 };
 
@@ -414,7 +415,7 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
 };
 
 export default function App() {
-  // --- ðŸ” AUTH STATE ---
+  // --- 🔐 AUTH STATE ---
   const [user, setUser] = useState<any>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [isAdminUser, setIsAdminUser] = useState(false);
@@ -425,7 +426,7 @@ export default function App() {
   const [isTakingPaid, setIsTakingPaid] = useState(false);
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
-  // --- ðŸ“± APP STATE ---
+  // --- 📱 APP STATE ---
   const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam' | 'profile'>('record');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -453,12 +454,12 @@ export default function App() {
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
 
-  // --- ðŸ’Ž PREMIUM STATE ---
+  // --- 💎 PREMIUM STATE ---
   const [isPremium, setIsPremium] = useState(false);
   const [premiumTimeLeft, setPremiumTimeLeft] = useState<string>("");
   const [showPremiumModal, setShowPremiumModal] = useState(false);
 
-  // --- ðŸ‘‘ GOD MODE LOGIC ---
+  // --- 👑 GOD MODE LOGIC ---
   useEffect(() => {
     if (currentUserData) {
       const isGod = currentUserData.bypassAllPayments || currentUserData.bypassTakingPayment || currentUserData.bypassHostingPayment;
@@ -572,7 +573,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸŽ™ï¸ RECORDING ENGINE ---
+  // --- 🎙️ RECORDING ENGINE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -581,10 +582,10 @@ export default function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- ðŸ“‚ MEDIA & UPLOAD ---
+  // --- 📂 MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
 
-  // --- ðŸ¤– AI CHAT SYSTEM ---
+  // --- 🤖 AI CHAT SYSTEM ---
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -596,11 +597,11 @@ export default function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInstanceRef = useRef<any>(null);
 
-  // --- ðŸ“š PERSISTENCE ---
+  // --- 📚 PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
-  // --- ðŸ“ QUIZ STATE ---
+  // --- 📝 QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
   const [shareQuizLink, setShareQuizLink] = useState<string | null>(null);
   const [quizDifficulty, setQuizDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | 'Professional'>('Medium');
@@ -613,7 +614,7 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
 
-  // --- ðŸŽ“ CBT EXAM STATE ---
+  // --- 🎓 CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
   const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result'>('login');
@@ -626,7 +627,7 @@ export default function App() {
   const [currentExamIndex, setCurrentExamIndex] = useState(0);
   const examTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- ðŸ› ï¸ ADMIN STATE ---
+  // --- 🛠️ ADMIN STATE ---
   const [adminMode, setAdminMode] = useState(false);
   const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
   const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
@@ -653,7 +654,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸ’³ PAYSTACK INTEGRATION ---
+  // --- 💳 PAYSTACK INTEGRATION ---
   const handleSubscriptionSuccess = async (plan: 'monthly' | 'yearly') => {
     if (!user) return;
     const duration = plan === 'monthly' ? 30 : 365;
@@ -757,7 +758,7 @@ export default function App() {
       )}
     </AnimatePresence>
   );
-  // --- ðŸ“± INITIALIZATION & FIREBASE SYNC ---
+  // --- 📱 INITIALIZATION & FIREBASE SYNC ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -774,15 +775,13 @@ export default function App() {
             
             if (data.status === 'deleted') {
               if (currentUser.email === "nuellkelechi@gmail.com") {
-                // Self-repair: Reactivate God Mode account if mistakenly deactivated
                 updateDoc(userDocRef, { status: 'active' });
                 return;
               }
               signOut(auth);
-              setUserNotification("Your account has been deactivated. Contact support.");
+              setUserNotification("Your account has been deactivated.");
             }
           } else {
-            // Create user if not exists
             const isDefaultAdmin = currentUser.email === "nuellkelechi@gmail.com";
             const userData = {
               uid: currentUser.uid,
@@ -798,6 +797,10 @@ export default function App() {
             };
             setDoc(userDocRef, userData);
           }
+          setIsAuthLoading(false);
+        }, (error) => {
+          console.error("Auth Snapshot Error:", error);
+          setIsAuthLoading(false);
         });
 
         return () => unsubscribeUser();
@@ -974,7 +977,10 @@ export default function App() {
           bypassAllPayments: false
         });
         
-        setUserNotification("Account created successfully!");
+        const { sendEmailVerification } = await import('firebase/auth');
+        await sendEmailVerification(newUser);
+        
+        setUserNotification("Account created! Verification link sent to your email.");
       } else {
         let loginEmail = authEmail;
         
@@ -1113,7 +1119,7 @@ export default function App() {
     setUserNotification("Copied to clipboard!");
   };
 
-  // --- ðŸŽ“ CBT & ADMIN LOGIC ---
+  // --- 🎓 CBT & ADMIN LOGIC ---
   const shuffleArray = (array: any[]) => {
     const newArr = [...array];
     for (let i = newArr.length - 1; i > 0; i--) {
@@ -1385,7 +1391,7 @@ export default function App() {
     a.click();
   };
 
-  // --- ðŸ’³ PAYSTACK INTEGRATION ---
+  // --- 💳 PAYSTACK INTEGRATION ---
   const handleExamPaymentSuccess = (reference: any) => {
     setPaymentVerified(true);
     setExamLobbyState('briefing');
@@ -1482,7 +1488,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸŽ¤ RECORDING LOGIC ---
+  // --- 🎤 RECORDING LOGIC ---
   const handleToggleRecording = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
@@ -1522,7 +1528,7 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // --- ðŸ–¼ï¸ IMAGE HANDLER ---
+  // --- 🖼️ IMAGE HANDLER ---
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (uploadedImages.length + files.length > 50) {
@@ -1538,7 +1544,7 @@ export default function App() {
     setUploadedImages([...uploadedImages, ...mapped]);
   };
 
-  // --- ðŸ§  GEMINI ANALYSIS ---
+  // --- 🧠 GEMINI ANALYSIS ---
   const triggerFullAnalysis = async () => {
     if (uploadedImages.length === 0 && !recordedBlob) {
       setUserNotification("No data provided for analysis.");
@@ -1611,7 +1617,7 @@ export default function App() {
       setIsAnalyzing(false);
       setUserNotification("Analysis complete! View it below.");
     } catch (error: any) {
-      console.error('ðŸš¨ Gemini Analysis Error:', error);
+      console.error('🚨 Gemini Analysis Error:', error);
       setUserNotification(`Analysis failed: ${error.message || 'Unknown error'}`);
     } finally {
       setIsAnalyzing(false);
@@ -1719,7 +1725,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸ’¬ CHAT ROUTING ENGINE ---
+  // --- 💬 CHAT ROUTING ENGINE ---
   const [isRecordingChat, setIsRecordingChat] = useState(false);
   const chatMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
@@ -1852,11 +1858,19 @@ export default function App() {
       
       setChatHistory(updatedHistory);
 
-      if (activeChatSessionId) {
-        await updateDoc(doc(db, 'users', user.uid, 'chatSessions', activeChatSessionId), {
+      if (user) {
+        const sessionId = activeChatSessionId || Date.now().toString();
+        if (!activeChatSessionId) setActiveChatSessionId(sessionId);
+
+        const sessionRef = doc(db, 'users', user.uid, 'chatSessions', sessionId);
+        
+        await setDoc(sessionRef, {
+          id: sessionId,
+          title: updatedHistory.length > 2 ? "Conversation" : "New Conversation",
           history: updatedHistory,
-          timestamp: new Date().toLocaleString()
-        });
+          timestamp: new Date().toLocaleString(),
+          uid: user.uid
+        }, { merge: true });
       }
       
       if (uploadedImages.length > 0) setUploadedImages([]);
@@ -1873,7 +1887,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸ“ QUIZ LOGIC ---
+  // --- 📝 QUIZ LOGIC ---
   const loadSharedQuiz = async (quizId: string) => {
     try {
       const quizDoc = await getDoc(doc(db, 'quizzes', quizId));
@@ -2294,7 +2308,7 @@ export default function App() {
                               {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
                               <div className="flex flex-col overflow-hidden">
                                 <span className="text-[10px] font-bold truncate">{session.title}</span>
-                                <span className="text-[8px] opacity-60">{session.date} â€¢ {session.duration}</span>
+                                <span className="text-[8px] opacity-60">{session.date} • {session.duration}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 transition-opacity">
@@ -2691,7 +2705,7 @@ export default function App() {
           {activeTab === 'history' && (
             <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
               <div className="flex items-center justify-between px-2">
-                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Library</h2>
+                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Tools & History</h2>
                 {selectedSession && <button onClick={() => setSelectedSession(null)} className="text-[#DC2626] text-xs font-bold flex items-center gap-1"><ArrowLeft size={14} /> Back</button>}
               </div>
 
@@ -2704,7 +2718,7 @@ export default function App() {
                   <div>
                     <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
                     <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                      {isPremium ? `Active â€¢ ${premiumTimeLeft} Remaining` : "Inactive â€¢ Upgrade for full access"}
+                      {isPremium ? `Active • ${premiumTimeLeft} Remaining` : "Inactive • Upgrade for full access"}
                     </p>
                   </div>
                 </div>
@@ -2729,7 +2743,7 @@ export default function App() {
                           <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
                             {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
                           </div>
-                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} â€¢ {session.duration}</p></div>
+                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration}</p></div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
@@ -3062,7 +3076,7 @@ export default function App() {
                             </div>
                           ) : (
                             <div className="pt-4 space-y-3 border-t border-white/10">
-                              <p className="text-[10px] text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-white">â‚¦100</span>. Please complete payment to proceed.</p>
+                              <p className="text-[10px] text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-white">₦100</span>. Please complete payment to proceed.</p>
                               <button 
                                 onClick={() => {
                                   if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
@@ -3073,7 +3087,7 @@ export default function App() {
                                 }} 
                                 className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                               >
-                                <CreditCard size={18} /> PAY â‚¦100 & PROCEED
+                                <CreditCard size={18} /> PAY ₦100 & PROCEED
                               </button>
                               <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className="w-full text-[10px] font-black text-white/30 uppercase hover:text-[#DC2626] transition-all">Not you? Switch Account</button>
                             </div>
@@ -3083,7 +3097,7 @@ export default function App() {
                         <div className="space-y-4">
                           <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
                           <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">VERIFY MATRIC</button>
-                          <button onClick={() => setAdminMode(true)} className="w-full bg-white/5 text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-white/10 transition-all">HOST AN EXAM (â‚¦200)</button>
+                          <button onClick={() => setAdminMode(true)} className="w-full bg-white/5 text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-white/10 transition-all">HOST AN EXAM (₦200)</button>
                         </div>
                       )}
                     </div>
@@ -3171,7 +3185,7 @@ export default function App() {
             <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-20">
               <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 shadow-sm space-y-10">
                 <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION â€” REDEFINING THE STUDENT EXPERIENCE</h2>
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION — REDEFINING THE STUDENT EXPERIENCE</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
                     The current state of education requires more than just reading and memorizing; it requires high-level tools that actually work. The primary goal is to become the number one student study application in the country by offering premium, world-class academic services that bridge the gap between local challenges and global standards. The aim is to provide a seamless, high-tech environment where advanced AI tutors and professional testing infrastructures are available to every student at an almost free cost.
                   </p>
@@ -3197,20 +3211,83 @@ export default function App() {
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 3: WHY THIS WILL BE THE #1 STUDY APP</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesnâ€™t just give answers; it provides deep, logical explanations that simplify complex topics.
+                    This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesn’t just give answers; it provides deep, logical explanations that simplify complex topics.
                   </p>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    The testing engine is built for the real world. With features like the 50% Submission Ruleâ€”which prevents accidental submission before a student is readyâ€”and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
+                    The testing engine is built for the real world. With features like the 50% Submission Rule—which prevents accidental submission before a student is ready—and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 4: THE NECESSITY OF SPONSORSHIP</h2>
                   <p className="text-sm text-white/70 leading-relaxed">
-                    To keep these services "almost free" while maintaining world-class quality, a robust support system is essential. The "API Problem" is a constant factorâ€”every time the AI thinks or generates a response, it costs money in global currency. Sponsorship is the bridge that allows these costs to be covered without passing the burden onto the student.
+                    To keep these services "almost free" while maintaining world-class quality, a robust support system is essential. The "API Problem" is a constant factor—every time the AI thinks or generates a response, it costs money in global currency. Sponsorship is the bridge that allows these costs to be covered without passing the burden onto the student.
                   </p>
                   <p className="text-sm text-white/70 leading-relaxed">
                     Support is also needed to fuel the scholarship fund. By partnering with sponsors and stakeholders, the platform can move faster toward the goal of paying tuition for thousands of students. Support isn't just about money; it's about providing the resources and data needed to make the AI smarter for everyone. When a community supports this project, it is investing in a future where financial status no longer limits how far a student can go. This is a collective effort to ensure that the best minds have the best tools to succeed.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 5: THE FUTURE OF ACADEMIC EXCELLENCE</h2>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    The future of education is not just about digital tools; it's about a fundamental shift in how we approach learning. We are moving towards a world where personalized, AI-driven education is the norm, and where every student has access to a world-class tutor in their pocket. This is not just a dream; it's a reality that we are building every day.
+                  </p>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    Our platform is at the forefront of this revolution, providing students with the tools they need to succeed in a rapidly changing world. From advanced AI tutors to professional testing environments, we are committed to providing the best possible academic experience for every student.
+                  </p>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    We believe that every student has the potential to achieve greatness, and we are here to help them reach their full potential. Join us on this journey as we redefine the student experience and build a brighter future for education.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 6: THE POWER OF COLLABORATIVE LEARNING</h2>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    Education is not a solitary journey; it's a collaborative effort. Our platform is designed to foster a sense of community among students, allowing them to share knowledge, resources, and support. We believe that by working together, students can achieve more than they ever could alone.
+                  </p>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    From peer-to-peer marketplaces to collaborative study groups, we are building a system that encourages students to help each other succeed. This is not just about sharing notes; it's about building a network of support that extends beyond the classroom.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 7: DATA-DRIVEN INSIGHTS FOR ACADEMIC SUCCESS</h2>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    In today's world, data is a powerful tool for academic success. Our platform uses advanced analytics to provide students with deep insights into their learning progress. From identifying areas of weakness to tracking performance over time, we give students the information they need to make informed decisions about their education.
+                  </p>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    By leveraging the power of data, we can provide personalized recommendations and study plans that are tailored to each student's unique needs. This is about more than just giving answers; it's about providing a roadmap to success.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 8: THE ETHICS OF AI IN EDUCATION</h2>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    As we integrate AI into the student experience, we are committed to maintaining the highest ethical standards. We believe that AI should be a tool for empowerment, not a replacement for human intelligence. Our platform is designed to complement the learning process, providing students with the support they need while encouraging critical thinking and independent study.
+                  </p>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    We are also committed to protecting student privacy and data security. We believe that students should have control over their own information, and we take every precaution to ensure that their data is safe and secure.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 9: SCALING THE VISION NATIONWIDE</h2>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    Our vision is not limited to a single school or region; we aim to scale our platform nationwide. We believe that every student in the country deserves access to world-class academic tools, regardless of their location or financial status.
+                  </p>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    By partnering with educational institutions and government agencies, we can bring our platform to millions of students across the country. This is a massive undertaking, but we are committed to making it a reality.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 10: JOIN THE REVOLUTION</h2>
+                  <p className="text-sm text-white/70 leading-relaxed">
+                    The future of education is here, and we invite you to be a part of it. Whether you are a student, a teacher, or a sponsor, there is a place for you in our community. Together, we can redefine the student experience and build a brighter future for education.
+                  </p>
+                  <p className="text-sm text-white/70 leading-relaxed font-bold">
+                    Join us today and help us build the #1 study app in the country. Your support is essential to our success, and we are grateful for everything you do to help us reach our goals.
                   </p>
                 </div>
               </div>
@@ -3331,7 +3408,7 @@ export default function App() {
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tighter">Host Your Own Exam</h2>
-                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">â‚¦200</span> per session.</p>
+                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">₦200</span> per session.</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -3346,7 +3423,7 @@ export default function App() {
                       }} 
                       className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 sm:py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                     >
-                      <CreditCard size={18} className="sm:size-[20px]" /> PAY â‚¦200 TO START
+                      <CreditCard size={18} className="sm:size-[20px]" /> PAY ₦200 TO START
                     </button>
                   </div>
                 ) : (
@@ -3451,7 +3528,7 @@ export default function App() {
                               <div key={i} className="p-3 rounded-xl border flex items-center justify-between group bg-white/5 border-white/5">
                                 <div>
                                   <p className="text-[10px] font-bold text-white">{res.name}</p>
-                                  <p className="text-[8px] font-mono text-white/40">{res.matric} â€¢ {res.score}/{res.total}</p>
+                                  <p className="text-[8px] font-mono text-white/40">{res.matric} • {res.score}/{res.total}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] font-black text-[#DC2626]">{Math.round((res.score/res.total)*100)}%</p>
@@ -3497,9 +3574,10 @@ export default function App() {
           {[
             { id: 'record', icon: Mic, label: 'Capture' },
             { id: 'ai', icon: Brain, label: 'Omni AI' },
-            { id: 'history', icon: History, label: 'Library' },
+            { id: 'history', icon: Database, label: 'Tools' },
             { id: 'quiz', icon: Zap, label: 'Quiz' },
             { id: 'exam', icon: ShieldCheck, label: 'Exam' },
+            { id: 'blog', icon: FileText, label: 'Blog' },
             { id: 'profile', icon: User, label: 'Profile' }
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-col items-center py-2 px-2 sm:px-4 transition-all relative ${activeTab === tab.id ? 'text-[#DC2626]' : 'text-white/30 hover:text-[#DC2626]'}`}>
@@ -3568,7 +3646,7 @@ export default function App() {
                               <div>
                                 <p className="font-bold text-white">{u.fullName || u.displayName || 'Anonymous'}</p>
                                 <p className="text-[8px] font-mono opacity-50">{u.email}</p>
-                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} â€¢ {u.dob || 'No DOB'}</p>
+                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} • {u.dob || 'No DOB'}</p>
                               </div>
                             </div>
                           </td>
@@ -3695,7 +3773,7 @@ export default function App() {
 
                   <div className="mt-10 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
-                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai â€¢ {new Date().toLocaleDateString()}</p>
+                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai • {new Date().toLocaleDateString()}</p>
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
                   </div>
                 </div>
@@ -3715,7 +3793,7 @@ export default function App() {
         <button onClick={() => setLegalPage('about')} className="hover:text-[#DC2626] transition-colors">About Us</button>
         <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
         <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
-        <span>Â© 2026 Nuell Graphics</span>
+        <span>© 2026 Nuell Graphics</span>
       </footer>
     </div>
   );
