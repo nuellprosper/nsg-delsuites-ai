@@ -212,7 +212,7 @@ const BlinkingBrain = ({ size = 24, className = "" }: { size?: number, className
   </motion.div>
 );
 
-const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, setUserNotification: (msg: string | null) => void }) => {
+const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => void, setUserNotification: (msg: string | null) => void, theme: string }) => {
   const [isConnecting, setIsConnecting] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [videoSource, setVideoSource] = useState<'camera' | 'screen' | 'none'>('none');
@@ -377,12 +377,12 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0A0F1C] p-3 sm:p-6 space-y-4 sm:space-y-6">
+    <div className={`flex-1 flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} p-3 sm:p-6 space-y-4 sm:space-y-6`}>
       <div className="flex-1 flex gap-6">
-        <div className="flex-1 bg-white/5 rounded-3xl border border-white/10 relative overflow-hidden flex flex-col">
+        <div className={`flex-1 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-3xl border relative overflow-hidden flex flex-col`}>
           <div className="absolute top-4 left-4 z-10 flex gap-2">
             <div className="bg-[#DC2626] text-white px-3 py-1 rounded-full text-[10px] font-black uppercase animate-pulse">Live</div>
-            {videoSource !== 'none' && <div className="bg-white/10 text-white/60 px-3 py-1 rounded-full text-[10px] font-black uppercase">{videoSource} active</div>}
+            {videoSource !== 'none' && <div className={`${theme === 'dark' ? 'bg-white/10 text-white/60' : 'bg-zinc-100 text-zinc-500'} px-3 py-1 rounded-full text-[10px] font-black uppercase`}>{videoSource} active</div>}
           </div>
           
           <div className="flex-1 flex items-center justify-center">
@@ -410,7 +410,7 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
             <canvas ref={canvasRef} width="320" height="240" className="hidden" />
           </div>
 
-          <div className="p-6 bg-black/40 backdrop-blur-xl border-t border-white/10 max-h-40 overflow-y-auto">
+          <div className={`p-6 ${theme === 'dark' ? 'bg-black/40 border-white/10' : 'bg-slate-100/40 border-slate-200'} backdrop-blur-xl border-t max-h-40 overflow-y-auto`}>
             <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mb-2">Transcript</p>
             <div className="space-y-2">
               {transcript.map((t, i) => (
@@ -423,19 +423,19 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
       </div>
 
       <div className="flex items-center justify-center gap-3 sm:gap-6">
-        <button onClick={() => setIsMicOn(!isMicOn)} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${isMicOn ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
+        <button onClick={() => setIsMicOn(!isMicOn)} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${isMicOn ? 'bg-[#DC2626] text-white' : `${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'}`}`}>
           {isMicOn ? <Mic size={20} className="sm:size-[28px]" /> : <Mic size={20} className="sm:size-[28px] opacity-20" />}
         </button>
-        <button onClick={() => toggleVideo('camera')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'camera' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
+        <button onClick={() => toggleVideo('camera')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'camera' ? 'bg-[#DC2626] text-white' : `${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'}`}`}>
           <Camera size={20} className="sm:size-[28px]" />
         </button>
-        <button onClick={() => toggleVideo('screen')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'screen' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/40 border border-white/10'}`}>
+        <button onClick={() => toggleVideo('screen')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'screen' ? 'bg-[#DC2626] text-white' : `${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'}`}`}>
           <Monitor size={20} className="sm:size-[28px]" />
         </button>
-        <button onClick={() => window.open(window.location.href, '_blank')} className="p-4 sm:p-6 bg-white/5 text-white/40 rounded-full hover:bg-white/10 transition-all border border-white/10" title="Open in new tab for screen sharing">
+        <button onClick={() => window.open(window.location.href, '_blank')} className={`p-4 sm:p-6 ${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'} rounded-full hover:bg-[#DC2626]/10 transition-all border`} title="Open in new tab for screen sharing">
           <Share2 size={20} className="sm:size-[28px]" />
         </button>
-        <button onClick={onClose} className="p-4 sm:p-6 bg-white/5 text-white/40 rounded-full hover:bg-[#DC2626] hover:text-white transition-all border border-white/10">
+        <button onClick={onClose} className={`p-4 sm:p-6 ${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'} rounded-full hover:bg-[#DC2626] hover:text-white transition-all border`}>
           <X size={20} className="sm:size-[28px]" />
         </button>
       </div>
@@ -463,6 +463,13 @@ export default function App() {
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [showAnalysisInRecord, setShowAnalysisInRecord] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Auto-close auth modal when user is logged in
+  useEffect(() => {
+    if (user && showAuthModal) {
+      setShowAuthModal(false);
+    }
+  }, [user, showAuthModal]);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -732,7 +739,7 @@ export default function App() {
         >
           <motion.div 
             initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-            className="bg-[#0A0F1C] border border-white/10 p-6 sm:p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden"
+            className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden`}
           >
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent" />
             <button onClick={() => setShowPremiumModal(false)} className="absolute top-4 right-4 text-white/40 hover:text-yellow-500 transition-colors"><XCircle size={24} /></button>
@@ -767,10 +774,10 @@ export default function App() {
             <div className="grid grid-cols-2 gap-4">
               <button 
                 onClick={() => initializeMonthly({ onSuccess: () => handleSubscriptionSuccess('monthly'), onClose: () => setUserNotification("Payment cancelled.") })}
-                className="bg-white/5 border border-white/10 p-4 rounded-2xl hover:border-yellow-500/50 transition-all text-center group"
+                className={`${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-100 border-zinc-200'} border p-4 rounded-2xl hover:border-yellow-500/50 transition-all text-center group`}
               >
-                <p className="text-[10px] font-black text-white/40 uppercase mb-1">Monthly</p>
-                <p className="text-xl font-black text-white">N300</p>
+                <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/40' : 'text-zinc-400'} uppercase mb-1`}>Monthly</p>
+                <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}`}>N300</p>
                 <p className="text-[8px] font-bold text-yellow-500 uppercase mt-1">Save 0%</p>
               </button>
               <button 
@@ -860,6 +867,22 @@ export default function App() {
     // Local UI persistence
     const savedTheme = localStorage.getItem('nsg_theme');
     if (savedTheme) setTheme(savedTheme as 'dark' | 'light');
+
+    // Load hosted exam state if exists
+    const savedHostExamId = localStorage.getItem('nsg_host_exam_id');
+    if (savedHostExamId) {
+      setHostExamId(savedHostExamId);
+      setIsHostPaid(true);
+      
+      const savedConfig = localStorage.getItem('nsg_host_config');
+      if (savedConfig) setExamConfig(JSON.parse(savedConfig));
+      
+      const savedStudents = localStorage.getItem('nsg_host_students');
+      if (savedStudents) setRegisteredStudents(JSON.parse(savedStudents));
+      
+      const savedQuestions = localStorage.getItem('nsg_host_questions');
+      if (savedQuestions) setExamQuestions(JSON.parse(savedQuestions));
+    }
 
     const hasSeenWelcome = localStorage.getItem('nsg_welcome_seen');
     if (!hasSeenWelcome) setShowWelcome(true);
@@ -975,9 +998,20 @@ export default function App() {
       }
       setShowAuthModal(false);
       setUserNotification("Logged in with Google!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login Error:", error);
-      setUserNotification("Failed to login with Google.");
+      const errorMessage = error.message || String(error);
+      const errorCode = error.code || "unknown";
+      
+      if (errorCode === 'auth/unauthorized-domain') {
+        setUserNotification(`Login failed: This domain is not authorized in Firebase Console. Please add "${window.location.hostname}" to Authorized Domains.`);
+      } else if (errorCode === 'auth/popup-blocked') {
+        setUserNotification("Login failed: Popup was blocked by your browser. Please allow popups for this site.");
+      } else if (errorCode === 'auth/cancelled-popup-request') {
+        // Ignore user cancellation
+      } else {
+        setUserNotification(`Failed to login with Google: ${errorMessage} (${errorCode})`);
+      }
     }
   };
 
@@ -1090,18 +1124,31 @@ export default function App() {
     if (!user || !e.target.files?.[0]) return;
     const file = e.target.files[0];
     
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64String = reader.result as string;
-      try {
-        await updateDoc(doc(db, 'users', user.uid), { photoURL: base64String });
-        setUserNotification("Profile image updated!");
-      } catch (error) {
-        console.error("Image Upload Error:", error);
-        setUserNotification("Failed to upload image.");
-      }
-    };
-    reader.readAsDataURL(file);
+    // Check file size (max 2MB raw limit before compression)
+    if (file.size > 2 * 1024 * 1024) {
+      setUserNotification("Image too large. Please use an image under 2MB.");
+      return;
+    }
+
+    try {
+      setUserNotification("Compressing image...");
+      const compressedBlob = await compressImage(file);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        try {
+          await updateDoc(doc(db, 'users', user.uid), { photoURL: base64String });
+          setUserNotification("Profile image updated!");
+        } catch (error) {
+          console.error("Image Upload Error:", error);
+          setUserNotification("Failed to upload image. It might be too large for the database.");
+        }
+      };
+      reader.readAsDataURL(compressedBlob);
+    } catch (err) {
+      console.error("Compression Error:", err);
+      setUserNotification("Failed to process image.");
+    }
   };
 
   useEffect(() => {
@@ -1355,8 +1402,32 @@ export default function App() {
     setIsHostPaid(true);
     const newId = Math.random().toString(36).substr(2, 9).toUpperCase();
     setHostExamId(newId);
+    localStorage.setItem('nsg_host_exam_id', newId);
     setUserNotification("Payment successful! You can now configure your exam.");
   };
+
+  const endHostedExam = () => {
+    if (window.confirm("Are you sure you want to end this exam session? All unsaved local data will be cleared.")) {
+      setIsHostPaid(false);
+      setHostExamId(null);
+      setRegisteredStudents([]);
+      setExamQuestions([]);
+      setAdminQuestionsRaw('');
+      localStorage.removeItem('nsg_host_exam_id');
+      localStorage.removeItem('nsg_host_config');
+      localStorage.removeItem('nsg_host_students');
+      localStorage.removeItem('nsg_host_questions');
+      setUserNotification("Exam session ended.");
+    }
+  };
+
+  useEffect(() => {
+    if (isHostPaid && hostExamId) {
+      localStorage.setItem('nsg_host_config', JSON.stringify(examConfig));
+      localStorage.setItem('nsg_host_students', JSON.stringify(registeredStudents));
+      localStorage.setItem('nsg_host_questions', JSON.stringify(examQuestions));
+    }
+  }, [examConfig, registeredStudents, examQuestions, isHostPaid, hostExamId]);
 
   const handleTakingPaymentSuccess = async (reference: any) => {
     setPaymentVerified(true);
@@ -2096,7 +2167,7 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 font-sans selection:bg-[#DC2626] pb-24 bg-[#0A0F1C] text-white dark`}>
+    <div className={`min-h-screen transition-colors duration-300 font-sans selection:bg-[#DC2626] pb-24 ${theme === 'dark' ? 'bg-[#0A0F1C] text-white dark' : 'bg-white text-slate-900'}`}>
       
       {/* AUTH LOADING OVERLAY */}
       <AnimatePresence>
@@ -2105,10 +2176,10 @@ export default function App() {
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-[300] bg-white dark:bg-[#0a0a0a] flex flex-col items-center justify-center space-y-4"
+            className={`fixed inset-0 z-[300] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} flex flex-col items-center justify-center space-y-4`}
           >
             <BlinkingBrain size={64} className="text-red-500" />
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 animate-pulse">Processing Authentication...</p>
+            <p className={`text-[10px] font-black uppercase tracking-[0.3em] ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'} animate-pulse`}>Processing Authentication...</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2122,19 +2193,19 @@ export default function App() {
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              className="bg-[#0A0F1C] border border-white/10 p-10 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden"
+              className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-10 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden`}
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#DC2626] to-transparent" />
-              <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-white/40 hover:text-[#DC2626] transition-colors"><XCircle size={24} /></button>
+              <button onClick={() => setShowAuthModal(false)} className={`absolute top-4 right-4 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} hover:text-[#DC2626] transition-colors`}><XCircle size={24} /></button>
               
               <div className="text-center mb-8">
                 <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <User size={24} className="text-[#DC2626]" />
                 </div>
-                <h2 className="text-2xl font-black tracking-tighter uppercase italic text-white">
+                <h2 className={`text-2xl font-black tracking-tighter uppercase italic ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                   {authMode === 'login' ? 'Welcome Back' : 'Create Account'}
                 </h2>
-                <p className="text-xs text-white/40 mt-1">
+                <p className={`text-xs ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} mt-1`}>
                   {authMode === 'login' ? 'Login to access Quizzes and Exams' : 'Join NSG to start your academic journey'}
                 </p>
               </div>
@@ -2142,26 +2213,26 @@ export default function App() {
               <form onSubmit={handleAuth} className="space-y-4">
                 {authMode === 'signup' ? (
                   <>
-                    <input type="text" value={authFullName} onChange={(e) => setAuthFullName(e.target.value)} placeholder="Full Name" required className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
-                    <input type="date" value={authDOB} onChange={(e) => setAuthDOB(e.target.value)} placeholder="Date of Birth" required className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
-                    <input type="text" value={authMatric} onChange={(e) => setAuthMatric(e.target.value)} placeholder="Matric Number (Optional)" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
-                    <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email Address" required className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                    <input type="text" value={authFullName} onChange={(e) => setAuthFullName(e.target.value)} placeholder="Full Name" required className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
+                    <input type="date" value={authDOB} onChange={(e) => setAuthDOB(e.target.value)} placeholder="Date of Birth" required className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
+                    <input type="text" value={authMatric} onChange={(e) => setAuthMatric(e.target.value)} placeholder="Matric Number (Optional)" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
+                    <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email Address" required className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
                   </>
                 ) : (
                   <>
                     <div className="space-y-2">
-                      <p className="text-[10px] uppercase font-black tracking-widest text-white/40 ml-1">Login with Email or Matric</p>
-                      <input type="text" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email Address" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                      <p className={`text-[10px] uppercase font-black tracking-widest ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} ml-1`}>Login with Email or Matric</p>
+                      <input type="text" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email Address" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
                       <div className="flex items-center gap-2 px-2">
-                        <div className="h-[1px] flex-1 bg-white/5" />
-                        <span className="text-[10px] font-bold text-white/40">OR</span>
-                        <div className="h-[1px] flex-1 bg-white/5" />
+                        <div className={`h-[1px] flex-1 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'}`} />
+                        <span className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>OR</span>
+                        <div className={`h-[1px] flex-1 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'}`} />
                       </div>
-                      <input type="text" value={authMatric} onChange={(e) => setAuthMatric(e.target.value)} placeholder="Matric Number" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                      <input type="text" value={authMatric} onChange={(e) => setAuthMatric(e.target.value)} placeholder="Matric Number" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
                     </div>
                   </>
                 )}
-                <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Password" required className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Password" required className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
                 
                 <button type="submit" className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm transition-all shadow-xl shadow-[#DC2626]/20 uppercase tracking-widest">
                   {authMode === 'login' ? 'Login' : 'Sign Up'}
@@ -2174,8 +2245,11 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="mt-8 pt-6 border-t border-white/5">
-                <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-3 bg-white/5 border border-white/10 py-4 rounded-2xl text-sm font-bold text-white/70 hover:bg-white/10 transition-all">
+              <div className={`mt-8 pt-6 border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+                <button 
+                  onClick={handleGoogleLogin} 
+                  className={`w-full flex items-center justify-center gap-3 ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-zinc-900 border-zinc-800 text-white hover:bg-zinc-800'} border py-4 rounded-2xl text-sm font-bold transition-all`}
+                >
                   <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
                   Continue with Google
                 </button>
@@ -2192,15 +2266,15 @@ export default function App() {
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              className="bg-[#0A0F1C] border border-white/10 p-8 rounded-3xl max-w-lg w-full shadow-2xl relative overflow-hidden"
+              className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-8 rounded-3xl max-w-lg w-full shadow-2xl relative overflow-hidden`}
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-[#DC2626]" />
               <div className="flex flex-col items-center text-center space-y-6">
                 <div className="w-16 h-16 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center">
                   <Brain size={40} className="text-[#DC2626]" />
                 </div>
-                <h2 className="text-2xl font-black tracking-tighter uppercase italic text-white">Welcome to <span className="text-[#DC2626]">NSG</span></h2>
-                <p className="text-sm text-white/70 leading-relaxed">
+                <h2 className={`text-2xl font-black tracking-tighter uppercase italic ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Welcome to <span className="text-[#DC2626]">NSG</span></h2>
+                <p className={`text-sm ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'} leading-relaxed`}>
                   Welcome to NSG (Nuell Study Guide), powered by Nuell Graphics. Transform your learning experience by recording classes, generating AI transcriptions, chatting with our intelligent assistant, and creating custom quizzes. We are constantly improving NSG to better serve your academic journey. Thank you for choosing us as your study partner!
                 </p>
                 <button onClick={closeWelcome} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm transition-all shadow-xl shadow-[#DC2626]/20">GET STARTED</button>
@@ -2220,7 +2294,7 @@ export default function App() {
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              className="bg-[#0A0F1C] border border-white/10 p-8 rounded-3xl max-w-2xl w-full shadow-2xl relative overflow-hidden max-h-[80vh] flex flex-col"
+              className={`${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} p-8 rounded-3xl max-w-2xl w-full shadow-2xl relative overflow-hidden max-h-[80vh] flex flex-col`}
             >
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-black uppercase tracking-tighter text-white">
@@ -2267,24 +2341,24 @@ export default function App() {
       </AnimatePresence>
 
       {/* HEADER */}
-      <header className="px-5 py-4 flex justify-between items-center border-b border-white/10 bg-[#0A0F1C]/95 backdrop-blur-xl sticky top-0 z-40">
+      <header className={`px-5 py-4 flex justify-between items-center border-b ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]/95' : 'border-slate-200 bg-white/95'} backdrop-blur-xl sticky top-0 z-40`}>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-black border border-white/10 rounded-2xl flex items-center justify-center">
+          <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-black border-white/10' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center`}>
             <Brain size={22} className="text-[#DC2626]" />
           </div>
           <div>
-            <h1 className="text-sm sm:text-xl font-black tracking-tighter italic leading-none text-white">NSG <span className="text-[#DC2626]">(NUELL STUDY GUIDE)</span></h1>
-            <span className="text-[8px] sm:text-[9px] font-black text-white/40 uppercase tracking-widest">Lecture OS 4.0</span>
+            <h1 className={`text-sm sm:text-xl font-black tracking-tighter italic leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>NSG <span className="text-[#DC2626]">(NUELL STUDY GUIDE)</span></h1>
+            <span className={`text-[8px] sm:text-[9px] font-black ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} uppercase tracking-widest`}>Lecture OS 4.0</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
           {user ? (
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
-                <p className="text-[10px] font-black text-white uppercase leading-none">{user.displayName}</p>
-                <p className="text-[8px] text-white/40 uppercase font-bold">{isAdminUser ? 'Admin' : 'Student'}</p>
+                <p className={`text-[10px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName}</p>
+                <p className={`text-[8px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
               </div>
-              <button onClick={handleLogout} className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-[#DC2626] transition-all">
+              <button onClick={handleLogout} className={`p-2 rounded-xl ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70' : 'bg-slate-100 border-slate-200 text-slate-600'} hover:text-[#DC2626] transition-all`}>
                 <LogOut size={20} />
               </button>
             </div>
@@ -2293,12 +2367,12 @@ export default function App() {
               <User size={16} /> LOGIN
             </button>
           )}
-          <button onClick={toggleTheme} className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-[#DC2626] transition-all">
+          <button onClick={toggleTheme} className={`p-2 rounded-xl ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70' : 'bg-slate-100 border-slate-200 text-slate-600'} hover:text-[#DC2626] transition-all`}>
             {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
           </button>
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
+          <div className={`hidden sm:flex items-center gap-2 px-3 py-1 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-100 border-slate-200'} rounded-full border`}>
             <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-[10px] font-bold text-white/60 uppercase">SYSTEM READY</span>
+            <span className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'} uppercase`}>SYSTEM READY</span>
           </div>
         </div>
       </header>
@@ -2348,9 +2422,9 @@ export default function App() {
                       animate={{ x: 0 }} 
                       exit={{ x: '-100%' }}
                       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                      className="fixed left-0 top-0 bottom-0 w-1/2 min-w-[280px] z-[70] border-r border-white/10 flex flex-col bg-[#0A0F1C] shadow-2xl"
+                      className={`fixed left-0 top-0 bottom-0 w-1/2 min-w-[280px] z-[70] border-r ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]' : 'border-slate-200 bg-white'} flex flex-col shadow-2xl`}
                     >
-                      <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                      <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between`}>
                         <button 
                           onClick={() => {
                             setShowAnalysisInRecord(false);
@@ -2364,12 +2438,12 @@ export default function App() {
                         >
                           <PlusCircle size={16} /> New Recording
                         </button>
-                        <button onClick={() => setShowRecordSidebar(false)} className="p-2 text-white/40 ml-2 hover:text-[#DC2626] transition-colors"><XCircle size={20} /></button>
+                        <button onClick={() => setShowRecordSidebar(false)} className={`p-2 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} ml-2 hover:text-[#DC2626] transition-colors`}><XCircle size={20} /></button>
                       </div>
                       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                        <p className="text-[10px] font-black text-white/20 uppercase tracking-widest px-3 py-2">Analysis History</p>
+                        <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/20' : 'text-slate-300'} uppercase tracking-widest px-3 py-2`}>Analysis History</p>
                         {sessions.map(session => (
-                          <div key={session.id} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${selectedSession?.id === session.id ? 'bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626]' : 'hover:bg-white/5 text-white/40'}`}>
+                          <div key={session.id} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${selectedSession?.id === session.id ? 'bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626]' : `hover:bg-white/5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}`}>
                             <div 
                               onClick={() => {
                                 setSelectedSession(session);
@@ -2402,7 +2476,7 @@ export default function App() {
               </AnimatePresence>
 
               <div className="flex items-center justify-between mb-2">
-                <button onClick={() => setShowRecordSidebar(true)} className="p-2 bg-[#0A0F1C] border border-white/10 rounded-xl text-white/60 hover:text-[#DC2626] transition-all flex items-center gap-2">
+                <button onClick={() => setShowRecordSidebar(true)} className={`p-2 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-xl ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'} hover:text-[#DC2626] transition-all flex items-center gap-2`}>
                   <History size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">History</span>
                 </button>
@@ -2411,11 +2485,14 @@ export default function App() {
               <AnimatePresence mode="wait">
                 {!showAnalysisInRecord ? (
                   <motion.div key="recorder" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-6">
-                    <div className="bg-[#0A0F1C] rounded-3xl p-8 border border-white/10 relative overflow-hidden shadow-sm">
+                    <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl p-8 border relative overflow-hidden shadow-sm`}>
                       <div className="flex flex-col items-center text-center relative z-10">
                         <div className="relative mb-6">
                           {isRecording && <motion.div animate={{ scale: 1.6, opacity: 0.1 }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626] rounded-full blur-2xl" />}
-                          <button onClick={handleToggleRecording} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? 'bg-white text-black scale-105' : 'bg-[#DC2626] text-white hover:scale-105 active:scale-95'}`}>
+                          <button 
+                            onClick={handleToggleRecording} 
+                            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? (theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white') : 'bg-[#DC2626] text-white'} hover:scale-105 active:scale-95`}
+                          >
                             {isRecording ? <StopCircle size={32} /> : <Mic size={32} />}
                           </button>
                         </div>
@@ -2432,7 +2509,11 @@ export default function App() {
 
                         <div className="flex gap-2 w-full max-w-xs">
                           {audioUrl && (
-                            <a href={audioUrl} download="NSG_Lecture.mp3" className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-3 rounded-2xl text-xs font-bold transition-all border border-white/10">
+                            <a 
+                              href={audioUrl} 
+                              download="NSG_Lecture.mp3" 
+                              className={`flex-1 flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/10 text-white border-white/10' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} px-4 py-3 rounded-2xl text-xs font-bold transition-all border`}
+                            >
                               <Download size={16} /> Download
                             </a>
                           )}
@@ -2444,17 +2525,17 @@ export default function App() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <label className="bg-[#0A0F1C] p-5 rounded-3xl border border-white/10 hover:border-[#DC2626]/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm">
+                      <label className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 rounded-3xl border hover:border-[#DC2626]/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm`}>
                         <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-[#DC2626] group-hover:text-white transition-all"><ImageIcon size={20} className="text-[#DC2626] group-hover:text-white" /></div>
-                        <span className="font-bold text-xs text-white">Upload Slides</span>
-                        <span className="text-[9px] text-white/40 mt-1 uppercase tracking-widest">({uploadedImages.length}/50)</span>
+                        <span className={`font-bold text-xs ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Upload Slides</span>
+                        <span className={`text-[9px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} mt-1 uppercase tracking-widest`}>({uploadedImages.length}/50)</span>
                         <input type="file" multiple accept="image/*" className="hidden" onChange={handleImages} />
                       </label>
 
-                      <label className="bg-[#0A0F1C] p-5 rounded-3xl border border-white/10 hover:border-[#DC2626]/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm">
+                      <label className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 rounded-3xl border hover:border-[#DC2626]/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm`}>
                         <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-[#DC2626] group-hover:text-white transition-all"><FileAudio size={20} className="text-[#DC2626] group-hover:text-white" /></div>
-                        <span className="font-bold text-xs text-white">Import Audio</span>
-                        <span className="text-[9px] text-white/40 mt-1 uppercase tracking-widest">MP3 / WAV</span>
+                        <span className={`font-bold text-xs ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Import Audio</span>
+                        <span className={`text-[9px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} mt-1 uppercase tracking-widest`}>MP3 / WAV</span>
                         <input type="file" accept="audio/*" className="hidden" onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
@@ -2478,7 +2559,7 @@ export default function App() {
                   </motion.div>
                 ) : (
                   <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                    <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 shadow-sm space-y-6">
+                    <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
                       <div className="flex items-center justify-between border-b border-white/5 pb-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center">
@@ -2494,11 +2575,16 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => selectedSession && uploadHistoryToOmni(selectedSession)} 
-                            className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-xl text-[10px] font-black text-white/70 hover:text-[#DC2626] transition-all border border-white/10"
+                            className={`flex items-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70 border-white/10' : 'bg-zinc-100 text-zinc-600 border-zinc-200'} px-3 py-2 rounded-xl text-[10px] font-black hover:text-[#DC2626] transition-all border`}
                           >
                             <UserPlus size={14} /> UPLOAD TO OMNI
                           </button>
-                          <button onClick={() => setShowAnalysisInRecord(false)} className="p-2 bg-white/5 rounded-xl text-white/40 hover:text-[#DC2626] transition-all"><ArrowLeft size={20} /></button>
+                          <button 
+                            onClick={() => setShowAnalysisInRecord(false)} 
+                            className={`p-2 ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} rounded-xl hover:text-[#DC2626] transition-all`}
+                          >
+                            <ArrowLeft size={20} />
+                          </button>
                         </div>
                       </div>
 
@@ -2511,10 +2597,10 @@ export default function App() {
                       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <button onClick={() => copyToClipboard(analysisResult)} className="flex items-center justify-center gap-2 bg-white/5 text-white/70 py-4 rounded-2xl text-[10px] font-black hover:bg-white/10 transition-all">
+        <button onClick={() => copyToClipboard(analysisResult)} className={`flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70' : 'bg-zinc-100 text-zinc-600'} py-4 rounded-2xl text-[10px] font-black hover:bg-zinc-200 transition-all`}>
           <Copy size={16} /> COPY
         </button>
-        <button onClick={() => shareAnalysis(analysisResult || '')} className="flex items-center justify-center gap-2 bg-white/5 text-white/70 py-4 rounded-2xl text-[10px] font-black hover:bg-white/10 transition-all">
+        <button onClick={() => shareAnalysis(analysisResult || '')} className={`flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70' : 'bg-zinc-100 text-zinc-600'} py-4 rounded-2xl text-[10px] font-black hover:bg-zinc-200 transition-all`}>
           <Share2 size={16} /> SHARE
         </button>
         <button 
@@ -2537,7 +2623,7 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="flex h-[calc(100vh-140px)] sm:h-[calc(100vh-220px)] bg-[#0A0F1C] rounded-2xl sm:rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0">
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className={`flex h-[calc(100vh-140px)] sm:h-[calc(100vh-220px)] ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-200'} rounded-2xl sm:rounded-3xl border overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0`}>
               
               {/* Sidebar Drawer */}
               <AnimatePresence>
@@ -2551,7 +2637,7 @@ export default function App() {
                     <motion.div 
                       initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
                       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                      className="absolute left-0 top-0 bottom-0 w-[80%] max-w-[320px] z-[70] border-r border-white/10 flex flex-col bg-[#0A0F1C] shadow-2xl"
+                      className={`absolute left-0 top-0 bottom-0 w-[80%] max-w-[320px] z-[70] border-r ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]' : 'border-slate-200 bg-white'} flex flex-col shadow-2xl`}
                     >
                       <div className="p-6 border-b border-white/10">
                         <button onClick={resetChat} className="w-full flex items-center justify-center gap-2 bg-[#DC2626] text-white py-3 rounded-xl text-xs font-black shadow-lg shadow-[#DC2626]/20 mb-6">
@@ -2615,9 +2701,9 @@ export default function App() {
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.9 }}
-                      className="absolute inset-0 z-[100] bg-[#0A0F1C]"
+                      className={`absolute inset-0 z-[100] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'}`}
                     >
-                      <GeminiLive onClose={() => setIsLiveActive(false)} setUserNotification={setUserNotification} />
+                      <GeminiLive onClose={() => setIsLiveActive(false)} setUserNotification={setUserNotification} theme={theme} />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -2659,7 +2745,7 @@ export default function App() {
                             {msg.role === 'user' ? <User size={12} className="sm:size-[16px]" /> : <Brain size={12} className="sm:size-[16px] text-[#DC2626]" />}
                           </div>
                           <div className={`space-y-1 sm:space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`p-3 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : 'bg-white/5 text-white/90 border border-white/10 rounded-tl-none'}`}>
+                <div className={`p-3 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : `${theme === 'dark' ? 'bg-white/5 text-white/90 border-white/10' : 'bg-slate-50 text-slate-700 border-slate-200'} border rounded-tl-none`}`}>
                               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
                               {msg.image && (
                                 <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
@@ -2810,9 +2896,9 @@ export default function App() {
               {!selectedSession ? (
                 <div className="space-y-3">
                   {sessions.length === 0 ? (
-                    <div className="text-center py-20 bg-[#0A0F1C] rounded-3xl border border-white/10 border-dashed">
-                      <History size={40} className="mx-auto mb-4 text-white/10" />
-                      <p className="text-sm font-bold text-white/30">No saved lectures found</p>
+                    <div className={`text-center py-20 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl border border-dashed`}>
+                      <History size={40} className={`mx-auto mb-4 ${theme === 'dark' ? 'text-white/10' : 'text-slate-200'}`} />
+                      <p className={`text-sm font-bold ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>No saved lectures found</p>
                     </div>
                   ) : (
                     sessions.map(session => (
@@ -2836,7 +2922,7 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-[#0A0F1C] p-6 rounded-3xl border border-white/10 space-y-6 shadow-sm">
+                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-6 shadow-sm`}>
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-bold text-white">{selectedSession.title}</h3>
                     <button onClick={() => {
@@ -2862,7 +2948,7 @@ export default function App() {
               </div>
 
               {quizState === 'idle' && (
-                <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-6 shadow-sm`}>
                   <div className="text-center space-y-2 mb-4">
                     <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><Sparkles size={24} className="text-[#DC2626]" /></div>
                     <h3 className="font-bold text-lg text-white">Generate Interactive Quiz</h3>
@@ -2918,12 +3004,12 @@ export default function App() {
 
               {quizState === 'active' && quizQuestions.length > 0 && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between bg-[#0A0F1C] p-4 rounded-2xl border border-white/10 shadow-sm">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
                     <button onClick={() => setQuizState('idle')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back</button>
                     <div className="text-center"><p className="text-[10px] font-black text-white/30 uppercase">Progress</p><p className="text-sm font-black text-[#DC2626]">{currentQuestionIndex + 1} / {quizQuestions.length}</p></div>
                     <div className="text-right"><p className="text-[10px] font-black text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
                   </div>
-                  <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 space-y-8 shadow-sm">
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-8 shadow-sm`}>
                     <h3 className="text-lg font-bold leading-tight text-white">{quizQuestions[currentQuestionIndex].question}</h3>
                     <div className="space-y-3">
                       {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
@@ -2932,7 +3018,14 @@ export default function App() {
                         </button>
                       ))}
                     </div>
-                    {isAnswered && <button onClick={nextQuestion} className="w-full bg-white text-black font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition-all">{currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"} <ChevronRight size={18} /></button>}
+                    {isAnswered && (
+                      <button 
+                        onClick={nextQuestion} 
+                        className={`w-full ${theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white'} font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition-all`}
+                      >
+                        {currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"} <ChevronRight size={18} />
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -2975,7 +3068,7 @@ export default function App() {
               </div>
 
               {!user ? (
-                <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 text-center space-y-6">
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border text-center space-y-6`}>
                   <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto"><User size={32} className="text-white/20" /></div>
                   <p className="text-sm text-white/60">Please login to view and edit your profile.</p>
                   <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-[#DC2626]/20">LOGIN NOW</button>
@@ -2983,7 +3076,7 @@ export default function App() {
               ) : (
                 <div className="space-y-6">
                   {/* Profile Header Card */}
-                  <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 relative overflow-hidden shadow-sm">
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-8 rounded-3xl relative overflow-hidden shadow-sm`}>
                     <div className="absolute top-0 right-0 w-32 h-32 bg-[#DC2626]/5 rounded-full translate-x-16 -translate-y-16" />
                     <div className="flex flex-col items-center text-center relative z-10">
                       <div className="relative mb-4 group">
@@ -3025,10 +3118,10 @@ export default function App() {
                   </div>
 
                   {/* Profile Details Form */}
-                  <div className="bg-[#0A0F1C] p-6 sm:p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Full Name</label>
+                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Full Name</label>
                         <input 
                           type="text" 
                           value={currentUserData?.fullName || ''} 
@@ -3039,11 +3132,11 @@ export default function App() {
                           onBlur={async () => {
                             await updateDoc(doc(db, 'users', user.uid), { fullName: currentUserData.fullName });
                           }}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} 
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Matric Number</label>
+                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Matric Number</label>
                         <input 
                           type="text" 
                           value={currentUserData?.matric || ''} 
@@ -3054,11 +3147,11 @@ export default function App() {
                           onBlur={async () => {
                             await updateDoc(doc(db, 'users', user.uid), { matric: currentUserData.matric });
                           }}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} 
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Date of Birth</label>
+                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Date of Birth</label>
                         <input 
                           type="date" 
                           value={currentUserData?.dob || ''} 
@@ -3069,37 +3162,37 @@ export default function App() {
                           onBlur={async () => {
                             await updateDoc(doc(db, 'users', user.uid), { dob: currentUserData.dob });
                           }}
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} 
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Email Address</label>
+                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Email Address</label>
                         <input 
                           type="email" 
                           value={user.email || ''} 
                           disabled
-                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white/40 cursor-not-allowed" 
+                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/40' : 'bg-slate-50 border-slate-200 text-slate-400'} border rounded-2xl px-5 py-4 text-sm outline-none cursor-not-allowed`} 
                         />
                       </div>
                     </div>
-                    <div className="pt-4 border-t border-white/5">
-                      <p className="text-[8px] text-white/20 uppercase font-bold text-center">Data is synced in real-time with your secure cloud profile.</p>
+                    <div className={`pt-4 border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+                      <p className={`text-[8px] ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'} uppercase font-bold text-center`}>Data is synced in real-time with your secure cloud profile.</p>
                     </div>
                   </div>
 
                   {/* Account Stats */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                      <p className="text-[8px] font-black text-white/30 uppercase mb-1">Lectures</p>
-                      <p className="text-xl font-black text-white">{sessions.length}</p>
+                    <div className={`${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} p-4 rounded-2xl border text-center`}>
+                      <p className={`text-[8px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase mb-1`}>Lectures</p>
+                      <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{sessions.length}</p>
                     </div>
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                      <p className="text-[8px] font-black text-white/30 uppercase mb-1">Chats</p>
-                      <p className="text-xl font-black text-white">{chatSessions.length}</p>
+                    <div className={`${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} p-4 rounded-2xl border text-center`}>
+                      <p className={`text-[8px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase mb-1`}>Chats</p>
+                      <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{chatSessions.length}</p>
                     </div>
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center col-span-2 sm:col-span-1">
-                      <p className="text-[8px] font-black text-white/30 uppercase mb-1">Status</p>
-                      <p className={`text-xl font-black ${isPremium ? 'text-yellow-500' : 'text-white/40'}`}>{isPremium ? 'PREMIUM' : 'FREE'}</p>
+                    <div className={`${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} p-4 rounded-2xl border text-center col-span-2 sm:col-span-1`}>
+                      <p className={`text-[8px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase mb-1`}>Status</p>
+                      <p className={`text-xl font-black ${isPremium ? 'text-yellow-500' : (theme === 'dark' ? 'text-white/40' : 'text-slate-300')}`}>{isPremium ? 'PREMIUM' : 'FREE'}</p>
                     </div>
                   </div>
                 </div>
@@ -3116,38 +3209,38 @@ export default function App() {
               </div>
 
               {examLobbyState === 'login' && (
-                <div className="bg-[#0A0F1C] p-5 sm:p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
                   <div className="text-center space-y-2">
                     <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><User size={24} className="text-[#DC2626]" /></div>
-                    <h3 className="font-bold text-lg text-white">Student Verification</h3>
-                    <p className="text-xs text-white/40">Enter your credentials to access the examination hall.</p>
+                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Student Verification</h3>
+                    <p className={`text-xs ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>Enter your credentials to access the examination hall.</p>
                   </div>
                   {!showAdminLogin ? (
                     <div className="space-y-4">
                       {!user ? (
                         <div className="text-center space-y-4 py-6">
-                          <p className="text-sm text-white/60">You must be logged in to access examinations.</p>
+                          <p className={`text-sm ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'}`}>You must be logged in to access examinations.</p>
                           <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">
                             LOGIN TO PROCEED
                           </button>
                         </div>
                       ) : studentName ? (
-                        <div className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4 text-center">
+                        <div className={`p-6 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-3xl border space-y-4 text-center`}>
                           <div className="w-16 h-16 bg-[#DC2626] rounded-full flex items-center justify-center text-white font-black text-2xl mx-auto shadow-lg shadow-[#DC2626]/20">{studentName.charAt(0)}</div>
                           <div>
-                            <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Authenticated Student</p>
-                            <p className="text-xl font-black text-white">{studentName}</p>
+                            <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest`}>Authenticated Student</p>
+                            <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{studentName}</p>
                             <p className="text-xs font-mono text-[#DC2626] font-bold">{matricNumber}</p>
                           </div>
                           
                           {isTakingPaid ? (
-                            <div className="pt-4 space-y-3 border-t border-white/10">
+                            <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
                               <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">PROCEED TO HALL</button>
-                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className="w-full text-[10px] font-black text-white/30 uppercase hover:text-[#DC2626] transition-all">Not you? Switch Account</button>
+                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
                             </div>
                           ) : (
-                            <div className="pt-4 space-y-3 border-t border-white/10">
-                              <p className="text-[10px] text-white/40 leading-relaxed italic">This examination requires a one-time access fee of <span className="font-black text-white">â‚¦100</span>. Please complete payment to proceed.</p>
+                            <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
+                              <p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} leading-relaxed italic`}>This examination requires a one-time access fee of <span className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>â‚¦100</span>. Please complete payment to proceed.</p>
                               <button 
                                 onClick={() => {
                                   if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
@@ -3160,23 +3253,33 @@ export default function App() {
                               >
                                 <CreditCard size={18} /> PAY â‚¦100 & PROCEED
                               </button>
-                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className="w-full text-[10px] font-black text-white/30 uppercase hover:text-[#DC2626] transition-all">Not you? Switch Account</button>
+                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
                             </div>
                           )}
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                          <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
                           <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">VERIFY MATRIC</button>
-                          <button onClick={() => setAdminMode(true)} className="w-full bg-white/5 text-white/60 font-bold py-3 rounded-2xl text-xs hover:bg-white/10 transition-all">HOST AN EXAM (â‚¦200)</button>
+                      <button 
+                        onClick={() => setAdminMode(true)} 
+                        className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-3 rounded-2xl text-xs hover:bg-[#DC2626]/10 transition-all`}
+                      >
+                        HOST AN EXAM (â‚¦200)
+                      </button>
                         </div>
                       )}
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin PIN" className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white" />
+                      <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin PIN" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
                       <div className="flex gap-2">
-                        <button onClick={() => setShowAdminLogin(false)} className="flex-1 bg-white/5 text-white/60 font-bold py-4 rounded-2xl text-sm">BACK</button>
+                        <button 
+                          onClick={() => setShowAdminLogin(false)} 
+                          className={`flex-1 ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-4 rounded-2xl text-sm`}
+                        >
+                          BACK
+                        </button>
                         <button onClick={handleAdminLogin} className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">LOGIN AS ADMIN</button>
                       </div>
                     </div>
@@ -3185,16 +3288,16 @@ export default function App() {
               )}
 
               {examLobbyState === 'briefing' && (
-                <div className="bg-[#0A0F1C] p-5 sm:p-8 rounded-3xl border border-white/10 space-y-6 shadow-sm">
-                  <div className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/10">
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
+                  <div className={`flex items-center gap-4 p-4 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-2xl border`}>
                     <div className="w-12 h-12 bg-[#DC2626] rounded-full flex items-center justify-center text-white font-black text-xl">{studentName.charAt(0)}</div>
-                    <div><p className="font-black text-white uppercase tracking-tighter">{studentName}</p><p className="text-[10px] text-white/40 font-mono">{matricNumber}</p></div>
+                    <div><p className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'} uppercase tracking-tighter`}>{studentName}</p><p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} font-mono`}>{matricNumber}</p></div>
                   </div>
                   <div className="space-y-4">
-                    <h3 className="font-bold text-lg text-white">Examination Briefing</h3>
-                    <div className="p-4 bg-[#DC2626]/5 border border-[#DC2626]/20 rounded-2xl space-y-3">
+                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Examination Briefing</h3>
+                    <div className={`${theme === 'dark' ? 'bg-[#DC2626]/5 border-[#DC2626]/20' : 'bg-red-50 border-red-100'} p-4 rounded-2xl border space-y-3`}>
                       <p className="text-xs text-[#DC2626] font-bold flex items-center gap-2"><XCircle size={14} /> WARNING: {studentName}, if you leave this app, you automatically forfeit the exam.</p>
-                      <p className="text-xs text-white/60 leading-relaxed">This is a professional CBT Mock Exam. You have {Math.floor(examConfig.duration / 60)} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
+                      <p className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'} leading-relaxed`}>This is a professional CBT Mock Exam. You have {Math.floor(examConfig.duration / 60)} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
                     </div>
                   </div>
                   <button onClick={startExam} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
@@ -3205,47 +3308,52 @@ export default function App() {
 
               {examLobbyState === 'exam' && (
                 <div className="space-y-4 sm:space-y-6">
-                  <div className="flex items-center justify-between bg-[#0A0F1C] p-3 sm:p-4 rounded-2xl border border-white/10 shadow-sm sticky top-16 sm:top-20 z-30">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-3 sm:p-4 rounded-2xl border shadow-sm sticky top-16 sm:top-20 z-30`}>
                     <div className="flex items-center gap-2 text-[#DC2626] font-black">
                       <Clock size={16} className="sm:size-[18px]" />
                       <span className="font-mono text-base sm:text-lg">{Math.floor(examTimer / 60)}:{(examTimer % 60).toString().padStart(2, '0')}</span>
                     </div>
-                    <div className="text-center"><p className="text-[8px] sm:text-[10px] font-black text-white/30 uppercase">Question</p><p className="text-xs sm:text-sm font-black text-white">{currentExamIndex + 1} / {examQuestions.length}</p></div>
+                    <div className="text-center"><p className={`text-[8px] sm:text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase`}>Question</p><p className={`text-xs sm:text-sm font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentExamIndex + 1} / {examQuestions.length}</p></div>
                     <button onClick={submitExam} disabled={Object.keys(examAnswers).length < (examQuestions.length * 0.5)} className="bg-[#DC2626] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[8px] sm:text-[10px] font-black uppercase tracking-widest disabled:opacity-30">Submit</button>
                   </div>
 
-                  <div className="bg-[#0A0F1C] p-5 sm:p-8 rounded-3xl border border-white/10 space-y-6 sm:space-y-8 shadow-sm">
-                    <h3 className="text-base sm:text-lg font-bold leading-tight text-white">{examQuestions[currentExamIndex].question}</h3>
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 sm:space-y-8 shadow-sm`}>
+                    <h3 className={`text-base sm:text-lg font-bold leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{examQuestions[currentExamIndex].question}</h3>
                     <div className="space-y-3">
                       {examQuestions[currentExamIndex].options.map((option, idx) => (
-                        <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}>
+                        <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/80' : 'bg-slate-50 border-slate-200 text-slate-700'}`}`}>
                           <span className="text-sm font-medium">{option}</span>
                         </button>
                       ))}
                     </div>
                     <div className="flex justify-between pt-4">
-                      <button onClick={() => setCurrentExamIndex(prev => Math.max(0, prev - 1))} disabled={currentExamIndex === 0} className="p-3 text-white/40 hover:text-[#DC2626] disabled:opacity-20"><ArrowLeft size={24} /></button>
-                      <button onClick={() => setCurrentExamIndex(prev => Math.min(examQuestions.length - 1, prev + 1))} disabled={currentExamIndex === examQuestions.length - 1} className="p-3 text-white/40 hover:text-[#DC2626] disabled:opacity-20"><ChevronRight size={24} /></button>
+                      <button onClick={() => setCurrentExamIndex(prev => Math.max(0, prev - 1))} disabled={currentExamIndex === 0} className={`p-3 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} hover:text-[#DC2626] disabled:opacity-20`}><ArrowLeft size={24} /></button>
+                      <button onClick={() => setCurrentExamIndex(prev => Math.min(examQuestions.length - 1, prev + 1))} disabled={currentExamIndex === examQuestions.length - 1} className={`p-3 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} hover:text-[#DC2626] disabled:opacity-20`}><ChevronRight size={24} /></button>
                     </div>
                   </div>
                 </div>
               )}
 
               {examLobbyState === 'result' && (
-                <div className="bg-[#0A0F1C] p-10 rounded-3xl border border-white/10 text-center space-y-6 shadow-sm">
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-10 rounded-3xl border text-center space-y-6 shadow-sm`}>
                   <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
                     <CheckCircle2 size={48} className="text-[#DC2626]" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Exam Submitted</h3>
-                    <p className="text-white/40 text-sm mt-1">Your results have been recorded in the system.</p>
+                    <h3 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Exam Submitted</h3>
+                    <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>Your results have been recorded in the system.</p>
                   </div>
-                  <div className="py-6 border-y border-white/5">
-                    <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-1">Final Score</p>
+                  <div className={`py-6 border-y ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+                    <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest mb-1`}>Final Score</p>
                     <p className="text-5xl font-black text-[#DC2626]">{examScore} / {examQuestions.length}</p>
-                    <p className="text-sm font-bold text-white mt-2">{Math.round((examScore / (examQuestions.length || 1)) * 100)}% Proficiency</p>
+                    <p className={`text-sm font-bold mt-2 ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{Math.round((examScore / (examQuestions.length || 1)) * 100)}% Proficiency</p>
                   </div>
-                  <button onClick={() => setExamLobbyState('login')} className="w-full bg-white text-black font-black py-4 rounded-2xl text-sm transition-all">LOGOUT</button>
+                  <button 
+                    onClick={() => setExamLobbyState('login')} 
+                    className={`w-full ${theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white'} font-black py-4 rounded-2xl text-sm transition-all`}
+                  >
+                    LOGOUT
+                  </button>
                 </div>
               )}
             </motion.div>
@@ -3254,24 +3362,24 @@ export default function App() {
           {/* BLOG TAB */}
           {activeTab === 'blog' && (
             <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-20">
-              <div className="bg-[#0A0F1C] p-8 rounded-3xl border border-white/10 shadow-sm space-y-10">
+              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-10`}>
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION â€” REDEFINING THE STUDENT EXPERIENCE</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
+                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
                     The current state of education requires more than just reading and memorizing; it requires high-level tools that actually work. The primary goal is to become the number one student study application in the country by offering premium, world-class academic services that bridge the gap between local challenges and global standards. The aim is to provide a seamless, high-tech environment where advanced AI tutors and professional testing infrastructures are available to every student at an almost free cost.
                   </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
+                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
                     Beyond digital tools, the vision extends to becoming the leading scholarship provider nationwide. The objective is to build a system where academic excellence is directly rewarded with financial support, creating a cycle where using the platform to study actually leads to having your tuition covered. This is about making success a reality for those who have the brains but lack the funds.
                   </p>
                 </div>
 
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 2: CURRENT LIMITATIONS & THE ROADMAP TO 2026</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
+                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
                     Every innovation starts with a foundation, and there are currently specific boundaries being pushed. Right now, the platform requires an active internet connection for the high-level AI processing to function. There is also a continuous effort to expand the database to cover every single academic department and specialized field. Currently, optimization is highest for mobile and laptop devices, with more universal compatibility being refined daily.
                   </p>
-                  <p className="text-sm text-white/70 leading-relaxed font-bold">By late 2026, major upgrades will be live:</p>
-                  <ul className="list-disc pl-5 space-y-2 text-sm text-white/70">
+                  <p className={`text-sm leading-relaxed font-bold ${theme === 'dark' ? 'text-white/70' : 'text-slate-700'}`}>By late 2026, major upgrades will be live:</p>
+                  <ul className={`list-disc pl-5 space-y-2 text-sm ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
                     <li>Full Offline Capabilities: A "Lite" version is in development to allow access to study guides and quizzes without any data usage.</li>
                     <li>The Scholarship Portal: A fully integrated merit-based system that will automatically identify top performers for tuition coverage.</li>
                     <li>Voice Tutor 2.0: Hands-free learning where you can engage in full academic discussions with the AI through audio alone.</li>
@@ -3281,10 +3389,10 @@ export default function App() {
 
                 <div className="space-y-4">
                   <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 3: WHY THIS WILL BE THE #1 STUDY APP</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
+                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
                     This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesnâ€™t just give answers; it provides deep, logical explanations that simplify complex topics.
                   </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
+                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
                     The testing engine is built for the real world. With features like the 50% Submission Ruleâ€”which prevents accidental submission before a student is readyâ€”and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
                   </p>
                 </div>
@@ -3368,7 +3476,7 @@ export default function App() {
           {/* PROFILE TAB */}
           {activeTab === 'profile' && (
             <motion.div key="profile" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="max-w-2xl mx-auto space-y-6 sm:space-y-8 pb-32 px-2 sm:px-0">
-              <div className="bg-[#0A0F1C] p-6 sm:p-10 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-10 rounded-3xl shadow-2xl relative overflow-hidden`}>
                 <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-[#DC2626]/20 to-transparent opacity-50" />
                 
                 <div className="relative flex flex-col items-center text-center space-y-6 sm:space-y-8">
@@ -3445,7 +3553,7 @@ export default function App() {
 
           {/* HOST EXAM PANEL (FORMERLY ADMIN) */}
           {adminMode && (
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="fixed inset-0 z-[110] p-2 sm:p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className={`fixed inset-0 z-[110] p-2 sm:p-6 overflow-y-auto ${theme === 'dark' ? 'bg-[#0A0F1C]/95' : 'bg-white/95'} backdrop-blur-xl`}>
               <div className="max-w-6xl mx-auto space-y-4 sm:space-y-8 pb-32">
                 <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-4 sm:pb-6">
                   <div className="flex items-center gap-2 sm:gap-4">
@@ -3466,7 +3574,10 @@ export default function App() {
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    <button onClick={() => setAdminMode(false)} className="p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
+                    <button 
+                      onClick={() => setAdminMode(false)} 
+                      className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} hover:bg-[#DC2626]/10`}
+                    >
                       <XCircle size={20} className="sm:size-[24px]" />
                     </button>
                   </div>
@@ -3501,7 +3612,7 @@ export default function App() {
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                     {/* Student Management */}
                     <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-                      {hostExamId && (
+                      {hostExamId ? (
                         <div className="bg-green-500/10 border border-green-500/20 p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
                           <div className="flex items-center gap-3 w-full sm:w-auto">
                             <div className="w-8 h-8 bg-green-500 rounded-lg flex-shrink-0 flex items-center justify-center text-white"><Share2 size={16} /></div>
@@ -3511,9 +3622,23 @@ export default function App() {
                             </div>
                           </div>
                           <div className="flex gap-2 w-full sm:w-auto">
-                            <button onClick={() => copyToClipboard(`${window.location.origin}?examId=${hostExamId}`)} className="flex-1 sm:flex-none p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold"><Copy size={14} /> COPY</button>
-                            <button onClick={() => { setIsHostPaid(false); setHostExamId(''); setRegisteredStudents([]); setExamQuestions([]); }} className="flex-1 sm:flex-none p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all flex items-center justify-center gap-2 text-[10px] font-bold" title="Host Another"><Plus size={14} /> RESET</button>
+                            <button onClick={() => copyToClipboard(`${window.location.origin}?examId=${hostExamId}`)} className="flex-1 sm:flex-none p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold"><Copy size={14} /> COPY LINK</button>
+                            <button onClick={endHostedExam} className="flex-1 sm:flex-none p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold" title="End Exam Session"><XCircle size={14} /> END EXAM</button>
                           </div>
+                        </div>
+                      ) : (
+                        <div className={`bg-[#DC2626]/10 border border-[#DC2626]/20 p-4 rounded-2xl text-center space-y-3 ${theme === 'dark' ? '' : 'bg-red-50 border-red-100'}`}>
+                          <p className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'}`}>No active exam link found. Click below to generate one.</p>
+                          <button 
+                            onClick={() => {
+                              const newId = Math.random().toString(36).substr(2, 9).toUpperCase();
+                              setHostExamId(newId);
+                              localStorage.setItem('nsg_host_exam_id', newId);
+                            }}
+                            className="bg-[#DC2626] text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest"
+                          >
+                            Generate Exam Link
+                          </button>
                         </div>
                       )}
 
@@ -3640,7 +3765,7 @@ export default function App() {
       </main>
 
       {/* NAVIGATION */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#0A0F1C]/95 backdrop-blur-xl border-t border-white/10 z-50 shadow-2xl">
+      <nav className={`fixed bottom-0 left-0 right-0 ${theme === 'dark' ? 'bg-[#0A0F1C]/95 border-white/10' : 'bg-white/95 border-slate-200'} backdrop-blur-xl border-t z-50 shadow-2xl`}>
         <div className="flex items-center justify-around py-1 sm:py-2 max-w-2xl mx-auto px-2">
           {[
             { id: 'record', icon: Mic, label: 'Capture' },
@@ -3663,7 +3788,7 @@ export default function App() {
       {/* GOD MODE PANEL */}
       <AnimatePresence>
         {showGodMode && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-[200] p-6 overflow-y-auto bg-[#0A0F1C]/95 backdrop-blur-xl">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className={`fixed inset-0 z-[200] p-6 overflow-y-auto ${theme === 'dark' ? 'bg-[#0A0F1C]/95' : 'bg-white/95'} backdrop-blur-xl`}>
             <div className="max-w-7xl mx-auto space-y-8 pb-20">
               <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-6">
                 <div className="flex items-center gap-4">
@@ -3683,7 +3808,10 @@ export default function App() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  <button onClick={() => setShowGodMode(false)} className="p-3 rounded-2xl transition-all bg-white/5 text-white/40 hover:bg-white/10">
+                  <button 
+                    onClick={() => setShowGodMode(false)} 
+                    className={`p-3 rounded-2xl transition-all ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} hover:bg-[#DC2626]/10`}
+                  >
                     <XCircle size={24} />
                   </button>
                 </div>
@@ -3759,7 +3887,7 @@ export default function App() {
 
         {editingUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#0A0F1C] rounded-3xl p-8 max-w-md w-full border border-white/10 space-y-6">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-md w-full space-y-6`}>
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-black text-white uppercase tracking-tighter">Edit User Information</h3>
                 <p className="text-xs text-white/40">Modify user details directly in the database.</p>
@@ -3797,7 +3925,7 @@ export default function App() {
       <AnimatePresence>
         {showShareModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#0A0F1C] rounded-3xl p-8 max-w-sm w-full border border-white/10 space-y-6">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-sm w-full space-y-6`}>
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-black text-white uppercase tracking-tighter">Share Your Result</h3>
                 <p className="text-xs text-white/40">Enter your name to generate your score card.</p>
@@ -3822,7 +3950,7 @@ export default function App() {
 
               {/* HIDDEN SHARE CARD FOR GENERATION */}
               <div className="fixed -left-[9999px] top-0">
-                <div ref={shareCardRef} className="w-[600px] h-[400px] bg-[#0A0F1C] p-10 flex flex-col items-center justify-center text-center relative overflow-hidden border-[10px] border-[#DC2626]">
+                <div ref={shareCardRef} className={`w-[600px] h-[400px] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} p-10 flex flex-col items-center justify-center text-center relative overflow-hidden border-[10px] border-[#DC2626]`}>
                   <div className="absolute top-0 left-0 w-32 h-32 bg-[#DC2626]/5 rounded-full -translate-x-16 -translate-y-16" />
                   <div className="absolute bottom-0 right-0 w-48 h-48 bg-[#DC2626]/5 rounded-full translate-x-24 translate-y-24" />
                   
