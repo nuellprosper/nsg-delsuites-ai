@@ -77,7 +77,7 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-1.5-flash";
+const MODEL_NAME = "gemini-3.1-flash-lite-Preview";
 
 const HF_MODELS = {
   TEXT: "Qwen/Qwen2.5-72B-Instruct",
@@ -238,10 +238,10 @@ const GeminiLive = ({ onClose, setUserNotification }: { onClose: () => void, set
       try {
         const aiInstance = getAiInstance();
         const session = await aiInstance.live.connect({
-          model: "gemini-2.0-flash-exp",
+          model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
-            systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, and academic.",
+            systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, friendly and academic.",
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
             inputAudioTranscription: {},
             outputAudioTranscription: {}
@@ -1195,7 +1195,7 @@ export default function App() {
       `;
       const aiInstance = getAiInstance();
       const response = await aiInstance.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }] }],
         config: { responseMimeType: "application/json" }
       });
@@ -1675,7 +1675,7 @@ export default function App() {
       const prompt = `Based on this chat history, generate a very short (max 5 words) title for this conversation. Return ONLY the title text. Do not include quotes or any other text.\n\nHistory:\n${history.map(m => `${m.role}: ${m.text}`).join('\n')}`;
       const aiInstance = getAiInstance();
       const response = await aiInstance.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }] }]
       });
       return response.text?.trim() || "New Chat Session";
