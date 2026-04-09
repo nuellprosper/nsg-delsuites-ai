@@ -1,11 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
+    <!-- Deep black background -->
     <radialGradient id="bg" cx="50%" cy="50%" r="50%">
       <stop offset="0%" style="stop-color:#111" />
       <stop offset="100%" style="stop-color:#000" />
     </radialGradient>
-    <filter id="neon" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="15" result="blur1" />
+
+    <!-- Intense Red Neon Glow -->
+    <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur1" />
       <feGaussianBlur stdDeviation="6" result="blur2" />
       <feMerge>
         <feMergeNode in="blur1" />
@@ -15,32 +18,22 @@
     </filter>
   </defs>
 
+  <!-- Background -->
   <circle cx="256" cy="256" r="256" fill="#000" />
   <circle cx="256" cy="256" r="235" fill="url(#bg)" stroke="#1a1a1a" stroke-width="12" />
   
-  <g transform="translate(256, 256) scale(1.1)" filter="url(#neon)">
-    <g transform="translate(-120, -120)">
-      <!-- Recreated Brain Silhouette from Image -->
-      <path d="M120 220c-40 0-70-20-70-50 0-10 5-20 15-30-15-10-25-25-25-45 0-25 15-40 40-50-10-15-10-35 10-45 20-10 40 0 50 15 10-15 30-25 50-15 20 10 20 30 10 45 25 10 40 25 40 50 0 20-10 35-25 45 10 10 15 20 15 30 0 30-30 50-70 50" 
-            fill="none" 
-            stroke="#ff3333" 
-            stroke-width="26" 
-            stroke-linecap="round" 
-            stroke-linejoin="round" />
-            
-      <!-- Center Vertical -->
-      <path d="M120 220V70" 
-            fill="none" 
-            stroke="#ff3333" 
-            stroke-width="26" 
-            stroke-linecap="round" />
-            
-      <!-- Internal Folds -->
-      <path d="M80 140c0-15 15-25 40-25M160 140c0-15-15-25-40-25" 
-            fill="none" 
-            stroke="#ff3333" 
-            stroke-width="24" 
-            stroke-linecap="round" />
-    </g>
+  <!-- NSG Text Logo -->
+  <g transform="translate(256, 256)" filter="url(#neonGlow)">
+    <text x="0" y="0" 
+          text-anchor="middle" 
+          dominant-baseline="middle" 
+          fill="#ff3333" 
+          font-family="Arial Black, sans-serif" 
+          font-size="160" 
+          font-weight="900" 
+          font-style="italic"
+          letter-spacing="-10">
+      NSG
+    </text>
   </g>
 </svg>
