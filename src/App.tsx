@@ -81,7 +81,8 @@ const HF_MODELS = {
   IMAGE: "black-forest-labs/FLUX.1-schnell"
 };
 
-const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "";
+const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "pk_test_14a5b8ee0a06e063a8b0e46fc7e0e76ed66f2746";
+
 interface MediaFile {
   id: string;
   file: File;
