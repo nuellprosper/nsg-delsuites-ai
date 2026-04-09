@@ -82,9 +82,25 @@ service cloud.firestore {
              data.status in ['active', 'deleted'];
     }
 
+    function isValidBlogPost(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 50000 &&
+             data.timestamp is timestamp;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /blogPosts/{postId} {
+      // Blog posts are readable by anyone (even unauthenticated if desired, but we'll stick to auth for now)
+      allow read: if true;
+      
+      // Only admins can create, update, or delete blog posts
+      allow create: if isAdmin() && isValidBlogPost(request.resource.data);
+      allow update: if isAdmin() && isValidBlogPost(request.resource.data);
+      allow delete: if isAdmin();
+    }
 
     match /users/{uid} {
       // Users can only read their own profile unless they are admin
