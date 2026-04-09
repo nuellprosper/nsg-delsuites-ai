@@ -19,15 +19,15 @@
   </defs>
 
   <!-- Background -->
-  <circle cx="256" cy="256" r="256" fill="#000" />
-  <circle cx="256" cy="256" r="235" fill="url(#bg)" stroke="#1a1a1a" stroke-width="12" />
+  <rect width="512" height="512" fill="#0A0F1C" />
+  <circle cx="256" cy="256" r="235" fill="#0A0F1C" stroke="#1a1a1a" stroke-width="12" />
   
   <!-- NSG Text Logo -->
   <g transform="translate(256, 256)" filter="url(#neonGlow)">
     <text x="0" y="0" 
           text-anchor="middle" 
           dominant-baseline="middle" 
-          fill="#ff3333" 
+          fill="#ff0000" 
           font-family="Arial Black, sans-serif" 
           font-size="160" 
           font-weight="900" 
