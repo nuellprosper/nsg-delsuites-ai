@@ -1,23 +1,27 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-
-const firebaseConfig = {
-  apiKey:             import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:         import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId:          import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket:      import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId:  import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId:              import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
-const firestoreDatabaseId: string = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { initializeFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, getDocFromServer, serverTimestamp, orderBy } from 'firebase/firestore';
+import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firestoreDatabaseId);
+
+// Use initializeFirestore with long polling to bypass potential WebSocket restrictions
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId);
+
 export const auth = getAuth(app);
+
+// Set persistence to local
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.error("Auth persistence error:", err);
+});
+
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 // Error handling for Firestore operations
 export enum FirestoreOperation {
@@ -71,4 +75,16 @@ export function handleFirestoreError(error: unknown, operationType: FirestoreOpe
   throw new Error(JSON.stringify(errInfo));
 }
 
-export { signInWithPopup, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp };
+// Test connection
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration. ");
+    }
+  }
+}
+testConnection();
+
+export { signInWithPopup, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy };
