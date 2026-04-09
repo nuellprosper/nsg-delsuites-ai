@@ -25,11 +25,11 @@ import {
 
 /**
  * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
- * ✅ Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
- * ✅ Admin Backend Control (Score Sheet, Timer Restart, Results Download)
- * ✅ Advanced AI Chat (Copy Response, History Sidebar)
- * ✅ Enhanced Quiz (Customization, Deep Assessment, Report to AI)
- * ✅ Paystack Payment Integration
+ * âœ… Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
+ * âœ… Admin Backend Control (Score Sheet, Timer Restart, Results Download)
+ * âœ… Advanced AI Chat (Copy Response, History Sidebar)
+ * âœ… Enhanced Quiz (Customization, Deep Assessment, Report to AI)
+ * âœ… Paystack Payment Integration
  */
 
 const getApiKey = () => {
@@ -452,7 +452,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
 };
 
 export default function App() {
-  // --- 🔐 AUTH STATE ---
+  // --- ðŸ” AUTH STATE ---
   const [user, setUser] = useState<any>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [isAdminUser, setIsAdminUser] = useState(false);
@@ -463,7 +463,7 @@ export default function App() {
   const [isTakingPaid, setIsTakingPaid] = useState(false);
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
-  // --- 📱 APP STATE ---
+  // --- ðŸ“± APP STATE ---
   const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam' | 'profile'>('record');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -501,7 +501,7 @@ export default function App() {
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
 
-  // --- 📦 PWA STATE ---
+  // --- ðŸ“¦ PWA STATE ---
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
 
@@ -526,12 +526,12 @@ export default function App() {
     setShowInstallBtn(false);
   };
 
-  // --- 💎 PREMIUM STATE ---
+  // --- ðŸ’Ž PREMIUM STATE ---
   const [isPremium, setIsPremium] = useState(false);
   const [premiumTimeLeft, setPremiumTimeLeft] = useState<string>("");
   const [showPremiumModal, setShowPremiumModal] = useState(false);
 
-  // --- 👑 GOD MODE LOGIC ---
+  // --- ðŸ‘‘ GOD MODE LOGIC ---
   useEffect(() => {
     if (currentUserData) {
       const isGod = currentUserData.bypassAllPayments || currentUserData.bypassTakingPayment || currentUserData.bypassHostingPayment;
@@ -608,7 +608,7 @@ export default function App() {
 
   const handleAddPost = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("🚀 Attempting to publish blog post...", newPost);
+    console.log("ðŸš€ Attempting to publish blog post...", newPost);
     
     if (!newPost.title || !newPost.content) {
       setGodModeNotification("Title and content are required.");
@@ -623,16 +623,16 @@ export default function App() {
         author: "NSG Admin"
       };
 
-      console.log("📦 Sending to Firestore:", postData);
+      console.log("ðŸ“¦ Sending to Firestore:", postData);
       
       const docRef = await addDoc(collection(db, 'blogPosts'), postData);
-      console.log("✅ Blog post published with ID:", docRef.id);
+      console.log("âœ… Blog post published with ID:", docRef.id);
       
       setNewPost({ title: '', content: '' });
       setIsAddingPost(false);
       setGodModeNotification("Blog post published successfully!");
     } catch (error: any) {
-      console.error("❌ Error adding post:", error);
+      console.error("âŒ Error adding post:", error);
       setGodModeNotification(`Failed to publish: ${error.message || 'Unknown error'}`);
     }
   };
@@ -694,7 +694,7 @@ export default function App() {
     }
   };
 
-  // --- 🎙️ RECORDING ENGINE ---
+  // --- ðŸŽ™ï¸ RECORDING ENGINE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -703,10 +703,10 @@ export default function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 📂 MEDIA & UPLOAD ---
+  // --- ðŸ“‚ MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
 
-  // --- 🤖 AI CHAT SYSTEM ---
+  // --- ðŸ¤– AI CHAT SYSTEM ---
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -718,11 +718,11 @@ export default function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInstanceRef = useRef<any>(null);
 
-  // --- 📚 PERSISTENCE ---
+  // --- ðŸ“š PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
-  // --- 📝 QUIZ STATE ---
+  // --- ðŸ“ QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
   const [shareQuizLink, setShareQuizLink] = useState<string | null>(null);
   const [quizDifficulty, setQuizDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | 'Professional'>('Medium');
@@ -735,7 +735,7 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
 
-  // --- 🎓 CBT EXAM STATE ---
+  // --- ðŸŽ“ CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
   const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result'>('login');
@@ -748,7 +748,7 @@ export default function App() {
   const [currentExamIndex, setCurrentExamIndex] = useState(0);
   const examTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 🛠️ ADMIN STATE ---
+  // --- ðŸ› ï¸ ADMIN STATE ---
   const [adminMode, setAdminMode] = useState(false);
   const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
   const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
@@ -775,7 +775,7 @@ export default function App() {
     }
   };
 
-  // --- 💳 PAYSTACK INTEGRATION ---
+  // --- ðŸ’³ PAYSTACK INTEGRATION ---
   const handleSubscriptionSuccess = async (plan: 'monthly' | 'yearly') => {
     if (!user) return;
     const duration = plan === 'monthly' ? 30 : 365;
@@ -879,7 +879,7 @@ export default function App() {
       )}
     </AnimatePresence>
   );
-  // --- 📱 INITIALIZATION & FIREBASE SYNC ---
+  // --- ðŸ“± INITIALIZATION & FIREBASE SYNC ---
   useEffect(() => {
     console.log("App Initialized. Checking API Keys...");
     console.log("Gemini Key Found:", !!getApiKey());
@@ -1283,7 +1283,7 @@ export default function App() {
     setUserNotification("Copied to clipboard!");
   };
 
-  // --- 🎓 CBT & ADMIN LOGIC ---
+  // --- ðŸŽ“ CBT & ADMIN LOGIC ---
   const shuffleArray = (array: any[]) => {
     const newArr = [...array];
     for (let i = newArr.length - 1; i > 0; i--) {
@@ -1587,7 +1587,7 @@ export default function App() {
     a.click();
   };
 
-  // --- 💳 PAYSTACK INTEGRATION ---
+  // --- ðŸ’³ PAYSTACK INTEGRATION ---
   const handleExamPaymentSuccess = (reference: any) => {
     setPaymentVerified(true);
     setExamLobbyState('briefing');
@@ -1684,12 +1684,21 @@ export default function App() {
     }
   };
 
-  // --- 🎤 RECORDING LOGIC ---
+  // --- ðŸŽ¤ RECORDING LOGIC ---
   const handleToggleRecording = async () => {
     if (isRecording) {
-      mediaRecorderRef.current?.stop();
-      setIsRecording(false);
-      if (timerRef.current) clearInterval(timerRef.current);
+      try {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+          // Stop all tracks to release the microphone
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+      } catch (err) {
+        console.error("Error stopping recording:", err);
+      } finally {
+        setIsRecording(false);
+        if (timerRef.current) clearInterval(timerRef.current);
+      }
     } else {
       audioChunksRef.current = [];
       try {
@@ -1724,7 +1733,7 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // --- 🖼️ IMAGE HANDLER ---
+  // --- ðŸ–¼ï¸ IMAGE HANDLER ---
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (uploadedImages.length + files.length > 50) {
@@ -1740,7 +1749,7 @@ export default function App() {
     setUploadedImages([...uploadedImages, ...mapped]);
   };
 
-  // --- 🧠 GEMINI ANALYSIS ---
+  // --- ðŸ§  GEMINI ANALYSIS ---
   const triggerFullAnalysis = async () => {
     if (uploadedImages.length === 0 && !recordedBlob) {
       setUserNotification("No data provided for analysis.");
@@ -1814,7 +1823,7 @@ export default function App() {
       setIsAnalyzing(false);
       setUserNotification("Analysis complete! View it below.");
     } catch (error: any) {
-      console.error('🚨 Gemini Analysis Error:', error);
+      console.error('ðŸš¨ Gemini Analysis Error:', error);
       setUserNotification(`Analysis failed: ${error.message || 'Unknown error'}`);
     } finally {
       setIsAnalyzing(false);
@@ -1923,7 +1932,7 @@ export default function App() {
     }
   };
 
-  // --- 💬 CHAT ROUTING ENGINE ---
+  // --- ðŸ’¬ CHAT ROUTING ENGINE ---
   const [isRecordingChat, setIsRecordingChat] = useState(false);
   const chatMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
@@ -2089,7 +2098,7 @@ export default function App() {
     }
   };
 
-  // --- 📝 QUIZ LOGIC ---
+  // --- ðŸ“ QUIZ LOGIC ---
   const loadSharedQuiz = async (quizId: string) => {
     try {
       const quizDoc = await getDoc(doc(db, 'quizzes', quizId));
@@ -2569,7 +2578,7 @@ export default function App() {
                               {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
                               <div className="flex flex-col overflow-hidden">
                                 <span className="text-[10px] font-bold truncate">{session.title}</span>
-                                <span className="text-[8px] opacity-60">{session.date} • {session.duration}</span>
+                                <span className="text-[8px] opacity-60">{session.date} â€¢ {session.duration}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 transition-opacity">
@@ -2601,7 +2610,7 @@ export default function App() {
                     <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl p-8 border relative overflow-hidden shadow-sm`}>
                       <div className="flex flex-col items-center text-center relative z-10">
                         <div className="relative mb-6">
-                          {isRecording && <motion.div animate={{ scale: 1.6, opacity: 0.1 }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626] rounded-full blur-2xl" />}
+                          {isRecording && <motion.div animate={{ scale: 1.6, opacity: 0.1 }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626] rounded-full blur-2xl pointer-events-none" />}
                           <button 
                             onClick={handleToggleRecording} 
                             className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? (theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white') : 'bg-[#DC2626] text-white'} hover:scale-105 active:scale-95`}
@@ -3008,7 +3017,7 @@ export default function App() {
                   <div>
                     <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
                     <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                      {isPremium ? `Active • ${premiumTimeLeft} Remaining` : "Inactive • Upgrade for full access"}
+                      {isPremium ? `Active â€¢ ${premiumTimeLeft} Remaining` : "Inactive â€¢ Upgrade for full access"}
                     </p>
                   </div>
                 </div>
@@ -3033,7 +3042,7 @@ export default function App() {
                           <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
                             {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
                           </div>
-                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} • {session.duration}</p></div>
+                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} â€¢ {session.duration}</p></div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
@@ -3366,7 +3375,7 @@ export default function App() {
                             </div>
                           ) : (
                             <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
-                              <p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} leading-relaxed italic`}>This examination requires a one-time access fee of <span className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>₦100</span>. Please complete payment to proceed.</p>
+                              <p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} leading-relaxed italic`}>This examination requires a one-time access fee of <span className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>â‚¦100</span>. Please complete payment to proceed.</p>
                               <button 
                                 onClick={() => {
                                   if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
@@ -3377,7 +3386,7 @@ export default function App() {
                                 }} 
                                 className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                               >
-                                <CreditCard size={18} /> PAY ₦100 & PROCEED
+                                <CreditCard size={18} /> PAY â‚¦100 & PROCEED
                               </button>
                               <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
                             </div>
@@ -3391,7 +3400,7 @@ export default function App() {
                         onClick={() => setAdminMode(true)} 
                         className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-3 rounded-2xl text-xs hover:bg-[#DC2626]/10 transition-all`}
                       >
-                        HOST AN EXAM (₦200)
+                        HOST AN EXAM (â‚¦200)
                       </button>
                         </div>
                       )}
@@ -3634,7 +3643,7 @@ export default function App() {
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tighter">Host Your Own Exam</h2>
-                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">₦200</span> per session.</p>
+                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">â‚¦200</span> per session.</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -3649,7 +3658,7 @@ export default function App() {
                       }} 
                       className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 sm:py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                     >
-                      <CreditCard size={18} className="sm:size-[20px]" /> PAY ₦200 TO START
+                      <CreditCard size={18} className="sm:size-[20px]" /> PAY â‚¦200 TO START
                     </button>
                   </div>
                 ) : (
@@ -3768,7 +3777,7 @@ export default function App() {
                               <div key={i} className="p-3 rounded-xl border flex items-center justify-between group bg-white/5 border-white/5">
                                 <div>
                                   <p className="text-[10px] font-bold text-white">{res.name}</p>
-                                  <p className="text-[8px] font-mono text-white/40">{res.matric} • {res.score}/{res.total}</p>
+                                  <p className="text-[8px] font-mono text-white/40">{res.matric} â€¢ {res.score}/{res.total}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] font-black text-[#DC2626]">{Math.round((res.score/res.total)*100)}%</p>
@@ -3915,7 +3924,7 @@ export default function App() {
                               <div>
                                 <p className="font-bold text-white">{u.fullName || u.displayName || 'Anonymous'}</p>
                                 <p className="text-[8px] font-mono opacity-50">{u.email}</p>
-                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} • {u.dob || 'No DOB'}</p>
+                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} â€¢ {u.dob || 'No DOB'}</p>
                               </div>
                             </div>
                           </td>
@@ -4084,7 +4093,7 @@ export default function App() {
 
                   <div className="mt-10 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
-                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai • {new Date().toLocaleDateString()}</p>
+                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai â€¢ {new Date().toLocaleDateString()}</p>
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
                   </div>
                 </div>
@@ -4105,7 +4114,7 @@ export default function App() {
         <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
         <button onClick={() => setLegalPage('privacy')} className="hover:text-[#DC2626] transition-colors">Privacy Policy</button>
         <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
-        <span>© 2026 Nuell Graphics</span>
+        <span>Â© 2026 Nuell Graphics</span>
       </footer>
     </div>
   );
