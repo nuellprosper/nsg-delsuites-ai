@@ -5,7 +5,7 @@ import {
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks,
-  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare
+  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI, Type, Modality, LiveServerMessage } from "@google/genai";
@@ -18,7 +18,7 @@ import { usePaystackPayment } from 'react-paystack';
 import { toPng } from 'html-to-image';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   FirestoreOperation, handleFirestoreError
 } from './firebase';
@@ -492,6 +492,9 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [godModeNotification, setGodModeNotification] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [blogPosts, setBlogPosts] = useState<any[]>([]);
+  const [isAddingPost, setIsAddingPost] = useState(false);
+  const [newPost, setNewPost] = useState({ title: '', content: '' });
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | 'privacy' | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -594,6 +597,55 @@ export default function App() {
       return () => unsubscribe();
     }
   }, [showGodMode, user]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(query(collection(db, 'blogPosts'), orderBy('timestamp', 'desc')), (snapshot) => {
+      const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setBlogPosts(posts);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddPost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log("🚀 Attempting to publish blog post...", newPost);
+    
+    if (!newPost.title || !newPost.content) {
+      setGodModeNotification("Title and content are required.");
+      return;
+    }
+
+    try {
+      const postData = {
+        title: newPost.title.trim(),
+        content: newPost.content.trim(),
+        timestamp: serverTimestamp(),
+        author: "NSG Admin"
+      };
+
+      console.log("📦 Sending to Firestore:", postData);
+      
+      const docRef = await addDoc(collection(db, 'blogPosts'), postData);
+      console.log("✅ Blog post published with ID:", docRef.id);
+      
+      setNewPost({ title: '', content: '' });
+      setIsAddingPost(false);
+      setGodModeNotification("Blog post published successfully!");
+    } catch (error: any) {
+      console.error("❌ Error adding post:", error);
+      setGodModeNotification(`Failed to publish: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const deletePost = async (id: string) => {
+    if (!window.confirm("Delete this post?")) return;
+    try {
+      await deleteDoc(doc(db, 'blogPosts', id));
+      setGodModeNotification("Post deleted.");
+    } catch (error) {
+      console.error("Error deleting post:", error);
+    }
+  };
 
   const toggleUserStatus = async (userId: string, currentStatus: string) => {
     const userToToggle = allUsers.find(u => u.id === userId);
@@ -3436,114 +3488,32 @@ export default function App() {
           {/* BLOG TAB */}
           {activeTab === 'blog' && (
             <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-20">
-              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-10`}>
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 1: THE MISSION — REDEFINING THE STUDENT EXPERIENCE</h2>
-                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                    The current state of education requires more than just reading and memorizing; it requires high-level tools that actually work. The primary goal is to become the number one student study application in the country by offering premium, world-class academic services that bridge the gap between local challenges and global standards. The aim is to provide a seamless, high-tech environment where advanced AI tutors and professional testing infrastructures are available to every student at an almost free cost.
-                  </p>
-                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                    Beyond digital tools, the vision extends to becoming the leading scholarship provider nationwide. The objective is to build a system where academic excellence is directly rewarded with financial support, creating a cycle where using the platform to study actually leads to having your tuition covered. This is about making success a reality for those who have the brains but lack the funds.
-                  </p>
+              {blogPosts.length === 0 ? (
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-12 rounded-3xl border shadow-sm text-center space-y-4`}>
+                  <div className="w-16 h-16 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
+                    <BookOpen size={32} className="text-[#DC2626]" />
+                  </div>
+                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">No Articles Yet</h2>
+                  <p className="text-sm text-white/40">Check back later for updates from the NSG team.</p>
                 </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 2: CURRENT LIMITATIONS & THE ROADMAP TO 2026</h2>
-                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                    Every innovation starts with a foundation, and there are currently specific boundaries being pushed. Right now, the platform requires an active internet connection for the high-level AI processing to function. There is also a continuous effort to expand the database to cover every single academic department and specialized field. Currently, optimization is highest for mobile and laptop devices, with more universal compatibility being refined daily.
-                  </p>
-                  <p className={`text-sm leading-relaxed font-bold ${theme === 'dark' ? 'text-white/70' : 'text-slate-700'}`}>By late 2026, major upgrades will be live:</p>
-                  <ul className={`list-disc pl-5 space-y-2 text-sm ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                    <li>Full Offline Capabilities: A "Lite" version is in development to allow access to study guides and quizzes without any data usage.</li>
-                    <li>The Scholarship Portal: A fully integrated merit-based system that will automatically identify top performers for tuition coverage.</li>
-                    <li>Voice Tutor 2.0: Hands-free learning where you can engage in full academic discussions with the AI through audio alone.</li>
-                    <li>Peer-to-Peer Marketplace: A secure environment to exchange verified academic summaries and materials.</li>
-                  </ul>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 3: WHY THIS WILL BE THE #1 STUDY APP</h2>
-                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                    This platform stands alone because of the sheer power of the intelligence behind it. By utilizing advanced AI engines with massive context windows, the app can "read" and "understand" a 100-page textbook in seconds. It doesn’t just give answers; it provides deep, logical explanations that simplify complex topics.
-                  </p>
-                  <p className={`text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                    The testing engine is built for the real world. With features like the 50% Submission Rule—which prevents accidental submission before a student is ready—and strict session-locking to ensure integrity, it offers a professional environment that mimics actual high-stakes examinations. This is not just a study tool; it is a comprehensive academic ecosystem designed for speed, intelligence, and reliability.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 4: THE NECESSITY OF SPONSORSHIP</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    To keep these services "almost free" while maintaining world-class quality, a robust support system is essential. The "API Problem" is a constant factor—every time the AI thinks or generates a response, it costs money in global currency. Sponsorship is the bridge that allows these costs to be covered without passing the burden onto the student.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    Support is also needed to fuel the scholarship fund. By partnering with sponsors and stakeholders, the platform can move faster toward the goal of paying tuition for thousands of students. Support isn't just about money; it's about providing the resources and data needed to make the AI smarter for everyone. When a community supports this project, it is investing in a future where financial status no longer limits how far a student can go. This is a collective effort to ensure that the best minds have the best tools to succeed.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 5: THE FUTURE OF ACADEMIC EXCELLENCE</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    The future of education is not just about digital tools; it's about a fundamental shift in how we approach learning. We are moving towards a world where personalized, AI-driven education is the norm, and where every student has access to a world-class tutor in their pocket. This is not just a dream; it's a reality that we are building every day.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    Our platform is at the forefront of this revolution, providing students with the tools they need to succeed in a rapidly changing world. From advanced AI tutors to professional testing environments, we are committed to providing the best possible academic experience for every student.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    We believe that every student has the potential to achieve greatness, and we are here to help them reach their full potential. Join us on this journey as we redefine the student experience and build a brighter future for education.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 6: THE POWER OF COLLABORATIVE LEARNING</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    Education is not a solitary journey; it's a collaborative effort. Our platform is designed to foster a sense of community among students, allowing them to share knowledge, resources, and support. We believe that by working together, students can achieve more than they ever could alone.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    From peer-to-peer marketplaces to collaborative study groups, we are building a system that encourages students to help each other succeed. This is not just about sharing notes; it's about building a network of support that extends beyond the classroom.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 7: DATA-DRIVEN INSIGHTS FOR ACADEMIC SUCCESS</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    In today's world, data is a powerful tool for academic success. Our platform uses advanced analytics to provide students with deep insights into their learning progress. From identifying areas of weakness to tracking performance over time, we give students the information they need to make informed decisions about their education.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    By leveraging the power of data, we can provide personalized recommendations and study plans that are tailored to each student's unique needs. This is about more than just giving answers; it's about providing a roadmap to success.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 8: THE ETHICS OF AI IN EDUCATION</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    As we integrate AI into the student experience, we are committed to maintaining the highest ethical standards. We believe that AI should be a tool for empowerment, not a replacement for human intelligence. Our platform is designed to complement the learning process, providing students with the support they need while encouraging critical thinking and independent study.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    We are also committed to protecting student privacy and data security. We believe that students should have control over their own information, and we take every precaution to ensure that their data is safe and secure.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 9: SCALING THE VISION NATIONWIDE</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    Our vision is not limited to a single school or region; we aim to scale our platform nationwide. We believe that every student in the country deserves access to world-class academic tools, regardless of their location or financial status.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    By partnering with educational institutions and government agencies, we can bring our platform to millions of students across the country. This is a massive undertaking, but we are committed to making it a reality.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-[#DC2626] uppercase tracking-tighter">SECTION 10: JOIN THE REVOLUTION</h2>
-                  <p className="text-sm text-white/70 leading-relaxed">
-                    The future of education is here, and we invite you to be a part of it. Whether you are a student, a teacher, or a sponsor, there is a place for you in our community. Together, we can redefine the student experience and build a brighter future for education.
-                  </p>
-                  <p className="text-sm text-white/70 leading-relaxed font-bold">
-                    Join us today and help us build the #1 study app in the country. Your support is essential to our success, and we are grateful for everything you do to help us reach our goals.
-                  </p>
-                </div>
-              </div>
+              ) : (
+                blogPosts.map((post) => (
+                  <div key={post.id} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-[10px] font-black text-[#DC2626] uppercase tracking-widest">
+                        <Calendar size={12} />
+                        {post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Just now'}
+                      </div>
+                      <h2 className="text-2xl font-black text-white uppercase tracking-tighter leading-tight">{post.title}</h2>
+                    </div>
+                    <div className={`markdown-body text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {post.content}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                ))
+              )}
             </motion.div>
           )}
 
@@ -3893,6 +3863,32 @@ export default function App() {
 
               <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
                 <div className="flex items-center justify-between">
+                  <h3 className="font-bold flex items-center gap-2 text-white"><BookOpen size={18} className="text-[#DC2626]" /> Blog Management ({blogPosts.length})</h3>
+                  <button 
+                    onClick={() => setIsAddingPost(true)}
+                    className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#DC2626]/80 transition-all flex items-center gap-2"
+                  >
+                    <Plus size={14} /> New Article
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {blogPosts.map(post => (
+                    <div key={post.id} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between group">
+                      <div className="truncate pr-4">
+                        <p className="font-bold text-white text-xs truncate">{post.title}</p>
+                        <p className="text-[8px] text-white/30 uppercase tracking-widest">{post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Draft'}</p>
+                      </div>
+                      <button onClick={() => deletePost(post.id)} className="p-2 text-white/20 hover:text-[#DC2626] transition-colors">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
+                <div className="flex items-center justify-between">
                   <h3 className="font-bold flex items-center gap-2 text-white"><Database size={18} className="text-[#DC2626]" /> User Directory ({allUsers.length})</h3>
                 </div>
 
@@ -3957,6 +3953,48 @@ export default function App() {
               </div>
             </div>
           </motion.div>
+        )}
+
+        {isAddingPost && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-2xl w-full space-y-6 shadow-2xl`}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black text-white uppercase tracking-tighter">Publish New Article</h3>
+                <button onClick={() => setIsAddingPost(false)} className="text-white/40 hover:text-[#DC2626] transition-colors"><XCircle size={24} /></button>
+              </div>
+              
+              <form onSubmit={handleAddPost} className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Article Title</p>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="Enter a bold, catchy title..."
+                    value={newPost.title} 
+                    onChange={(e) => setNewPost({...newPost, title: e.target.value})} 
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Article Content (Markdown Supported)</p>
+                  <textarea 
+                    required
+                    placeholder="Write your article here. Use markdown for bold text, lists, etc."
+                    value={newPost.content} 
+                    onChange={(e) => setNewPost({...newPost, content: e.target.value})} 
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all h-64 resize-none" 
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <button type="button" onClick={() => setIsAddingPost(false)} className="flex-1 bg-white/5 text-white/60 font-bold py-4 rounded-2xl text-sm">CANCEL</button>
+                  <button type="submit" className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                    <Send size={16} /> PUBLISH ARTICLE
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
 
         {editingUser && (
