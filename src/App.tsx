@@ -505,6 +505,14 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [showInstallTimer, setShowInstallTimer] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowInstallTimer(false);
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const checkStandalone = () => {
@@ -2480,10 +2488,10 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {!isStandalone && (
+          {!isStandalone && showInstallTimer && (
             <button 
               onClick={handleInstallClick}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg transition-all animate-bounce"
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg transition-all"
             >
               <Download size={14} /> {showInstallBtn ? "INSTALL APP" : "USE IN APP"}
             </button>
