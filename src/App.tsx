@@ -484,7 +484,7 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [godModeNotification, setGodModeNotification] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
-  const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | null>(null);
+  const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | 'privacy' | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [userNotification, setUserNotification] = useState<string | null>(null);
@@ -2325,6 +2325,7 @@ export default function App() {
                 <h2 className="text-xl font-black uppercase tracking-tighter text-white">
                   {legalPage === 'about' && "About Us"}
                   {legalPage === 'terms' && "Terms & Conditions"}
+                  {legalPage === 'privacy' && "Privacy Policy"}
                   {legalPage === 'contact' && "Contact Us"}
                 </h2>
                 <button onClick={() => setLegalPage(null)} className="text-white/40 hover:text-[#DC2626] transition-colors"><XCircle size={24} /></button>
@@ -2347,6 +2348,25 @@ export default function App() {
                       <li>Your data is stored locally on your device for privacy.</li>
                     </ul>
                   </>
+                )}
+                {legalPage === 'privacy' && (
+                  <div className="space-y-4">
+                    <p className="font-bold text-[#DC2626]">Last Updated: April 9, 2026</p>
+                    <p>At NSG Omni AI, we take your privacy seriously. This policy explains how we collect, use, and protect your data.</p>
+                    
+                    <h3 className="font-bold text-white">1. Information Collection</h3>
+                    <p>We collect information you provide directly to us, such as your name, email address, and educational details when you create an account. We also collect audio recordings and text data you process through our AI tools.</p>
+                    
+                    <h3 className="font-bold text-white">2. Use of Data</h3>
+                    <p>Your data is used to provide and improve our educational services, personalize your experience, and communicate with you about your account. We use advanced AI models to process your study materials.</p>
+                    
+                    <h3 className="font-bold text-white">3. Cookies & Google AdSense</h3>
+                    <p>We use cookies to enhance your experience and analyze site traffic. We also use Google AdSense to serve advertisements. Google, as a third-party vendor, uses cookies to serve ads based on your visit to this and other sites on the Internet.</p>
+                    <p>Users may opt out of personalized advertising by visiting Google's <a href="https://www.google.com/settings/ads" target="_blank" className="text-[#DC2626] underline">Ads Settings</a>.</p>
+                    
+                    <h3 className="font-bold text-white">4. Data Security</h3>
+                    <p>We implement industry-standard security measures to protect your personal information. However, no method of transmission over the internet is 100% secure.</p>
+                  </div>
                 )}
                 {legalPage === 'contact' && (
                   <div className="text-center py-8 space-y-4">
@@ -4024,6 +4044,7 @@ export default function App() {
         )}
         <button onClick={() => setLegalPage('about')} className="hover:text-[#DC2626] transition-colors">About Us</button>
         <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
+        <button onClick={() => setLegalPage('privacy')} className="hover:text-[#DC2626] transition-colors">Privacy Policy</button>
         <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
         <span>© 2026 Nuell Graphics</span>
       </footer>
