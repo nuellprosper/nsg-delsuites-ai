@@ -155,9 +155,17 @@ interface ExamConfig {
 }
 
 async function fileToGenerativePart(file: File | Blob) {
-  const base64EncodedDataPromise = new Promise<string>((resolve) => {
+  const base64EncodedDataPromise = new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      if (result && result.includes(',')) {
+        resolve(result.split(',')[1]);
+      } else {
+        reject(new Error("Failed to parse file data."));
+      }
+    };
+    reader.onerror = () => reject(new Error("File reading failed."));
     reader.readAsDataURL(file);
   });
   
@@ -2800,6 +2808,19 @@ export default function App() {
                           <div className={`space-y-1 sm:space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <div className={`p-3 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : `${theme === 'dark' ? 'bg-white/5 text-white/90 border-white/10' : 'bg-slate-50 text-slate-700 border-slate-200'} border rounded-tl-none`}`}>
                               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
+                              
+                              {msg.role === 'model' && (
+                                <div className="mt-2 flex justify-end">
+                                  <button 
+                                    onClick={() => copyToClipboard(msg.text)}
+                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-[#DC2626] transition-all border border-white/10 flex items-center gap-1.5 text-[10px] font-bold uppercase"
+                                    title="Copy Response"
+                                  >
+                                    <Copy size={12} /> Copy
+                                  </button>
+                                </div>
+                              )}
+
                               {msg.image && (
                                 <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-3">
                                   <img src={msg.image} alt="Generated" className="rounded-xl border border-white/10 max-w-full h-auto shadow-2xl" />
