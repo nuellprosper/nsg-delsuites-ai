@@ -504,6 +504,17 @@ export default function App() {
   // --- ðŸ“¦ PWA STATE ---
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    const checkStandalone = () => {
+      const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+      setIsStandalone(isStandaloneMode);
+    };
+    checkStandalone();
+    window.addEventListener('focus', checkStandalone);
+    return () => window.removeEventListener('focus', checkStandalone);
+  }, []);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -516,7 +527,10 @@ export default function App() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      setUserNotification("To use in app, open your browser menu and select 'Add to Home Screen' or 'Install App'.");
+      return;
+    }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
@@ -2466,12 +2480,12 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {showInstallBtn && (
+          {!isStandalone && (
             <button 
               onClick={handleInstallClick}
               className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg transition-all animate-bounce"
             >
-              <Download size={14} /> INSTALL APP
+              <Download size={14} /> {showInstallBtn ? "INSTALL APP" : "USE IN APP"}
             </button>
           )}
           {user ? (
