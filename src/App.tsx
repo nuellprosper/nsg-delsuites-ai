@@ -457,6 +457,13 @@ export default function App() {
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileFormData, setProfileFormData] = useState({
+    displayName: '',
+    fullName: '',
+    matricNumber: '',
+    dob: ''
+  });
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [activeExamHostUid, setActiveExamHostUid] = useState<string | null>(null);
   const [isHostPaid, setIsHostPaid] = useState(false);
@@ -957,6 +964,14 @@ export default function App() {
             setCurrentUserData({ id: doc.id, ...data });
             setIsAdminUser(data.role === 'admin' || currentUser.email === "nuellkelechi@gmail.com");
             
+            // Only update form data if not currently editing to avoid overwriting user input
+            setProfileFormData(prev => ({
+              displayName: data.displayName || prev.displayName || '',
+              fullName: data.fullName || prev.fullName || '',
+              matricNumber: data.matricNumber || prev.matricNumber || '',
+              dob: data.dob || prev.dob || ''
+            }));
+            
             if (data.status === 'deleted') {
               if (currentUser.email === "nuellkelechi@gmail.com") {
                 updateDoc(userDocRef, { status: 'active' });
@@ -1254,6 +1269,26 @@ export default function App() {
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    try {
+      setIsAuthLoading(true);
+      await updateDoc(doc(db, 'users', user.uid), {
+        displayName: profileFormData.displayName,
+        fullName: profileFormData.fullName,
+        matricNumber: profileFormData.matricNumber,
+        dob: profileFormData.dob
+      });
+      setIsEditingProfile(false);
+      setUserNotification("Profile updated successfully!");
+    } catch (error) {
+      console.error("Save Profile Error:", error);
+      setUserNotification("Failed to save profile changes.");
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
   const handleProfileUpdate = async (updates: any) => {
     if (!user) return;
     try {
@@ -1269,30 +1304,29 @@ export default function App() {
     if (!user || !e.target.files?.[0]) return;
     const file = e.target.files[0];
     
-    // Check file size (max 2MB raw limit before compression)
-    if (file.size > 2 * 1024 * 1024) {
-      setUserNotification("Image too large. Please use an image under 2MB.");
+    // Check file size (max 10MB limit)
+    if (file.size > 10 * 1024 * 1024) {
+      setUserNotification("Image too large. Please use an image under 10MB.");
       return;
     }
 
     try {
-      setUserNotification("Compressing image...");
-      const compressedBlob = await compressImage(file);
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        try {
-          await updateDoc(doc(db, 'users', user.uid), { photoURL: base64String });
-          setUserNotification("Profile image updated!");
-        } catch (error) {
-          console.error("Image Upload Error:", error);
-          setUserNotification("Failed to upload image. It might be too large for the database.");
-        }
-      };
-      reader.readAsDataURL(compressedBlob);
-    } catch (err) {
-      console.error("Compression Error:", err);
-      setUserNotification("Failed to process image.");
+      setIsAuthLoading(true);
+      setUserNotification("Uploading profile image...");
+      
+      const imageUrl = await uploadToCloudinary(file);
+      
+      await updateDoc(doc(db, 'users', user.uid), { photoURL: imageUrl });
+      
+      // Update local state if needed
+      setCurrentUserData((prev: any) => ({ ...prev, photoURL: imageUrl }));
+      
+      setUserNotification("Profile image updated!");
+    } catch (error) {
+      console.error("Image Upload Error:", error);
+      setUserNotification("Failed to upload image. Please try again.");
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -3571,77 +3605,215 @@ export default function App() {
 
           {/* PROFILE TAB */}
           {activeTab === 'profile' && (
-            <motion.div key="profile" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="max-w-2xl mx-auto space-y-6 sm:space-y-8 pb-32 px-2 sm:px-0">
-              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-10 rounded-3xl shadow-2xl relative overflow-hidden`}>
-                <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-[#DC2626]/20 to-transparent opacity-50" />
+            <motion.div 
+              key="profile" 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              exit={{ opacity: 0, y: -20 }} 
+              className="max-w-4xl mx-auto space-y-6 sm:space-y-8 pb-32 px-2 sm:px-0"
+            >
+              {/* Profile Header Card */}
+              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden group`}>
+                <div className="absolute top-0 left-0 w-full h-48 bg-gradient-to-b from-[#DC2626]/20 via-[#DC2626]/5 to-transparent opacity-50" />
+                <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#DC2626]/10 rounded-full blur-3xl group-hover:bg-[#DC2626]/20 transition-all duration-700" />
                 
-                <div className="relative flex flex-col items-center text-center space-y-6 sm:space-y-8">
-                  <div className="relative group">
-                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-[#DC2626] overflow-hidden bg-white/5 shadow-2xl shadow-[#DC2626]/20">
+                <div className="relative flex flex-col md:flex-row items-center md:items-end gap-6 sm:gap-10">
+                  <div className="relative">
+                    <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full border-4 border-[#DC2626] overflow-hidden bg-white/5 shadow-2xl shadow-[#DC2626]/30 group-hover:scale-105 transition-transform duration-500">
                       {currentUserData?.photoURL ? (
-                        <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                        <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/20"><User size={48} className="sm:size-[64px]" /></div>
+                        <div className="w-full h-full flex items-center justify-center text-white/10 bg-gradient-to-br from-white/5 to-white/10">
+                          <User size={64} className="sm:size-[80px]" />
+                        </div>
                       )}
                     </div>
-                    <label className="absolute bottom-0 right-0 p-2 sm:p-3 bg-[#DC2626] text-white rounded-full cursor-pointer shadow-xl hover:scale-110 active:scale-95 transition-all border-2 border-[#0A0F1C]">
-                      <Camera size={16} className="sm:size-[20px]" />
+                    <label className="absolute bottom-2 right-2 p-3 bg-[#DC2626] text-white rounded-2xl cursor-pointer shadow-xl hover:scale-110 active:scale-95 transition-all border-4 border-[#0A0F1C] z-10">
+                      <Camera size={20} />
                       <input type="file" className="hidden" accept="image/*" onChange={handleProfileImageUpload} />
                     </label>
                   </div>
 
-                  <div className="space-y-2">
-                    <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tighter italic">{currentUserData?.displayName || 'Student Name'}</h2>
-                    <p className="text-[10px] sm:text-xs font-bold text-[#DC2626] uppercase tracking-[0.3em]">{currentUserData?.email || 'email@example.com'}</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full">
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                      <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Status</p>
-                      <p className={`text-xs font-black uppercase ${isPremium ? 'text-yellow-500' : 'text-white/60'}`}>{isPremium ? 'Premium' : 'Free User'}</p>
+                  <div className="flex-1 text-center md:text-left space-y-3 pb-2">
+                    <div className="space-y-1">
+                      <div className="flex flex-col md:flex-row items-center gap-3">
+                        <h2 className="text-3xl sm:text-4xl font-black text-white uppercase tracking-tighter italic leading-none">
+                          {currentUserData?.displayName || 'Student Name'}
+                        </h2>
+                        {isPremium && (
+                          <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+                            <Sparkles size={10} /> Premium
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs sm:text-sm font-bold text-[#DC2626] uppercase tracking-[0.4em] opacity-80">
+                        {currentUserData?.email || 'email@example.com'}
+                      </p>
                     </div>
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                      <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-1">Joined</p>
-                      <p className="text-xs font-black text-white/60 uppercase">2026</p>
-                    </div>
-                  </div>
-
-                  <div className="w-full space-y-4 sm:space-y-6 pt-4 sm:pt-6 border-t border-white/10">
-                    <div className="space-y-2 text-left">
-                      <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Display Name</label>
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          defaultValue={currentUserData?.displayName || ''} 
-                          onBlur={(e) => handleProfileUpdate({ displayName: e.target.value })}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
-                          placeholder="Enter your name"
-                        />
-                        <Edit3 size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20" />
+                    
+                    <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-2">
+                      <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/10">
+                        <Calendar size={14} className="text-white/40" />
+                        <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">Joined 2026</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/10">
+                        <ShieldCheck size={14} className="text-white/40" />
+                        <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">Verified Account</span>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="space-y-2 text-left">
-                      <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Matric Number (Optional)</label>
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          defaultValue={currentUserData?.matricNumber || ''} 
-                          onBlur={(e) => handleProfileUpdate({ matricNumber: e.target.value })}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
-                          placeholder="e.g. DEL/2024/001"
-                        />
-                        <ShieldCheck size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20" />
-                      </div>
-                    </div>
-
+                  <div className="md:absolute md:top-10 md:right-10">
                     <button 
-                      onClick={() => signOut(auth)}
-                      className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-[#DC2626]/10 text-white/40 hover:text-[#DC2626] py-4 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all border border-white/10 hover:border-[#DC2626]/20"
+                      onClick={() => setIsEditingProfile(!isEditingProfile)}
+                      className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 border ${
+                        isEditingProfile 
+                        ? 'bg-[#DC2626] text-white border-[#DC2626] shadow-lg shadow-[#DC2626]/20' 
+                        : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                      }`}
                     >
-                      <LogOut size={16} className="sm:size-[18px]" /> LOGOUT FROM ACCOUNT
+                      {isEditingProfile ? <X size={14} /> : <Edit3 size={14} />}
+                      {isEditingProfile ? 'Cancel' : 'Edit Profile'}
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+                {[
+                  { label: 'Lectures', value: sessions.length, icon: BookOpen, color: 'text-blue-500' },
+                  { label: 'AI Chats', value: chatSessions.length, icon: MessageSquare, color: 'text-purple-500' },
+                  { label: 'Quizzes', value: 12, icon: Trophy, color: 'text-yellow-500' },
+                  { label: 'Activity', value: 'High', icon: Activity, color: 'text-green-500' }
+                ].map((stat, i) => (
+                  <motion.div 
+                    key={i}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    className="bg-[#0A0F1C] border border-white/10 p-6 rounded-[2rem] text-center space-y-2 hover:border-[#DC2626]/30 transition-all group"
+                  >
+                    <div className={`w-10 h-10 mx-auto rounded-xl bg-white/5 flex items-center justify-center ${stat.color} group-hover:scale-110 transition-transform`}>
+                      <stat.icon size={20} />
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">{stat.label}</p>
+                      <p className="text-xl font-black text-white">{stat.value}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Editable Fields Section */}
+              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-10 rounded-[2.5rem] shadow-2xl space-y-8`}>
+                <div className="flex items-center justify-between border-b border-white/5 pb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tighter italic">Personal Information</h3>
+                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Manage your identity and academic details</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Profile Strength</span>
+                      <span className="text-[10px] font-black text-[#DC2626]">
+                        {Math.round(([
+                          currentUserData?.displayName,
+                          currentUserData?.fullName,
+                          currentUserData?.matricNumber,
+                          currentUserData?.dob,
+                          currentUserData?.photoURL
+                        ].filter(Boolean).length / 5) * 100)}%
+                      </span>
+                    </div>
+                    <div className="w-32 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${([
+                          currentUserData?.displayName,
+                          currentUserData?.fullName,
+                          currentUserData?.matricNumber,
+                          currentUserData?.dob,
+                          currentUserData?.photoURL
+                        ].filter(Boolean).length / 5) * 100}%` }}
+                        className="h-full bg-[#DC2626] shadow-[0_0_10px_rgba(220,38,38,0.5)]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                  {[
+                    { label: 'Display Name', key: 'displayName', icon: User, placeholder: 'How should we call you?' },
+                    { label: 'Full Official Name', key: 'fullName', icon: FileText, placeholder: 'Your legal name for certificates' },
+                    { label: 'Matric Number', key: 'matricNumber', icon: ShieldCheck, placeholder: 'e.g. DEL/2024/001' },
+                    { label: 'Date of Birth', key: 'dob', icon: Calendar, placeholder: 'YYYY-MM-DD', type: 'date' }
+                  ].map((field) => (
+                    <div key={field.key} className="space-y-3">
+                      <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1 flex items-center gap-2">
+                        <field.icon size={12} /> {field.label}
+                      </label>
+                      <div className="relative group">
+                        <input 
+                          type={field.type || 'text'} 
+                          value={profileFormData[field.key as keyof typeof profileFormData]} 
+                          onChange={(e) => setProfileFormData({ ...profileFormData, [field.key]: e.target.value })}
+                          disabled={!isEditingProfile}
+                          className={`w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none transition-all ${
+                            isEditingProfile 
+                            ? 'text-white focus:border-[#DC2626]/50 focus:bg-white/[0.08]' 
+                            : 'text-white/40 cursor-not-allowed'
+                          }`} 
+                          placeholder={field.placeholder}
+                        />
+                        {!isEditingProfile && (
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20">
+                            <Lock size={14} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {isEditingProfile && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="pt-6 flex flex-col sm:flex-row gap-4"
+                  >
+                    <button 
+                      onClick={handleSaveProfile}
+                      disabled={isAuthLoading}
+                      className="flex-1 bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-5 rounded-2xl text-xs uppercase tracking-[0.2em] shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                      {isAuthLoading ? <RefreshCcw className="animate-spin" size={18} /> : <Save size={18} />}
+                      Save Profile Changes
+                    </button>
+                    <button 
+                      onClick={() => setIsEditingProfile(false)}
+                      className="px-8 bg-white/5 hover:bg-white/10 text-white/60 font-black py-5 rounded-2xl text-xs uppercase tracking-[0.2em] transition-all border border-white/10"
+                    >
+                      Discard
+                    </button>
+                  </motion.div>
+                )}
+
+                <div className="pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center">
+                      <LogOut size={24} className="text-white/20" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-white/80 uppercase tracking-tighter italic">Session Security</p>
+                      <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Logged in as {user?.email}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => signOut(auth)}
+                    className="w-full sm:w-auto px-10 py-4 bg-white/5 hover:bg-[#DC2626]/10 text-white/40 hover:text-[#DC2626] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10 hover:border-[#DC2626]/20 flex items-center justify-center gap-2"
+                  >
+                    <LogOut size={16} /> Logout
+                  </button>
                 </div>
               </div>
             </motion.div>
