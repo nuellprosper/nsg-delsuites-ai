@@ -9,6 +9,11 @@
 //   - email: string (required)
 //   - role: string (required, ['admin', 'student'])
 //   - status: string (required, ['active', 'deleted'])
+//   - displayName: string (optional)
+//   - photoURL: string (optional)
+//   - fullName: string (optional)
+//   - matricNumber: string (optional)
+//   - dob: string (optional)
 //   - bypassAllPayments: bool
 //   - bypassTakingPayment: bool
 //   - bypassHostingPayment: bool
@@ -79,7 +84,12 @@ service cloud.firestore {
       return data.uid is string && 
              data.email is string && 
              data.role in ['admin', 'student'] &&
-             data.status in ['active', 'deleted'];
+             data.status in ['active', 'deleted'] &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 2000)) &&
+             (!('fullName' in data) || (data.fullName is string && data.fullName.size() < 100)) &&
+             (!('matricNumber' in data) || (data.matricNumber is string && data.matricNumber.size() < 50)) &&
+             (!('dob' in data) || (data.dob is string && data.dob.size() < 20));
     }
 
     function isValidBlogPost(data) {
