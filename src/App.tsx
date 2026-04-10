@@ -5,7 +5,7 @@ import {
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks,
-  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send
+  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI, Type, Modality, LiveServerMessage } from "@google/genai";
@@ -494,6 +494,8 @@ export default function App() {
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [blogPosts, setBlogPosts] = useState<any[]>([]);
   const [isAddingPost, setIsAddingPost] = useState(false);
+  const [editingPost, setEditingPost] = useState<any | null>(null);
+  const [isEditingPost, setIsEditingPost] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', content: '' });
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | 'privacy' | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -656,6 +658,42 @@ export default function App() {
     } catch (error: any) {
       console.error("âŒ Error adding post:", error);
       setGodModeNotification(`Failed to publish: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleUpdatePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPost) return;
+    try {
+      await updateDoc(doc(db, 'blogPosts', editingPost.id), {
+        title: editingPost.title,
+        content: editingPost.content,
+        lastUpdated: serverTimestamp()
+      });
+      setIsEditingPost(false);
+      setEditingPost(null);
+      setGodModeNotification("Post updated successfully!");
+    } catch (error) {
+      console.error("Error updating post:", error);
+    }
+  };
+
+  const handleReaction = async (postId: string, emoji: string) => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    try {
+      const postRef = doc(db, 'blogPosts', postId);
+      const post = blogPosts.find(p => p.id === postId);
+      const reactions = post.reactions || {};
+      const currentCount = reactions[emoji] || 0;
+      
+      await updateDoc(postRef, {
+        [`reactions.${emoji}`]: currentCount + 1
+      });
+    } catch (error) {
+      console.error("Error adding reaction:", error);
     }
   };
 
@@ -1707,9 +1745,13 @@ export default function App() {
   };
 
   // --- ðŸŽ¤ RECORDING LOGIC ---
+  const [isStopping, setIsStopping] = useState(false);
   const handleToggleRecording = async () => {
+    if (isStopping) return;
     if (isRecording) {
+      setIsStopping(true);
       try {
+        console.log("ðŸ›‘ Stopping recording...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           // Stop all tracks to release the microphone
@@ -1719,6 +1761,7 @@ export default function App() {
         console.error("Error stopping recording:", err);
       } finally {
         setIsRecording(false);
+        setIsStopping(false);
         if (timerRef.current) clearInterval(timerRef.current);
       }
     } else {
@@ -1753,6 +1796,37 @@ export default function App() {
     const mins = Math.floor((s % 3600) / 60);
     const secs = s % 60;
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // --- ðŸ› ï¸ HELPERS ---
+  const uploadToCloudinary = async (file: File | Blob): Promise<string> => {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      console.warn("Cloudinary credentials missing. Falling back to local preview URL.");
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', uploadPreset);
+
+    try {
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      return data.secure_url;
+    } catch (error) {
+      console.error("Cloudinary Upload Error:", error);
+      throw error;
+    }
   };
 
   const AdUnit = ({ slot }: { slot: string }) => {
@@ -2075,10 +2149,9 @@ export default function App() {
             model: HF_MODELS.IMAGE,
             inputs: textToSend,
           });
-          const reader = new FileReader();
-          reader.readAsDataURL(imageBlob as any);
-          await new Promise(resolve => reader.onload = resolve);
-          generatedImage = reader.result as string;
+          
+          // Upload generated image to Cloudinary
+          generatedImage = await uploadToCloudinary(imageBlob as any);
           responseText = "Here is your generated image:";
         } catch (hfError) {
           console.error("HF Image Gen Error:", hfError);
@@ -2088,10 +2161,21 @@ export default function App() {
         const parts: any[] = [{ text: textToSend || "Analyze this content." }];
         
         if (uploadedImages.length > 0) {
+          // Upload all images to Cloudinary and get URLs for history persistence
+          const cloudinaryUrls = await Promise.all(
+            uploadedImages.map(img => uploadToCloudinary(img.file))
+          );
+          
+          // For Gemini API, we still need the parts
           const imageParts = await Promise.all(
             uploadedImages.map(img => fileToGenerativePart(img.file))
           );
           imageParts.forEach(p => parts.push(p));
+
+          // Store the first image URL in the message for history (simplified)
+          if (cloudinaryUrls.length > 0) {
+            newHistory[newHistory.length - 1].image = cloudinaryUrls[0];
+          }
         }
 
         const aiInstance = getAiInstance();
@@ -2133,11 +2217,18 @@ export default function App() {
       
     } catch (error: any) {
       console.error("Chat Error:", error);
-      setChatHistory(prev => [...prev, { 
-        role: 'model', 
-        text: formatAiError(error), 
-        timestamp: new Date().toLocaleTimeString() 
-      }]);
+      // Only add error message if it's not already handled
+      setChatHistory(prev => {
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg.role === 'model' && (lastMsg.text.includes("Failed") || lastMsg.text.includes("I'm sorry"))) {
+          return prev;
+        }
+        return [...prev, { 
+          role: 'model', 
+          text: formatAiError(error), 
+          timestamp: new Date().toLocaleTimeString() 
+        }];
+      });
     } finally {
       setIsTyping(false);
     }
@@ -2502,8 +2593,8 @@ export default function App() {
       {/* HEADER */}
       <header className={`px-5 py-4 flex justify-between items-center border-b ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]/95' : 'border-slate-200 bg-white/95'} backdrop-blur-xl sticky top-0 z-40`}>
         <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-black border-white/10' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center`}>
-            <Brain size={22} className="text-[#DC2626]" />
+          <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#0A0F1C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center`}>
+            <Brain size={22} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
           </div>
           <div>
             <h1 className={`text-sm sm:text-xl font-black tracking-tighter italic leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>NSG <span className="text-[#DC2626]">(NUELL STUDY GUIDE)</span></h1>
@@ -2685,46 +2776,13 @@ export default function App() {
                               <Download size={16} /> Download
                             </a>
                           )}
-                          <button onClick={triggerFullAnalysis} disabled={isAnalyzing || (uploadedImages.length === 0 && !recordedBlob)} className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white px-4 py-3 rounded-2xl text-xs font-bold border border-[#DC2626]/30 transition-all disabled:opacity-50">
+                          <button onClick={triggerFullAnalysis} disabled={isAnalyzing || !recordedBlob} className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white px-4 py-3 rounded-2xl text-xs font-bold border border-[#DC2626]/30 transition-all disabled:opacity-50">
                             <Sparkles size={16} /> Analyze
                           </button>
                         </div>
                       </div>
                     </div>
                     <AdUnit slot="7536999840" />
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <label className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 rounded-3xl border hover:border-[#DC2626]/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm`}>
-                        <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-[#DC2626] group-hover:text-white transition-all"><ImageIcon size={20} className="text-[#DC2626] group-hover:text-white" /></div>
-                        <span className={`font-bold text-xs ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Upload Slides</span>
-                        <span className={`text-[9px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} mt-1 uppercase tracking-widest`}>({uploadedImages.length}/50)</span>
-                        <input type="file" multiple accept="image/*" className="hidden" onChange={handleImages} />
-                      </label>
-
-                      <label className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 rounded-3xl border hover:border-[#DC2626]/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm`}>
-                        <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-[#DC2626] group-hover:text-white transition-all"><FileAudio size={20} className="text-[#DC2626] group-hover:text-white" /></div>
-                        <span className={`font-bold text-xs ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Import Audio</span>
-                        <span className={`text-[9px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} mt-1 uppercase tracking-widest`}>MP3 / WAV</span>
-                        <input type="file" accept="audio/*" className="hidden" onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            setAudioUrl(URL.createObjectURL(file));
-                            setRecordedBlob(file);
-                          }
-                        }} />
-                      </label>
-                    </div>
-
-                    {uploadedImages.length > 0 && (
-                      <div className="flex gap-2 overflow-x-auto pb-2">
-                        {uploadedImages.map((img) => (
-                          <div key={img.id} className="relative flex-shrink-0">
-                            <img src={img.preview} alt="slide" className="w-20 h-20 object-cover rounded-xl border border-white/10" />
-                            <button onClick={() => setUploadedImages(prev => prev.filter(i => i.id !== img.id))} className="absolute -top-1 -right-1 bg-[#DC2626] text-white rounded-full p-1 shadow-lg"><Trash2 size={10} /></button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </motion.div>
                 ) : (
                   <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
@@ -2900,11 +2958,43 @@ export default function App() {
                 <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2 sm:p-6 space-y-3 sm:space-y-8 scroll-smooth">
                   <AdUnit slot="7536999840" />
                   {chatHistory.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4 sm:space-y-6 opacity-20 px-4">
-                      <Brain size={48} className="sm:size-[64px]" />
-                      <div>
-                        <h4 className="text-lg sm:text-xl font-black uppercase italic tracking-tighter">How can I help you today?</h4>
-                        <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest mt-1 sm:mt-2">Omni AI is ready to assist</p>
+                    <div className="h-full flex flex-col items-center justify-center px-4">
+                      <div className="max-w-2xl w-full text-left space-y-8">
+                        <motion.div 
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-2"
+                        >
+                          <h2 className="text-4xl sm:text-5xl font-black text-white tracking-tighter">
+                            Hi {currentUserData?.displayName?.split(' ')[0] || 'there'},
+                          </h2>
+                          <h3 className="text-3xl sm:text-4xl font-black text-white/40 tracking-tighter">
+                            Where should we start?
+                          </h3>
+                        </motion.div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {[
+                            { icon: ImageIcon, label: 'Create image', color: 'text-blue-400', prompt: 'Generate a creative image of...' },
+                            { icon: Mic, label: 'Create music', color: 'text-red-400', prompt: 'Compose a short melody about...' },
+                            { icon: FileText, label: 'Write anything', color: 'text-green-400', prompt: 'Write a professional article about...' },
+                            { icon: BookOpen, label: 'Help me learn', color: 'text-yellow-400', prompt: 'Explain the concept of...' }
+                          ].map((btn, idx) => (
+                            <motion.button
+                              key={idx}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: idx * 0.1 }}
+                              onClick={() => setChatInput(btn.prompt)}
+                              className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 hover:border-white/20 transition-all group text-left"
+                            >
+                              <div className={`w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                                <btn.icon size={20} className={btn.color} />
+                              </div>
+                              <span className="text-sm font-bold text-white/80">{btn.label}</span>
+                            </motion.button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -2963,7 +3053,45 @@ export default function App() {
 
                 {/* Input Area */}
                 <div className="p-2 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
-                  <div className="max-w-3xl mx-auto space-y-2 sm:space-y-4">
+                  <div className="max-w-3xl mx-auto space-y-4">
+                    
+                    {/* File Preview Area - Moved above input */}
+                    <AnimatePresence>
+                      {uploadedImages.length > 0 && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="flex gap-2 p-3 bg-white/5 border border-white/10 rounded-2xl overflow-x-auto no-scrollbar"
+                        >
+                          {uploadedImages.map(img => (
+                            <div key={img.id} className="relative group flex-shrink-0">
+                              <img src={img.preview} className="w-16 h-16 object-cover rounded-lg border border-white/20" />
+                              <button 
+                                onClick={() => setUploadedImages(prev => prev.filter(i => i.id !== img.id))}
+                                className="absolute -top-2 -right-2 bg-[#DC2626] text-white p-1 rounded-full shadow-lg hover:scale-110 transition-all"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Module Info - Disappears when typing or after upload */}
+                    {!chatInput && uploadedImages.length === 0 && (
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="px-4 py-2 bg-[#DC2626]/5 border border-[#DC2626]/10 rounded-xl"
+                      >
+                        <p className="text-[9px] font-bold text-[#DC2626] uppercase tracking-widest text-center">
+                          Tip: Use <span className="font-black">Vision</span> for images & <span className="font-black">Creative</span> for generation
+                        </p>
+                      </motion.div>
+                    )}
+
                     {/* Mode Selector */}
                     <div className="flex items-center gap-1.5 sm:gap-2 px-1 overflow-x-auto no-scrollbar">
                       {[
@@ -3025,29 +3153,12 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                    <p className="text-[8px] text-center mt-3 text-white/20 font-bold uppercase tracking-widest">Omni AI can make mistakes. Verify important info.</p>
                   </div>
                 </div>
-
-                      {uploadedImages.length > 0 && (
-                        <div className="absolute bottom-full left-0 right-0 mb-4 flex gap-2 p-4 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-x-auto no-scrollbar">
-                          {uploadedImages.map(img => (
-                            <div key={img.id} className="relative group flex-shrink-0">
-                              <img src={img.preview} className="w-16 h-16 object-cover rounded-lg border border-white/20" />
-                              <button 
-                                onClick={() => setUploadedImages(prev => prev.filter(i => i.id !== img.id))}
-                                className="absolute -top-2 -right-2 bg-[#DC2626] text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"
-                              >
-                                <X size={10} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      
-                      <p className="text-[8px] text-center mt-3 text-white/20 font-bold uppercase tracking-widest">Omni AI can make mistakes. Verify important info.</p>
-                  </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
           {activeTab === 'history' && (
             <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
@@ -3570,6 +3681,20 @@ export default function App() {
                         {post.content}
                       </ReactMarkdown>
                     </div>
+
+                    {/* Reactions Section */}
+                    <div className="pt-4 border-t border-white/5 flex flex-wrap items-center gap-2">
+                      {['ðŸ”¥', 'â¤ï¸', 'ðŸ‘', 'ðŸ™Œ', 'ðŸ’¡'].map(emoji => (
+                        <button 
+                          key={emoji}
+                          onClick={() => handleReaction(post.id, emoji)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}
+                        >
+                          <span>{emoji}</span>
+                          <span className="text-[10px] font-bold opacity-60">{post.reactions?.[emoji] || 0}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ))
               )}
@@ -3934,13 +4059,25 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {blogPosts.map(post => (
                     <div key={post.id} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between group">
-                      <div className="truncate pr-4">
+                      <div className="truncate pr-4 flex-1">
                         <p className="font-bold text-white text-xs truncate">{post.title}</p>
-                        <p className="text-[8px] text-white/30 uppercase tracking-widest">{post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Draft'}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-[8px] text-white/30 uppercase tracking-widest">{post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Draft'}</p>
+                          <div className="flex gap-1">
+                            {Object.entries(post.reactions || {}).map(([emoji, count]) => (
+                              <span key={emoji} className="text-[8px] bg-white/5 px-1 rounded">{emoji} {count as any}</span>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                      <button onClick={() => deletePost(post.id)} className="p-2 text-white/20 hover:text-[#DC2626] transition-colors">
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => { setEditingPost(post); setIsEditingPost(true); }} className="p-2 text-white/20 hover:text-blue-400 transition-colors">
+                          <Edit3 size={14} />
+                        </button>
+                        <button onClick={() => deletePost(post.id)} className="p-2 text-white/20 hover:text-[#DC2626] transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -4049,6 +4186,46 @@ export default function App() {
                   <button type="button" onClick={() => setIsAddingPost(false)} className="flex-1 bg-white/5 text-white/60 font-bold py-4 rounded-2xl text-sm">CANCEL</button>
                   <button type="submit" className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
                     <Send size={16} /> PUBLISH ARTICLE
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {isEditingPost && editingPost && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-2xl w-full space-y-6 shadow-2xl`}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black text-white uppercase tracking-tighter">Edit Article</h3>
+                <button onClick={() => setIsEditingPost(false)} className="text-white/40 hover:text-[#DC2626] transition-colors"><XCircle size={24} /></button>
+              </div>
+              
+              <form onSubmit={handleUpdatePost} className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Article Title</p>
+                  <input 
+                    type="text" 
+                    required
+                    value={editingPost.title} 
+                    onChange={(e) => setEditingPost({...editingPost, title: e.target.value})} 
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Article Content (Markdown Supported)</p>
+                  <textarea 
+                    required
+                    value={editingPost.content} 
+                    onChange={(e) => setEditingPost({...editingPost, content: e.target.value})} 
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all h-64 resize-none" 
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <button type="button" onClick={() => setIsEditingPost(false)} className="flex-1 bg-white/5 text-white/60 font-bold py-4 rounded-2xl text-sm">CANCEL</button>
+                  <button type="submit" className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                    <Save size={16} /> SAVE CHANGES
                   </button>
                 </div>
               </form>
