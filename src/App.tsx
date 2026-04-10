@@ -1755,6 +1755,29 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const AdUnit = ({ slot }: { slot: string }) => {
+    useEffect(() => {
+      try {
+        const adsbygoogle = (window as any).adsbygoogle || [];
+        adsbygoogle.push({});
+      } catch (e) {
+        console.error("AdSense error:", e);
+      }
+    }, []);
+
+    return (
+      <div className="my-6 overflow-hidden flex flex-col items-center w-full">
+        <span className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mb-2">Advertisement</span>
+        <ins className="adsbygoogle"
+             style={{ display: 'block', minWidth: '250px', minHeight: '90px' }}
+             data-ad-client="ca-pub-3216169026195971"
+             data-ad-slot={slot}
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+      </div>
+    );
+  };
+
   // --- ðŸ–¼ï¸ IMAGE HANDLER ---
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -2613,6 +2636,7 @@ export default function App() {
                             </div>
                           </div>
                         ))}
+                        <AdUnit slot="7536999840" />
                       </div>
                     </motion.div>
                   </>
@@ -2667,6 +2691,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                    <AdUnit slot="7536999840" />
 
                     <div className="grid grid-cols-2 gap-3">
                       <label className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 rounded-3xl border hover:border-[#DC2626]/30 cursor-pointer transition-all flex flex-col items-center group shadow-sm`}>
@@ -2873,6 +2898,7 @@ export default function App() {
 
                 {/* Messages Area */}
                 <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2 sm:p-6 space-y-3 sm:space-y-8 scroll-smooth">
+                  <AdUnit slot="7536999840" />
                   {chatHistory.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-4 sm:space-y-6 opacity-20 px-4">
                       <Brain size={48} className="sm:size-[64px]" />
@@ -3099,6 +3125,7 @@ export default function App() {
           {/* QUIZ TAB */}
           {activeTab === 'quiz' && (
             <motion.div key="quiz" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
+              <AdUnit slot="7536999840" />
               <div className="flex items-center justify-between px-2">
                 <h2 className="text-xl font-black uppercase tracking-tighter text-white">Quiz Engine</h2>
                 <Zap size={20} className="text-[#DC2626]" />
@@ -3519,6 +3546,7 @@ export default function App() {
           {/* BLOG TAB */}
           {activeTab === 'blog' && (
             <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-20">
+              <AdUnit slot="7536999840" />
               {blogPosts.length === 0 ? (
                 <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-12 rounded-3xl border shadow-sm text-center space-y-4`}>
                   <div className="w-16 h-16 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
