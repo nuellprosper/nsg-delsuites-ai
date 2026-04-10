@@ -25,11 +25,11 @@ import {
 
 /**
  * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
- * âœ… Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
- * âœ… Admin Backend Control (Score Sheet, Timer Restart, Results Download)
- * âœ… Advanced AI Chat (Copy Response, History Sidebar)
- * âœ… Enhanced Quiz (Customization, Deep Assessment, Report to AI)
- * âœ… Paystack Payment Integration
+ * \u{2705} Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
+ * \u{2705} Admin Backend Control (Score Sheet, Timer Restart, Results Download)
+ * \u{2705} Advanced AI Chat (Copy Response, History Sidebar)
+ * \u{2705} Enhanced Quiz (Customization, Deep Assessment, Report to AI)
+ * \u{2705} Paystack Payment Integration
  */
 
 const getApiKey = () => {
@@ -452,7 +452,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
 };
 
 export default function App() {
-  // --- ðŸ” AUTH STATE ---
+  // --- \u{1F510} AUTH STATE ---
   const [user, setUser] = useState<any>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [isAdminUser, setIsAdminUser] = useState(false);
@@ -463,7 +463,7 @@ export default function App() {
   const [isTakingPaid, setIsTakingPaid] = useState(false);
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
-  // --- ðŸ“± APP STATE ---
+  // --- \u{1F4F1} APP STATE ---
   const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam' | 'profile'>('record');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -503,7 +503,7 @@ export default function App() {
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
 
-  // --- ðŸ“¦ PWA STATE ---
+  // --- \u{1F4E6} PWA STATE ---
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -550,12 +550,12 @@ export default function App() {
     setShowInstallBtn(false);
   };
 
-  // --- ðŸ’Ž PREMIUM STATE ---
+  // --- \u{1F48E} PREMIUM STATE ---
   const [isPremium, setIsPremium] = useState(false);
   const [premiumTimeLeft, setPremiumTimeLeft] = useState<string>("");
   const [showPremiumModal, setShowPremiumModal] = useState(false);
 
-  // --- ðŸ‘‘ GOD MODE LOGIC ---
+  // --- \u{1F451} GOD MODE LOGIC ---
   useEffect(() => {
     if (currentUserData) {
       const isGod = currentUserData.bypassAllPayments || currentUserData.bypassTakingPayment || currentUserData.bypassHostingPayment;
@@ -632,7 +632,7 @@ export default function App() {
 
   const handleAddPost = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("ðŸš€ Attempting to publish blog post...", newPost);
+    console.log("\u{1F680} Attempting to publish blog post...", newPost);
     
     if (!newPost.title || !newPost.content) {
       setGodModeNotification("Title and content are required.");
@@ -647,16 +647,16 @@ export default function App() {
         author: "NSG Admin"
       };
 
-      console.log("ðŸ“¦ Sending to Firestore:", postData);
+      console.log("\u{1F4E6} Sending to Firestore:", postData);
       
       const docRef = await addDoc(collection(db, 'blogPosts'), postData);
-      console.log("âœ… Blog post published with ID:", docRef.id);
+      console.log("\u{2705} Blog post published with ID:", docRef.id);
       
       setNewPost({ title: '', content: '' });
       setIsAddingPost(false);
       setGodModeNotification("Blog post published successfully!");
     } catch (error: any) {
-      console.error("âŒ Error adding post:", error);
+      console.error("\u{274C} Error adding post:", error);
       setGodModeNotification(`Failed to publish: ${error.message || 'Unknown error'}`);
     }
   };
@@ -754,7 +754,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸŽ™ï¸ RECORDING ENGINE ---
+  // --- \u{1F399}\u{FE0F} RECORDING ENGINE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -763,10 +763,10 @@ export default function App() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- ðŸ“‚ MEDIA & UPLOAD ---
+  // --- \u{1F4C2} MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
 
-  // --- ðŸ¤– AI CHAT SYSTEM ---
+  // --- \u{1F916} AI CHAT SYSTEM ---
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -778,11 +778,11 @@ export default function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInstanceRef = useRef<any>(null);
 
-  // --- ðŸ“š PERSISTENCE ---
+  // --- \u{1F4DA} PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
-  // --- ðŸ“ QUIZ STATE ---
+  // --- \u{1F4DD} QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
   const [shareQuizLink, setShareQuizLink] = useState<string | null>(null);
   const [quizDifficulty, setQuizDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | 'Professional'>('Medium');
@@ -795,7 +795,7 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
 
-  // --- ðŸŽ“ CBT EXAM STATE ---
+  // --- \u{1F393} CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
   const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result'>('login');
@@ -808,7 +808,7 @@ export default function App() {
   const [currentExamIndex, setCurrentExamIndex] = useState(0);
   const examTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- ðŸ› ï¸ ADMIN STATE ---
+  // --- \u{1F6E0}\u{FE0F} ADMIN STATE ---
   const [adminMode, setAdminMode] = useState(false);
   const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
   const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
@@ -835,7 +835,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸ’³ PAYSTACK INTEGRATION ---
+  // --- \u{1F4B3} PAYSTACK INTEGRATION ---
   const handleSubscriptionSuccess = async (plan: 'monthly' | 'yearly') => {
     if (!user) return;
     const duration = plan === 'monthly' ? 30 : 365;
@@ -939,7 +939,7 @@ export default function App() {
       )}
     </AnimatePresence>
   );
-  // --- ðŸ“± INITIALIZATION & FIREBASE SYNC ---
+  // --- \u{1F4F1} INITIALIZATION & FIREBASE SYNC ---
   useEffect(() => {
     console.log("App Initialized. Checking API Keys...");
     console.log("Gemini Key Found:", !!getApiKey());
@@ -1343,7 +1343,7 @@ export default function App() {
     setUserNotification("Copied to clipboard!");
   };
 
-  // --- ðŸŽ“ CBT & ADMIN LOGIC ---
+  // --- \u{1F393} CBT & ADMIN LOGIC ---
   const shuffleArray = (array: any[]) => {
     const newArr = [...array];
     for (let i = newArr.length - 1; i > 0; i--) {
@@ -1647,7 +1647,7 @@ export default function App() {
     a.click();
   };
 
-  // --- ðŸ’³ PAYSTACK INTEGRATION ---
+  // --- \u{1F4B3} PAYSTACK INTEGRATION ---
   const handleExamPaymentSuccess = (reference: any) => {
     setPaymentVerified(true);
     setExamLobbyState('briefing');
@@ -1744,14 +1744,14 @@ export default function App() {
     }
   };
 
-  // --- ðŸŽ¤ RECORDING LOGIC ---
+  // --- \u{1F3A4} RECORDING LOGIC ---
   const [isStopping, setIsStopping] = useState(false);
   const handleToggleRecording = async () => {
     if (isStopping) return;
     if (isRecording) {
       setIsStopping(true);
       try {
-        console.log("ðŸ›‘ Stopping recording...");
+        console.log("\u{1F6D1} Stopping recording...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           // Stop all tracks to release the microphone
@@ -1798,7 +1798,7 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // --- ðŸ› ï¸ HELPERS ---
+  // --- \u{1F6E0}\u{FE0F} HELPERS ---
   const uploadToCloudinary = async (file: File | Blob): Promise<string> => {
     const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
@@ -1830,19 +1830,27 @@ export default function App() {
   };
 
   const AdUnit = ({ slot }: { slot: string }) => {
+    const adRef = useRef<any>(null);
+
     useEffect(() => {
-      try {
-        const adsbygoogle = (window as any).adsbygoogle || [];
-        adsbygoogle.push({});
-      } catch (e) {
-        console.error("AdSense error:", e);
-      }
+      const timer = setTimeout(() => {
+        try {
+          if (adRef.current && !adRef.current.getAttribute('data-adsbygoogle-status')) {
+            const adsbygoogle = (window as any).adsbygoogle || [];
+            adsbygoogle.push({});
+          }
+        } catch (e) {
+          console.error("AdSense error:", e);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     }, []);
 
     return (
       <div className="my-6 overflow-hidden flex flex-col items-center w-full">
         <span className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mb-2">Advertisement</span>
         <ins className="adsbygoogle"
+             ref={adRef}
              style={{ display: 'block', minWidth: '250px', minHeight: '90px' }}
              data-ad-client="ca-pub-3216169026195971"
              data-ad-slot={slot}
@@ -1852,7 +1860,7 @@ export default function App() {
     );
   };
 
-  // --- ðŸ–¼ï¸ IMAGE HANDLER ---
+  // --- \u{1F5BC}\u{FE0F} IMAGE HANDLER ---
   const handleImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (uploadedImages.length + files.length > 50) {
@@ -1868,7 +1876,7 @@ export default function App() {
     setUploadedImages([...uploadedImages, ...mapped]);
   };
 
-  // --- ðŸ§  GEMINI ANALYSIS ---
+  // --- \u{1F9E0} GEMINI ANALYSIS ---
   const triggerFullAnalysis = async () => {
     if (uploadedImages.length === 0 && !recordedBlob) {
       setUserNotification("No data provided for analysis.");
@@ -1942,7 +1950,7 @@ export default function App() {
       setIsAnalyzing(false);
       setUserNotification("Analysis complete! View it below.");
     } catch (error: any) {
-      console.error('ðŸš¨ Gemini Analysis Error:', error);
+      console.error('\u{1F6A8} Gemini Analysis Error:', error);
       setUserNotification(`Analysis failed: ${error.message || 'Unknown error'}`);
     } finally {
       setIsAnalyzing(false);
@@ -2051,7 +2059,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸ’¬ CHAT ROUTING ENGINE ---
+  // --- \u{1F4AC} CHAT ROUTING ENGINE ---
   const [isRecordingChat, setIsRecordingChat] = useState(false);
   const chatMediaRecorderRef = useRef<MediaRecorder | null>(null);
 
@@ -2234,7 +2242,7 @@ export default function App() {
     }
   };
 
-  // --- ðŸ“ QUIZ LOGIC ---
+  // --- \u{1F4DD} QUIZ LOGIC ---
   const loadSharedQuiz = async (quizId: string) => {
     try {
       const quizDoc = await getDoc(doc(db, 'quizzes', quizId));
@@ -2714,7 +2722,7 @@ export default function App() {
                               {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
                               <div className="flex flex-col overflow-hidden">
                                 <span className="text-[10px] font-bold truncate">{session.title}</span>
-                                <span className="text-[8px] opacity-60">{session.date} â€¢ {session.duration}</span>
+                                <span className="text-[8px] opacity-60">{session.date} \u{2022} {session.duration}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 transition-opacity">
@@ -3176,7 +3184,7 @@ export default function App() {
                   <div>
                     <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
                     <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                      {isPremium ? `Active â€¢ ${premiumTimeLeft} Remaining` : "Inactive â€¢ Upgrade for full access"}
+                      {isPremium ? `Active \u{2022} ${premiumTimeLeft} Remaining` : "Inactive \u{2022} Upgrade for full access"}
                     </p>
                   </div>
                 </div>
@@ -3201,7 +3209,7 @@ export default function App() {
                           <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
                             {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
                           </div>
-                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} â€¢ {session.duration}</p></div>
+                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} \u{2022} {session.duration}</p></div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
@@ -3354,146 +3362,6 @@ export default function App() {
             </motion.div>
           )}
 
-          {/* PROFILE TAB */}
-          {activeTab === 'profile' && (
-            <motion.div key="profile" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity: 0}} className="space-y-6">
-              <div className="flex items-center justify-between px-2">
-                <h2 className="text-xl font-black uppercase tracking-tighter text-white">My Profile</h2>
-                <User size={20} className="text-[#DC2626]" />
-              </div>
-
-              {!user ? (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border text-center space-y-6`}>
-                  <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto"><User size={32} className="text-white/20" /></div>
-                  <p className="text-sm text-white/60">Please login to view and edit your profile.</p>
-                  <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-[#DC2626]/20">LOGIN NOW</button>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Profile Header Card */}
-                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-8 rounded-3xl relative overflow-hidden shadow-sm`}>
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#DC2626]/5 rounded-full translate-x-16 -translate-y-16" />
-                    <div className="flex flex-col items-center text-center relative z-10">
-                      <div className="relative mb-4 group">
-                        <div className="w-24 h-24 rounded-full border-4 border-[#DC2626] overflow-hidden bg-white/5">
-                          {currentUserData?.photoURL ? (
-                            <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-white/20 font-black text-3xl">{currentUserData?.fullName?.charAt(0) || user.email?.charAt(0)}</div>
-                          )}
-                        </div>
-                        <label className="absolute bottom-0 right-0 bg-[#DC2626] text-white p-2 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-all">
-                          <Camera size={16} />
-                          <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 200000) { // 200KB limit for Firestore doc safety
-                                setUserNotification("Image too large. Please use an image under 200KB.");
-                                return;
-                              }
-                              const reader = new FileReader();
-                              reader.onloadend = async () => {
-                                const base64 = reader.result as string;
-                                try {
-                                  await updateDoc(doc(db, 'users', user.uid), { photoURL: base64 });
-                                  setUserNotification("Profile picture updated!");
-                                } catch (err) {
-                                  console.error("Update photo error:", err);
-                                  setUserNotification("Failed to update photo.");
-                                }
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }} />
-                        </label>
-                      </div>
-                      <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic">{currentUserData?.fullName || "Student Name"}</h3>
-                      <p className="text-[10px] font-black text-[#DC2626] uppercase tracking-[0.3em] mt-1">{isAdminUser ? "System Administrator" : "Verified Student"}</p>
-                    </div>
-                  </div>
-
-                  {/* Profile Details Form */}
-                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Full Name</label>
-                        <input 
-                          type="text" 
-                          value={currentUserData?.fullName || ''} 
-                          onChange={async (e) => {
-                            const val = e.target.value;
-                            setCurrentUserData((prev: any) => ({ ...prev, fullName: val }));
-                          }}
-                          onBlur={async () => {
-                            await updateDoc(doc(db, 'users', user.uid), { fullName: currentUserData.fullName });
-                          }}
-                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} 
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Matric Number</label>
-                        <input 
-                          type="text" 
-                          value={currentUserData?.matric || ''} 
-                          onChange={async (e) => {
-                            const val = e.target.value;
-                            setCurrentUserData((prev: any) => ({ ...prev, matric: val }));
-                          }}
-                          onBlur={async () => {
-                            await updateDoc(doc(db, 'users', user.uid), { matric: currentUserData.matric });
-                          }}
-                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} 
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Date of Birth</label>
-                        <input 
-                          type="date" 
-                          value={currentUserData?.dob || ''} 
-                          onChange={async (e) => {
-                            const val = e.target.value;
-                            setCurrentUserData((prev: any) => ({ ...prev, dob: val }));
-                          }}
-                          onBlur={async () => {
-                            await updateDoc(doc(db, 'users', user.uid), { dob: currentUserData.dob });
-                          }}
-                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} 
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest ml-1`}>Email Address</label>
-                        <input 
-                          type="email" 
-                          value={user.email || ''} 
-                          disabled
-                          className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/40' : 'bg-slate-50 border-slate-200 text-slate-400'} border rounded-2xl px-5 py-4 text-sm outline-none cursor-not-allowed`} 
-                        />
-                      </div>
-                    </div>
-                    <div className={`pt-4 border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
-                      <p className={`text-[8px] ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'} uppercase font-bold text-center`}>Data is synced in real-time with your secure cloud profile.</p>
-                    </div>
-                  </div>
-
-                  {/* Account Stats */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <div className={`${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} p-4 rounded-2xl border text-center`}>
-                      <p className={`text-[8px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase mb-1`}>Lectures</p>
-                      <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{sessions.length}</p>
-                    </div>
-                    <div className={`${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} p-4 rounded-2xl border text-center`}>
-                      <p className={`text-[8px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase mb-1`}>Chats</p>
-                      <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{chatSessions.length}</p>
-                    </div>
-                    <div className={`${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} p-4 rounded-2xl border text-center col-span-2 sm:col-span-1`}>
-                      <p className={`text-[8px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase mb-1`}>Status</p>
-                      <p className={`text-xl font-black ${isPremium ? 'text-yellow-500' : (theme === 'dark' ? 'text-white/40' : 'text-slate-300')}`}>{isPremium ? 'PREMIUM' : 'FREE'}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          )}
 
           {/* EXAM TAB */}
           {activeTab === 'exam' && (
@@ -3535,7 +3403,7 @@ export default function App() {
                             </div>
                           ) : (
                             <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
-                              <p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} leading-relaxed italic`}>This examination requires a one-time access fee of <span className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>â‚¦100</span>. Please complete payment to proceed.</p>
+                              <p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} leading-relaxed italic`}>This examination requires a one-time access fee of <span className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{"\u{20A6}100"}</span>. Please complete payment to proceed.</p>
                               <button 
                                 onClick={() => {
                                   if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
@@ -3546,7 +3414,7 @@ export default function App() {
                                 }} 
                                 className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                               >
-                                <CreditCard size={18} /> PAY â‚¦100 & PROCEED
+                                <CreditCard size={18} /> {"PAY \u{20A6}100 & PROCEED"}
                               </button>
                               <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
                             </div>
@@ -3560,7 +3428,7 @@ export default function App() {
                         onClick={() => setAdminMode(true)} 
                         className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-3 rounded-2xl text-xs hover:bg-[#DC2626]/10 transition-all`}
                       >
-                        HOST AN EXAM (â‚¦200)
+                        {"HOST AN EXAM (\u{20A6}200)"}
                       </button>
                         </div>
                       )}
@@ -3684,7 +3552,7 @@ export default function App() {
 
                     {/* Reactions Section */}
                     <div className="pt-4 border-t border-white/5 flex flex-wrap items-center gap-2">
-                      {['ðŸ”¥', 'â¤ï¸', 'ðŸ‘', 'ðŸ™Œ', 'ðŸ’¡'].map(emoji => (
+                      {['\u{1F525}', '\u{2764}\u{FE0F}', '\u{1F44F}', '\u{1F64C}', '\u{1F4A1}'].map(emoji => (
                         <button 
                           key={emoji}
                           onClick={() => handleReaction(post.id, emoji)}
@@ -3818,7 +3686,7 @@ export default function App() {
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tighter">Host Your Own Exam</h2>
-                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">â‚¦200</span> per session.</p>
+                      <p className="text-xs sm:text-sm text-white/40 leading-relaxed">Create a professional CBT environment for your students. Hosting fee is <span className="font-black text-white">{"\u{20A6}200"}</span> per session.</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -3833,7 +3701,7 @@ export default function App() {
                       }} 
                       className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 sm:py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                     >
-                      <CreditCard size={18} className="sm:size-[20px]" /> PAY â‚¦200 TO START
+                      <CreditCard size={18} className="sm:size-[20px]" /> {"PAY \u{20A6}200 TO START"}
                     </button>
                   </div>
                 ) : (
@@ -3952,7 +3820,7 @@ export default function App() {
                               <div key={i} className="p-3 rounded-xl border flex items-center justify-between group bg-white/5 border-white/5">
                                 <div>
                                   <p className="text-[10px] font-bold text-white">{res.name}</p>
-                                  <p className="text-[8px] font-mono text-white/40">{res.matric} â€¢ {res.score}/{res.total}</p>
+                                  <p className="text-[8px] font-mono text-white/40">{res.matric} \u{2022} {res.score}/{res.total}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] font-black text-[#DC2626]">{Math.round((res.score/res.total)*100)}%</p>
@@ -4111,7 +3979,7 @@ export default function App() {
                               <div>
                                 <p className="font-bold text-white">{u.fullName || u.displayName || 'Anonymous'}</p>
                                 <p className="text-[8px] font-mono opacity-50">{u.email}</p>
-                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} â€¢ {u.dob || 'No DOB'}</p>
+                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} \u{2022} {u.dob || 'No DOB'}</p>
                               </div>
                             </div>
                           </td>
@@ -4320,7 +4188,7 @@ export default function App() {
 
                   <div className="mt-10 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
-                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai â€¢ {new Date().toLocaleDateString()}</p>
+                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai \u{2022} {new Date().toLocaleDateString()}</p>
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
                   </div>
                 </div>
@@ -4341,7 +4209,7 @@ export default function App() {
         <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
         <button onClick={() => setLegalPage('privacy')} className="hover:text-[#DC2626] transition-colors">Privacy Policy</button>
         <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
-        <span>Â© 2026 Nuell Graphics</span>
+        <span>{"\u{00A9} 2026 Nuell Graphics"}</span>
       </footer>
     </div>
   );
