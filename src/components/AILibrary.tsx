@@ -1,0 +1,1013 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { 
+  Settings, 
+  Cpu, 
+  Scale, 
+  Languages, 
+  Briefcase, 
+  Upload, 
+  Mic, 
+  Volume2, 
+  Search, 
+  History, 
+  ChevronRight, 
+  Clock, 
+  Globe,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Zap,
+  Book,
+  FileSearch,
+  TrendingDown,
+  Newspaper,
+  RefreshCcw,
+  Sparkles,
+  Plus,
+  Copy,
+  Check,
+  X,
+  Trash2
+} from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
+
+interface VoiceSettings {
+  pitch: number;
+  rate: number;
+  voice: string;
+}
+
+type Faculty = 'STEM' | 'LAW' | 'LANG' | 'BIZ' | 'SOC';
+
+interface Formula {
+  name: string;
+  formula: string;
+  desc: string;
+}
+
+interface LatinWord {
+  word: string;
+  meaning: string;
+  context: string;
+}
+
+export const AILibrary: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
+  const [activeFaculty, setActiveFaculty] = useState<Faculty>('STEM');
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
+    pitch: 1,
+    rate: 1,
+    voice: 'default'
+  });
+
+  // AI Helpers
+  const getAiInstance = () => {
+    const key = import.meta.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+    if (!key) throw new Error("Gemini API Key is missing.");
+    return new GoogleGenAI({ apiKey: key });
+  };
+
+  const fileToGenerativePart = async (file: File) => {
+    const base64EncodedDataPromise = new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+    return {
+      inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
+    };
+  };
+
+  // STEM State
+  const [stemTopic, setStemTopic] = useState('');
+  const [stemFormulas, setStemFormulas] = useState<Formula[]>([]);
+  const [stemFiles, setStemFiles] = useState<File[]>([]);
+  const [stemPreviews, setStemPreviews] = useState<string[]>([]);
+  const [stemSolution, setStemSolution] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+
+  // LAW State
+  const [lawLatinQuery, setLawLatinQuery] = useState('');
+  const [latinWords, setLatinWords] = useState<LatinWord[]>([]);
+  const [constitutionQuery, setConstitutionQuery] = useState('');
+  const [constitutionResult, setConstitutionResult] = useState<string | null>(null);
+
+  // BIZ State
+  const [bizFiles, setBizFiles] = useState<File[]>([]);
+  const [bizPreviews, setBizPreviews] = useState<string[]>([]);
+  const [bizAnalysis, setBizAnalysis] = useState<string | null>(null);
+
+  // SOC State
+  const [socFiles, setSocFiles] = useState<File[]>([]);
+  const [socPreviews, setSocPreviews] = useState<string[]>([]);
+  const [socNewsResult, setSocNewsResult] = useState<{ heading: string; correction: string } | null>(null);
+
+  // LANG State
+  const [langInput, setLangInput] = useState('');
+  const [langOutput, setLangOutput] = useState<{ original: string; corrected: string; errors: string[] } | null>(null);
+
+  const speak = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.pitch = voiceSettings.pitch;
+      utterance.rate = voiceSettings.rate;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const CopyButton = ({ text }: { text: string }) => {
+    const [copied, setCopied] = useState(false);
+    const handleCopy = () => {
+      navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+      <button 
+        onClick={handleCopy}
+        className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-[#DC2626]"
+        title="Copy to clipboard"
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+    );
+  };
+
+  const MarkdownRenderer = ({ content }: { content: string }) => (
+    <div className="prose prose-invert prose-xs max-w-none markdown-body">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+
+  // --- STEM ACTIONS ---
+  const generateFormulas = async () => {
+    if (!stemTopic) return;
+    setIsAiLoading(true);
+    try {
+      const ai = getAiInstance();
+      const prompt = `Generate a list of 5 important formulas for the topic: ${stemTopic}. Return ONLY a JSON array of objects with keys: name, formula, desc. Use valid LaTeX for formulas (e.g., use \\\\sum instead of sum, \\\\frac instead of frac). Ensure backslashes are escaped for JSON.`;
+      const result = await (ai as any).models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [{ text: prompt }] }]
+      });
+      const text = result.text || "";
+      const cleanedText = text.replace(/```json|```/g, '').trim();
+      setStemFormulas(JSON.parse(cleanedText));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const solveStemProblem = async () => {
+    if (stemFiles.length === 0) return;
+    setIsAiLoading(true);
+    try {
+      const ai = getAiInstance();
+      const parts = await Promise.all(stemFiles.map(fileToGenerativePart));
+      const result = await (ai as any).models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [...parts, { text: "Analyze these files/images. Provide pinpoint direct errors and corrections in a modern, structured style. Use Markdown for formatting (bold, headings, lists). Avoid conversational filler. Focus on math/science logic and accuracy." }] }]
+      });
+      setStemSolution(result.text || "");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // --- LAW ACTIONS ---
+  const findLatinMeaning = async () => {
+    if (!lawLatinQuery) return;
+    setIsAiLoading(true);
+    try {
+      const ai = getAiInstance();
+      const prompt = `Find the meaning and legal context of the Latin word/phrase: ${lawLatinQuery}. Return ONLY a JSON array of objects with keys: word, meaning, context.`;
+      const result = await (ai as any).models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [{ text: prompt }] }]
+      });
+      const text = result.text || "";
+      const cleanedText = text.replace(/```json|```/g, '').trim();
+      setLatinWords(JSON.parse(cleanedText));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const findConstitutionSection = async () => {
+    if (!constitutionQuery) return;
+    setIsAiLoading(true);
+    try {
+      const ai = getAiInstance();
+      const prompt = `Identify the relevant sections in the Nigerian Constitution for the following idea/issue: ${constitutionQuery}. Provide pinpoint direct references and summaries in a modern style using Markdown.`;
+      const result = await (ai as any).models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [{ text: prompt }] }]
+      });
+      setConstitutionResult(result.text || "");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // --- BIZ ACTIONS ---
+  const analyzeBizData = async () => {
+    if (bizFiles.length === 0) return;
+    setIsAiLoading(true);
+    try {
+      const ai = getAiInstance();
+      const parts = await Promise.all(bizFiles.map(fileToGenerativePart));
+      const result = await (ai as any).models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [...parts, { text: "Analyze these financial documents/images. Provide pinpoint direct errors, discrepancies, and corrections in a modern business style. Use Markdown for formatting. Identify exactly where money left or issues occurred." }] }]
+      });
+      setBizAnalysis(result.text || "");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // --- SOC ACTIONS ---
+  const processNewsWriting = async () => {
+    if (socFiles.length === 0) return;
+    setIsAiLoading(true);
+    try {
+      const ai = getAiInstance();
+      const parts = await Promise.all(socFiles.map(fileToGenerativePart));
+      const result = await (ai as any).models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [...parts, { text: "Analyze these news drafts/images. Provide pinpoint direct journalistic errors and corrections in a modern style. Use Markdown. Return ONLY a JSON object with keys: heading, correction (the correction should be the full corrected text with markdown for emphasis)." }] }]
+      });
+      const text = result.text || "";
+      const cleanedText = text.replace(/```json|```/g, '').trim();
+      setSocNewsResult(JSON.parse(cleanedText));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  return (
+    <div className={`flex flex-col h-full ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+      {/* FIXED HEADER */}
+      <header className="sticky top-0 z-50 backdrop-blur-xl bg-white/5 border-b border-white/10 p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-[#DC2626] rounded-lg flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
+            <Zap size={18} className="text-white" />
+          </div>
+          <div className="flex flex-col">
+            <h1 className="text-sm font-black uppercase tracking-tighter italic leading-none">NSG AI Library</h1>
+            <span className="text-[6px] font-bold text-white/30 uppercase tracking-widest mt-1">Powered by Omni Ai</span>
+          </div>
+        </div>
+
+        <div className="relative">
+          <button 
+            onClick={() => setShowVoiceSettings(!showVoiceSettings)}
+            className="p-2 hover:bg-white/10 rounded-xl transition-all"
+          >
+            <Settings size={20} className={showVoiceSettings ? 'text-[#DC2626]' : 'text-white/60'} />
+          </button>
+
+          <AnimatePresence>
+            {showVoiceSettings && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute right-0 mt-2 w-64 bg-[#0A0F1C] border border-white/10 rounded-2xl p-4 shadow-2xl z-[60]"
+              >
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-4">Voice Settings</h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[8px] font-bold uppercase">
+                      <span>Pitch</span>
+                      <span>{voiceSettings.pitch}x</span>
+                    </div>
+                    <input 
+                      type="range" min="0.5" max="2" step="0.1" 
+                      value={voiceSettings.pitch}
+                      onChange={(e) => setVoiceSettings({...voiceSettings, pitch: parseFloat(e.target.value)})}
+                      className="w-full accent-[#DC2626]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[8px] font-bold uppercase">
+                      <span>Speed</span>
+                      <span>{voiceSettings.rate}x</span>
+                    </div>
+                    <input 
+                      type="range" min="0.5" max="2" step="0.1" 
+                      value={voiceSettings.rate}
+                      onChange={(e) => setVoiceSettings({...voiceSettings, rate: parseFloat(e.target.value)})}
+                      className="w-full accent-[#DC2626]"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </header>
+
+      {/* FACULTY SWITCHER */}
+      <div className="p-4 overflow-x-auto no-scrollbar">
+        <div className="flex gap-2 min-w-max">
+          {[
+            { id: 'STEM', icon: Cpu, label: 'STEM' },
+            { id: 'LAW', icon: Scale, label: 'LAW' },
+            { id: 'SOC', icon: Newspaper, label: 'SOCIAL SCI' },
+            { id: 'LANG', icon: Languages, label: 'LANG/EDU' },
+            { id: 'BIZ', icon: Briefcase, label: 'BIZ' }
+          ].map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setActiveFaculty(f.id as Faculty)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all border ${
+                activeFaculty === f.id 
+                ? 'bg-[#DC2626] border-[#DC2626] text-white shadow-lg shadow-[#DC2626]/20' 
+                : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+              }`}
+            >
+              <f.icon size={12} />
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* TOOL CONTENT */}
+      <main className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
+        {isAiLoading && (
+          <div className="fixed inset-0 z-[100] bg-black/20 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-[#0A0F1C] border border-white/10 p-6 rounded-3xl flex flex-col items-center gap-4 shadow-2xl">
+              <RefreshCcw className="animate-spin text-[#DC2626]" size={32} />
+              <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Omni AI Processing...</p>
+            </div>
+          </div>
+        )}
+
+        <AnimatePresence mode="wait">
+          {activeFaculty === 'STEM' && (
+            <motion.div 
+              key="stem"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              {/* Formula Generator */}
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
+                    <Book size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">Formula Library</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">AI Generated Formula Cards</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={stemTopic}
+                    onChange={(e) => setStemTopic(e.target.value)}
+                    placeholder="Enter topic (e.g. Calculus)"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-[9px] outline-none focus:border-[#DC2626]/50 transition-all"
+                  />
+                  <button 
+                    onClick={generateFormulas}
+                    className="bg-[#DC2626] text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest"
+                  >
+                    Generate
+                  </button>
+                  {stemFormulas.length > 0 && (
+                    <button 
+                      onClick={() => setStemFormulas([])}
+                      className="bg-white/5 border border-white/10 text-white/40 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:text-red-500 flex items-center gap-1"
+                    >
+                      <Trash2 size={10} /> Clear All
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                  {stemFormulas.map((f, i) => (
+                    <motion.div 
+                      key={i}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="min-w-[140px] bg-white/5 border border-white/10 rounded-2xl p-3 space-y-2 relative group"
+                    >
+                      <button 
+                        onClick={() => {
+                          const newFormulas = [...stemFormulas];
+                          newFormulas.splice(i, 1);
+                          setStemFormulas(newFormulas);
+                        }}
+                        className="absolute top-2 right-2 p-1 bg-black/40 rounded-lg text-white/40 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                      <h4 className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest">{f.name}</h4>
+                      <div className="text-xs text-white font-bold overflow-x-auto no-scrollbar py-2">
+                        <ReactMarkdown 
+                          remarkPlugins={[remarkMath]} 
+                          rehypePlugins={[rehypeKatex]}
+                        >
+                          {`$$${f.formula}$$`}
+                        </ReactMarkdown>
+                      </div>
+                      <p className="text-[7px] text-white/40 uppercase leading-tight">{f.desc}</p>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Upload & Scan */}
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
+                    <Upload size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">Upload & Scan</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Engineering & Science Solver</p>
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <input 
+                    type="file" 
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.txt" 
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) {
+                        setStemFiles([...stemFiles, ...files]);
+                        const newPreviews = files.map(f => f.type.startsWith('image/') ? URL.createObjectURL(f) : '');
+                        setStemPreviews([...stemPreviews, ...newPreviews]);
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="border-2 border-dashed border-white/10 rounded-2xl p-8 text-center group-hover:border-[#DC2626]/50 transition-all">
+                    {stemPreviews.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {stemPreviews.map((p, idx) => (
+                          <div key={idx} className="relative aspect-square bg-white/5 rounded-lg overflow-hidden border border-white/10">
+                            {p ? (
+                              <img src={p} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                                <FileText size={16} className="text-white/20" />
+                                <span className="text-[6px] text-white/40 truncate w-full px-1">{stemFiles[idx]?.name}</span>
+                              </div>
+                            )}
+                            <button 
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const newFiles = [...stemFiles];
+                                const newPreviews = [...stemPreviews];
+                                newFiles.splice(idx, 1);
+                                newPreviews.splice(idx, 1);
+                                setStemFiles(newFiles);
+                                setStemPreviews(newPreviews);
+                              }}
+                              className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white hover:text-red-500"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        ))}
+                        <div className="aspect-square border border-dashed border-white/20 rounded-lg flex flex-col items-center justify-center gap-1 text-white/20">
+                          <Plus size={16} />
+                          <span className="text-[6px] uppercase font-black">Add More</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Upload size={32} className="mx-auto text-white/20" />
+                        <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Drop problem images or docs here</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {stemFiles.length > 0 && (
+                  <button 
+                    onClick={solveStemProblem}
+                    className="w-full py-3 bg-[#DC2626] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#DC2626]/20"
+                  >
+                    Analyze with Omni AI
+                  </button>
+                )}
+
+                {stemSolution && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-black/40 rounded-2xl p-4 border border-white/5"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest flex items-center gap-2">
+                        <FileText size={12} /> Solution Sheet
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <CopyButton text={stemSolution} />
+                        <button 
+                          onClick={() => { setStemSolution(null); setStemFiles([]); setStemPreviews([]); }}
+                          className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
+                          title="Clear Result"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-xs text-white/70 leading-relaxed">
+                      <MarkdownRenderer content={stemSolution} />
+                    </div>
+                  </motion.div>
+                )}
+
+                <button 
+                  onClick={() => {
+                    if (stemSolution) {
+                      speak(stemSolution);
+                    } else {
+                      setIsListening(true);
+                      setTimeout(() => setIsListening(false), 2000);
+                    }
+                  }}
+                  disabled={isListening}
+                  className={`w-full py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                    isListening 
+                    ? 'bg-blue-500/20 text-blue-500 border border-blue-500/30' 
+                    : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
+                  }`}
+                >
+                  <Mic size={14} className={isListening ? 'animate-pulse' : ''} />
+                  {isListening ? 'Listening...' : 'Voice Lab'}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {activeFaculty === 'LAW' && (
+            <motion.div 
+              key="law"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              {/* Latin Library */}
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-500">
+                    <Book size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">Latin Library</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Legal Phrases & Meanings</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={lawLatinQuery}
+                    onChange={(e) => setLawLatinQuery(e.target.value)}
+                    placeholder="Enter Latin phrase (e.g. Habeas Corpus)"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-[9px] outline-none focus:border-[#DC2626]/50 transition-all"
+                  />
+                  <button 
+                    onClick={findLatinMeaning}
+                    className="bg-[#DC2626] text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest"
+                  >
+                    Search
+                  </button>
+                  {latinWords.length > 0 && (
+                    <button 
+                      onClick={() => setLatinWords([])}
+                      className="bg-white/5 border border-white/10 text-white/40 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:text-red-500"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {latinWords.map((w, i) => (
+                    <motion.div 
+                      key={i}
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white/5 border border-white/10 rounded-2xl p-4"
+                    >
+                      <h4 className="text-xs font-black text-[#DC2626] uppercase tracking-widest italic mb-1">{w.word}</h4>
+                      <p className="text-[10px] text-white font-bold mb-1">{w.meaning}</p>
+                      <p className="text-[8px] text-white/40 uppercase tracking-widest leading-relaxed">{w.context}</p>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Constitution Finder */}
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-500">
+                    <FileSearch size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">Constitution Finder</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Nigerian Constitution Search</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Input Idea or Issue</p>
+                  <textarea 
+                    value={constitutionQuery}
+                    onChange={(e) => setConstitutionQuery(e.target.value)}
+                    placeholder="e.g. Fundamental Human Rights or Freedom of Speech"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all h-24 resize-none"
+                  />
+                </div>
+                <button 
+                  onClick={findConstitutionSection}
+                  className="w-full py-3 bg-[#DC2626] text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-[#DC2626]/20"
+                >
+                  Find Sections
+                </button>
+                {constitutionResult && (
+                  <div className="bg-black/40 rounded-2xl p-4 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest">Constitution Report</h4>
+                      <div className="flex items-center gap-2">
+                        <CopyButton text={constitutionResult} />
+                        <button 
+                          onClick={() => setConstitutionResult(null)}
+                          className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
+                          title="Clear Result"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-white/70 leading-relaxed">
+                      <MarkdownRenderer content={constitutionResult} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeFaculty === 'SOC' && (
+            <motion.div 
+              key="soc"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-500">
+                    <Newspaper size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">News Writing Preview</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Journalism & Mass Comm Suite</p>
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <input 
+                    type="file" 
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.txt" 
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) {
+                        setSocFiles([...socFiles, ...files]);
+                        const newPreviews = files.map(f => f.type.startsWith('image/') ? URL.createObjectURL(f) : '');
+                        setSocPreviews([...socPreviews, ...newPreviews]);
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="border-2 border-dashed border-white/10 rounded-2xl p-8 text-center group-hover:border-[#DC2626]/50 transition-all">
+                    {socPreviews.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {socPreviews.map((p, idx) => (
+                          <div key={idx} className="relative aspect-square bg-white/5 rounded-lg overflow-hidden border border-white/10">
+                            {p ? (
+                              <img src={p} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                                <FileText size={16} className="text-white/20" />
+                                <span className="text-[6px] text-white/40 truncate w-full px-1">{socFiles[idx]?.name}</span>
+                              </div>
+                            )}
+                            <button 
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const newFiles = [...socFiles];
+                                const newPreviews = [...socPreviews];
+                                newFiles.splice(idx, 1);
+                                newPreviews.splice(idx, 1);
+                                setSocFiles(newFiles);
+                                setSocPreviews(newPreviews);
+                              }}
+                              className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white hover:text-red-500"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        ))}
+                        <div className="aspect-square border border-dashed border-white/20 rounded-lg flex flex-col items-center justify-center gap-1 text-white/20">
+                          <Plus size={16} />
+                          <span className="text-[6px] uppercase font-black">Add More</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Upload size={32} className="mx-auto text-white/20" />
+                        <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Upload Drafts or Images</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {socFiles.length > 0 && (
+                  <button 
+                    onClick={processNewsWriting}
+                    className="w-full py-3 bg-[#DC2626] text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-[#DC2626]/20"
+                  >
+                    Correct & Generate Heading
+                  </button>
+                )}
+
+                {socNewsResult && (
+                  <div className="space-y-4">
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest">Suggested Heading</h4>
+                        <div className="flex items-center gap-2">
+                          <CopyButton text={socNewsResult.heading} />
+                          <button 
+                            onClick={() => setSocNewsResult(null)}
+                            className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
+                            title="Clear Result"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-sm font-black text-white italic">"{socNewsResult.heading}"</p>
+                    </div>
+                    <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <h4 className="text-[8px] font-black text-green-500 uppercase tracking-widest">Corrected Version</h4>
+                        <CopyButton text={socNewsResult.correction} />
+                      </div>
+                      <div className="text-[10px] text-white/70 leading-relaxed">
+                        <MarkdownRenderer content={socNewsResult.correction} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeFaculty === 'BIZ' && (
+            <motion.div 
+              key="biz"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
+                    <TrendingDown size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">Financial Auditor</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Business & Accounting Suite</p>
+                  </div>
+                </div>
+
+                <div className="relative group">
+                  <input 
+                    type="file" 
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx" 
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length > 0) {
+                        setBizFiles([...bizFiles, ...files]);
+                        const newPreviews = files.map(f => f.type.startsWith('image/') ? URL.createObjectURL(f) : '');
+                        setBizPreviews([...bizPreviews, ...newPreviews]);
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="border-2 border-dashed border-white/10 rounded-2xl p-8 text-center group-hover:border-[#DC2626]/50 transition-all">
+                    {bizPreviews.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {bizPreviews.map((p, idx) => (
+                          <div key={idx} className="relative aspect-square bg-white/5 rounded-lg overflow-hidden border border-white/10">
+                            {p ? (
+                              <img src={p} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                                <FileText size={16} className="text-white/20" />
+                                <span className="text-[6px] text-white/40 truncate w-full px-1">{bizFiles[idx]?.name}</span>
+                              </div>
+                            )}
+                            <button 
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const newFiles = [...bizFiles];
+                                const newPreviews = [...bizPreviews];
+                                newFiles.splice(idx, 1);
+                                newPreviews.splice(idx, 1);
+                                setBizFiles(newFiles);
+                                setBizPreviews(newPreviews);
+                              }}
+                              className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white hover:text-red-500"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        ))}
+                        <div className="aspect-square border border-dashed border-white/20 rounded-lg flex flex-col items-center justify-center gap-1 text-white/20">
+                          <Plus size={16} />
+                          <span className="text-[6px] uppercase font-black">Add More</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Upload size={32} className="mx-auto text-white/20" />
+                        <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Upload Tables or Statements</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {bizFiles.length > 0 && (
+                  <button 
+                    onClick={analyzeBizData}
+                    className="w-full py-3 bg-[#DC2626] text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-[#DC2626]/20"
+                  >
+                    Connect the Dots with AI
+                  </button>
+                )}
+
+                {bizAnalysis && (
+                  <div className="bg-black/40 rounded-2xl p-4 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest">Audit Report</h4>
+                      <div className="flex items-center gap-2">
+                        <CopyButton text={bizAnalysis} />
+                        <button 
+                          onClick={() => { setBizAnalysis(null); setBizFiles([]); setBizPreviews([]); }}
+                          className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
+                          title="Clear Result"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-white/70 leading-relaxed">
+                      <MarkdownRenderer content={bizAnalysis} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeFaculty === 'LANG' && (
+            <motion.div 
+              key="lang"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
+                    <Languages size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">Language Diagnostic</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Grammar & Syntax Analysis</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Input Text</p>
+                    <textarea 
+                      value={langInput}
+                      onChange={(e) => setLangInput(e.target.value)}
+                      placeholder="Type or paste text to analyze..."
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all h-32 resize-none"
+                    />
+                  </div>
+
+                  <button 
+                    onClick={async () => {
+                      if (!langInput) return;
+                      setIsAiLoading(true);
+                      try {
+                        const ai = getAiInstance();
+                        const prompt = `Analyze this text for grammar mistakes. Provide pinpoint direct corrections in a modern style. Use Markdown for formatting. Return ONLY a JSON object with keys: original, corrected, errors (array of strings). Text: ${langInput}`;
+                        const result = await (ai as any).models.generateContent({
+                          model: "gemini-3.1-flash-lite-preview",
+                          contents: [{ parts: [{ text: prompt }] }]
+                        });
+                        const text = result.text || "";
+                        const cleanedText = text.replace(/```json|```/g, '').trim();
+                        setLangOutput(JSON.parse(cleanedText));
+                      } catch (err) {
+                        console.error(err);
+                      } finally {
+                        setIsAiLoading(false);
+                      }
+                    }}
+                    className="w-full py-3 bg-[#DC2626] text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-[#DC2626]/20"
+                  >
+                    Run Diagnostic
+                  </button>
+
+                  {langOutput && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+                      <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 space-y-2">
+                        <h4 className="text-[8px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2">
+                          <AlertCircle size={10} /> Original
+                        </h4>
+                        <p className="text-xs text-red-200/60 leading-relaxed">
+                          {langOutput.original.split(' ').map((word, i) => (
+                            <span key={i} className={langOutput.errors.some(e => word.includes(e.split(' ')[1] || e)) ? 'bg-red-500/20 text-red-400 px-1 rounded' : ''}>
+                              {word}{' '}
+                            </span>
+                          ))}
+                        </p>
+                      </div>
+                      <div className="bg-green-500/5 border border-green-500/10 rounded-2xl p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-[8px] font-black text-green-500 uppercase tracking-widest flex items-center gap-2">
+                            <CheckCircle2 size={10} /> Corrected
+                          </h4>
+                          <div className="flex items-center gap-2">
+                            <CopyButton text={langOutput.corrected} />
+                            <button 
+                              onClick={() => setLangOutput(null)}
+                              className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
+                              title="Clear Result"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-xs text-green-200/60 leading-relaxed">
+                          <MarkdownRenderer content={langOutput.corrected} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
+  );
+};
