@@ -1512,6 +1512,9 @@ export default function App() {
         Convert the following raw text into a professional Multiple Choice Question (MCQ) pool.
         Generate exactly ${examConfig.poolCount || 50} questions.
         Each question must have 4 options (A-D) and one correct answer index (0-3).
+        IMPORTANT: For any mathematical formulas or scientific notations, ALWAYS use LaTeX notation. 
+        Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
+        NEVER use other delimiters like \( \) or [ ].
         Return ONLY a JSON object with this structure:
         {
           "questions": [
@@ -2278,7 +2281,9 @@ export default function App() {
         2. Extract 5 Key Technical Concepts with clear explanations.
         3. Create a bulleted "Action Plan" for studying this content.
         Style: Professional, sharp, and academic. Use markdown for better formatting. 
-        IMPORTANT: For any mathematical formulas, use LaTeX notation wrapped in double dollar signs for blocks (e.g. $$E=mc^2$$) or single dollar signs for inline (e.g. $x^2$).
+        IMPORTANT: For any mathematical formulas or scientific notations, ALWAYS use LaTeX notation. 
+        Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
+        NEVER use other delimiters like \( \) or [ ].
       ` });
 
       const aiInstance = getAiInstance();
@@ -2570,7 +2575,7 @@ export default function App() {
           model: MODEL_NAME,
           contents: [{ role: 'user', parts }],
           config: {
-            systemInstruction: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. Use LaTeX for math."
+            systemInstruction: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. NEVER use other delimiters like \\( \\) or [ ]."
           }
         });
         responseText = response.text || "I'm sorry, I couldn't generate a response.";
@@ -3773,11 +3778,21 @@ export default function App() {
                     <div className="text-right"><p className="text-[10px] font-black text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
                   </div>
                   <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-8 shadow-sm`}>
-                    <h3 className="text-lg font-bold leading-tight text-white">{quizQuestions[currentQuestionIndex].question}</h3>
+                    <div className="text-lg font-bold leading-tight text-white markdown-body">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                        {quizQuestions[currentQuestionIndex].question}
+                      </ReactMarkdown>
+                    </div>
                     <div className="space-y-3">
                       {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
                         <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${isAnswered ? (idx === quizQuestions[currentQuestionIndex].correctAnswer ? 'bg-green-500/10 border-green-500 text-green-500' : (selectedOption === idx ? 'bg-[#DC2626]/10 border-[#DC2626] text-[#DC2626]' : 'bg-white/5 opacity-40')) : (selectedOption === idx ? 'border-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80')}`}>
-                          <span className="text-sm font-medium">{option}</span>
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 markdown-body text-sm font-medium">
+                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                {option}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
                         </button>
                       ))}
                     </div>
@@ -3950,11 +3965,21 @@ export default function App() {
                   </div>
 
                   <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 sm:space-y-8 shadow-sm`}>
-                    <h3 className={`text-base sm:text-lg font-bold leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{examQuestions[currentExamIndex].question}</h3>
+                    <div className={`text-base sm:text-lg font-bold leading-tight markdown-body ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                        {examQuestions[currentExamIndex].question}
+                      </ReactMarkdown>
+                    </div>
                     <div className="space-y-3">
                       {examQuestions[currentExamIndex].options.map((option, idx) => (
                         <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/80' : 'bg-slate-50 border-slate-200 text-slate-700'}`}`}>
-                          <span className="text-sm font-medium">{option}</span>
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 markdown-body text-sm font-medium">
+                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                {option}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
                         </button>
                       ))}
                     </div>
@@ -4014,7 +4039,7 @@ export default function App() {
                       <h2 className="text-2xl font-black text-white uppercase tracking-tighter leading-tight">{post.title}</h2>
                     </div>
                     <div className={`markdown-body text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                         {post.content}
                       </ReactMarkdown>
                     </div>
@@ -4505,10 +4530,18 @@ export default function App() {
                           ) : (
                             examQuestions.map((q, i) => (
                               <div key={i} className="p-3 rounded-xl border space-y-2 bg-white/5 border-white/5">
-                                <p className="text-[10px] font-bold leading-tight text-white">{i + 1}. {q.question}</p>
+                                <div className="text-[10px] font-bold leading-tight text-white markdown-body">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                    {`${i + 1}. ${q.question}`}
+                                  </ReactMarkdown>
+                                </div>
                                 <div className="grid grid-cols-2 gap-1">
                                   {q.options.map((opt, idx) => (
-                                    <p key={idx} className={`text-[8px] px-2 py-1 rounded ${idx === q.correctAnswer ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40'}`}>{opt}</p>
+                                    <div key={idx} className={`text-[8px] px-2 py-1 rounded markdown-body ${idx === q.correctAnswer ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40'}`}>
+                                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                        {opt}
+                                      </ReactMarkdown>
+                                    </div>
                                   ))}
                                 </div>
                               </div>
