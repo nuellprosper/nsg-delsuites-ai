@@ -218,7 +218,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
 
   const MarkdownRenderer = ({ content }: { content: string }) => (
     <div className="prose prose-invert prose-xs max-w-none markdown-body">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
         {content}
       </ReactMarkdown>
     </div>
@@ -230,7 +230,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
-      const prompt = `Generate a list of 5 important formulas for the topic: ${stemTopic}. Return ONLY a JSON array of objects with keys: name, formula, desc. Use valid LaTeX for formulas (e.g., use \\\\sum instead of sum, \\\\frac instead of frac). Ensure backslashes are escaped for JSON.`;
+      const prompt = `Generate a list of 5 important formulas for the topic: ${stemTopic}. Return ONLY a JSON array of objects with keys: name, formula, desc. Use valid LaTeX for formulas. Return the raw LaTeX string for the 'formula' field WITHOUT any delimiters like $ or $$. Ensure backslashes are escaped for JSON (e.g. \\\\frac).`;
       const result = await (ai as any).models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
         contents: [{ parts: [{ text: prompt }] }]
@@ -253,7 +253,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const parts = await Promise.all(stemFiles.map(fileToGenerativePart));
       const result = await (ai as any).models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [...parts, { text: "Analyze these files/images. Provide pinpoint direct errors and corrections in a modern, structured style. Use Markdown for formatting (bold, headings, lists). Avoid conversational filler. Focus on math/science logic and accuracy." }] }]
+        contents: [{ parts: [...parts, { text: "Analyze these files/images. Provide pinpoint direct errors and corrections in a modern, structured style. Use Markdown for formatting (bold, headings, lists). Use LaTeX for all mathematical notations (e.g., use $x^2$ for inline and $$E=mc^2$$ for blocks). Avoid conversational filler. Focus on math/science logic and accuracy." }] }]
       });
       setStemSolution(result.text || "");
     } catch (err) {
@@ -311,7 +311,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const parts = await Promise.all(bizFiles.map(fileToGenerativePart));
       const result = await (ai as any).models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [...parts, { text: "Analyze these financial documents/images. Provide pinpoint direct errors, discrepancies, and corrections in a modern business style. Use Markdown for formatting. Identify exactly where money left or issues occurred." }] }]
+        contents: [{ parts: [...parts, { text: "Analyze these financial documents/images. Provide pinpoint direct errors, discrepancies, and corrections in a modern business style. Use Markdown for formatting. Identify exactly where money left or issues occurred. ALWAYS use LaTeX for any mathematical formulas or calculations. Use $ ... $ for inline and $$ ... $$ for blocks." }] }]
       });
       setBizAnalysis(result.text || "");
     } catch (err) {
@@ -330,7 +330,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const parts = await Promise.all(socFiles.map(fileToGenerativePart));
       const result = await (ai as any).models.generateContent({
         model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [...parts, { text: "Analyze these news drafts/images. Provide pinpoint direct journalistic errors and corrections in a modern style. Use Markdown. Return ONLY a JSON object with keys: heading, correction (the correction should be the full corrected text with markdown for emphasis)." }] }]
+        contents: [{ parts: [...parts, { text: "Analyze these news drafts/images. Provide pinpoint direct journalistic errors and corrections in a modern style. Use Markdown. Return ONLY a JSON object with keys: heading, correction (the correction should be the full corrected text with markdown for emphasis). ALWAYS use LaTeX for any mathematical data or statistics mentioned. Use $ ... $ for inline and $$ ... $$ for blocks." }] }]
       });
       const text = result.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
