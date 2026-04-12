@@ -67,7 +67,7 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "nuellkelechi@gmail.com" ||
+        ((request.auth.token.email == "nuellkelechi@gmail.com" && request.auth.token.email_verified == true) ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -145,18 +145,20 @@ service cloud.firestore {
 
     match /exams/{examId} {
       // Students can read exams if they are authenticated
-      // In a stricter setup, we'd check if they paid for this specific exam
       allow read: if isAuthenticated();
       
       // Only authenticated users can create exams
       allow create: if isAuthenticated();
       
       // Only the host or admin can update/delete exams
-      allow update, delete: if isAuthenticated() && (resource.data.hostUid == request.auth.uid || isAdmin());
+      allow update, delete: if isAuthenticated() && 
+        (resource.data.hostUid == request.auth.uid || isAdmin());
       
       match /results/{resultId} {
-        // Only the host or admin can read results
-        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/exams/$(examId)).data.hostUid == request.auth.uid || isAdmin());
+        // Only the host or admin can read, update, or delete results
+        // We use get() to check the parent exam's hostUid
+        allow read, list, update, delete: if isAuthenticated() && 
+          (get(/databases/$(database)/documents/exams/$(examId)).data.hostUid == request.auth.uid || isAdmin());
         
         // Anyone authenticated can submit results
         allow create: if isAuthenticated();
