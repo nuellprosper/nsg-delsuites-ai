@@ -9,7 +9,7 @@ const app = initializeApp(firebaseConfig);
 // Use initializeFirestore with long polling to bypass potential WebSocket restrictions
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+}, firebaseConfig.firestoreDatabaseId || '(default)');
 
 export const auth = getAuth(app);
 
