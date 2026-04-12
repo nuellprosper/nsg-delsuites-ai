@@ -67,7 +67,7 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3.1-flash-lite-preview";
+const MODEL_NAME = "gemini-3-flash-preview";
 
 const formatAiError = (error: any) => {
   const message = error.message || "Unknown error";
@@ -1072,6 +1072,9 @@ export default function App() {
     const savedTheme = localStorage.getItem('nsg_theme');
     if (savedTheme) setTheme(savedTheme as 'dark' | 'light');
 
+    const savedAdminMode = localStorage.getItem('nsg_admin_mode');
+    if (savedAdminMode === 'true') setAdminMode(true);
+
     // Load hosted exam state if exists
     const savedHostExamId = localStorage.getItem('nsg_host_exam_id');
     if (savedHostExamId) {
@@ -1114,6 +1117,27 @@ export default function App() {
     };
   }, []);
 
+  // Auto-sync Exam Config to Firestore
+  useEffect(() => {
+    if (hostExamId && isHostPaid) {
+      const syncConfig = async () => {
+        try {
+          console.log("Auto-syncing Exam Config:", examConfig);
+          await updateDoc(doc(db, 'exams', hostExamId), { config: examConfig });
+        } catch (err) {
+          console.error("Sync Config Error:", err);
+        }
+      };
+      const timer = setTimeout(syncConfig, 1000); // Debounce
+      return () => clearTimeout(timer);
+    }
+  }, [examConfig, hostExamId, isHostPaid]);
+
+  // Admin Mode Persistence
+  useEffect(() => {
+    localStorage.setItem('nsg_admin_mode', adminMode.toString());
+  }, [adminMode]);
+
   // Theme Sync
   useEffect(() => {
     if (theme === 'dark') {
@@ -1145,14 +1169,17 @@ export default function App() {
     let unsubExam = () => {};
 
     if (hostExamId) {
+      console.log("Starting Exam Results sync for ID:", hostExamId);
       unsubScores = onSnapshot(collection(db, 'exams', hostExamId, 'results'), (snapshot) => {
         const scores = snapshot.docs.map(doc => doc.data() as StudentResult);
+        console.log(`Synced ${scores.length} results for exam ${hostExamId}`);
         setScoreSheet(scores.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
       }, (error) => console.error("Exam Results Sync Error:", error));
 
       unsubExam = onSnapshot(doc(db, 'exams', hostExamId), (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
+          console.log("Synced Exam Data:", data);
           // Only sync if we're not currently generating questions to avoid overwriting local state
           if (!isGeneratingAdminQuestions) {
             setExamConfig(data.config || examConfig);
@@ -1160,6 +1187,8 @@ export default function App() {
             setExamQuestions(data.questions || []);
             setExamStatus(data.status || 'none');
           }
+        } else {
+          console.warn("Exam document does not exist in Firestore:", hostExamId);
         }
       }, (error) => console.error("Exam Data Sync Error:", error));
     }
@@ -1566,12 +1595,13 @@ export default function App() {
         setExamConfig(data.config);
         setExamQuestions(data.questions);
         const students = data.registeredStudents || [];
+        console.log(`Exam ${targetExamId} found. Registered students:`, students);
         setRegisteredStudents(students);
         setActiveExamId(targetExamId);
         setActiveExamHostUid(data.hostUid || null);
         
         // Verify student registration
-        const student = students.find((s: any) => s.matric.toLowerCase() === matricNumber.toLowerCase());
+        const student = students.find((s: any) => s.matric.trim().toLowerCase() === matricNumber.trim().toLowerCase());
         
         if (student) {
           setStudentName(student.name);
@@ -1887,8 +1917,9 @@ export default function App() {
       setAdminNotification("Matric number already exists.");
       return;
     }
-    const studentData = { matric: newStudentMatric, name: newStudentName, paymentEnabled: true };
+    const studentData = { matric: newStudentMatric.trim(), name: newStudentName.trim(), paymentEnabled: true };
     const updatedStudents = [...registeredStudents, studentData];
+    console.log("Adding student to local state:", studentData);
     setRegisteredStudents(updatedStudents);
     setNewStudentMatric('');
     setNewStudentName('');
@@ -1897,10 +1928,15 @@ export default function App() {
     // Auto-sync to Firestore
     if (hostExamId) {
       try {
+        console.log("Syncing updated students to Firestore for exam:", hostExamId, updatedStudents);
         await updateDoc(doc(db, 'exams', hostExamId), { registeredStudents: updatedStudents });
+        console.log("Student sync successful");
       } catch (err) {
         console.error("Sync Students Error:", err);
+        setAdminNotification("Failed to sync students to cloud. Check connection.");
       }
+    } else {
+      console.warn("Cannot sync student: hostExamId is missing");
     }
   };
 
@@ -2405,18 +2441,31 @@ export default function App() {
         const blob = new Blob(chunks, { type: 'audio/webm' });
         setIsTyping(true);
         try {
+          console.log("Starting voice transcription with model:", MODEL_NAME);
           const part = await fileToGenerativePart(blob);
           const aiInstance = getAiInstance();
           const response = await aiInstance.models.generateContent({
             model: MODEL_NAME,
-            contents: [{ parts: [part, { text: "Transcribe this audio exactly. If it's a question, just transcribe it." }] }]
+            contents: { 
+              parts: [
+                part, 
+                { text: "Transcribe this audio exactly. If it's a question, just transcribe it. Return ONLY the transcription." }
+              ] 
+            }
           });
-          if (response.text) {
-            handleSendMessage(response.text);
+          
+          const transcription = response.text;
+          console.log("Transcription result:", transcription);
+          
+          if (transcription && transcription.trim()) {
+            handleSendMessage(transcription);
+          } else {
+            console.warn("Empty transcription received");
+            setUserNotification("Could not understand the audio. Please try again.");
           }
         } catch (err) {
-          console.error("Voice Chat Error:", err);
-          setUserNotification("Failed to process voice input.");
+          console.error("Voice Chat Error Details:", err);
+          setUserNotification("Failed to process voice input. Check console for details.");
         } finally {
           setIsTyping(false);
         }
@@ -3580,7 +3629,7 @@ export default function App() {
 
               <div className="flex-1 overflow-hidden">
                 {libraryView === 'library' ? (
-                  <AILibrary theme={theme as 'dark' | 'light'} />
+                  <AILibrary theme={theme as 'dark' | 'light'} setUserNotification={setUserNotification} />
                 ) : (
                   <div className="space-y-4 h-full overflow-y-auto no-scrollbar pb-24 px-2">
                     {/* Premium Status Widget */}
