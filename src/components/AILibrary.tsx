@@ -56,7 +56,7 @@ interface LatinWord {
   context: string;
 }
 
-export const AILibrary: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
+export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?: (msg: string) => void }> = ({ theme, setUserNotification }) => {
   const [activeFaculty, setActiveFaculty] = useState<Faculty>('STEM');
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -112,13 +112,89 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
   const [langInput, setLangInput] = useState('');
   const [langOutput, setLangOutput] = useState<{ original: string; corrected: string; errors: string[] } | null>(null);
 
+  const startListening = () => {
+    console.log("Attempting to start speech recognition...");
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      console.error("Speech recognition not supported in this browser");
+      if (setUserNotification) setUserNotification("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    try {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        console.log("Speech recognition session started");
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        console.log("Speech recognition result received:", transcript);
+        setStemTopic(transcript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error event:", event.error);
+        setIsListening(false);
+        if (setUserNotification) {
+          if (event.error === 'not-allowed') {
+            setUserNotification("Microphone access denied. Please check your browser settings.");
+          } else if (event.error === 'network') {
+            setUserNotification("Network error during speech recognition.");
+          } else if (event.error === 'no-speech') {
+            setUserNotification("No speech detected. Please try again.");
+          } else {
+            setUserNotification(`Voice Lab Error: ${event.error}`);
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        console.log("Speech recognition session ended");
+      };
+
+      recognition.start();
+    } catch (err) {
+      console.error("Critical error starting speech recognition:", err);
+      setIsListening(false);
+      if (setUserNotification) setUserNotification("Failed to start Voice Lab. Please try again.");
+    }
+  };
+
   const speak = (text: string) => {
-    if ('speechSynthesis' in window) {
+    console.log("Attempting to speak text:", text.substring(0, 50) + "...");
+    if (!('speechSynthesis' in window)) {
+      console.error("Speech synthesis not supported");
+      return;
+    }
+
+    try {
+      // Cancel any ongoing speech
       window.speechSynthesis.cancel();
+
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.pitch = voiceSettings.pitch;
       utterance.rate = voiceSettings.rate;
+      
+      if (voiceSettings.voice !== 'default') {
+        const voices = window.speechSynthesis.getVoices();
+        const selectedVoice = voices.find(v => v.name === voiceSettings.voice);
+        if (selectedVoice) utterance.voice = selectedVoice;
+      }
+
+      utterance.onstart = () => console.log("Speech synthesis started");
+      utterance.onend = () => console.log("Speech synthesis ended");
+      utterance.onerror = (e) => console.error("Speech synthesis error:", e);
+
       window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error("Error in speech synthesis:", err);
     }
   };
 
@@ -554,8 +630,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light' }> = ({ theme }) => {
                     if (stemSolution) {
                       speak(stemSolution);
                     } else {
-                      setIsListening(true);
-                      setTimeout(() => setIsListening(false), 2000);
+                      startListening();
                     }
                   }}
                   disabled={isListening}
