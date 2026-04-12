@@ -23,6 +23,8 @@ import {
   FirestoreOperation, handleFirestoreError
 } from './firebase';
 
+import { AILibrary } from './components/AILibrary';
+
 /**
  * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
  * \u{2705} Professional CBT Infrastructure (Exam Lobby, Info Page, Exam Engine)
@@ -34,10 +36,10 @@ import {
 
 const getApiKey = () => {
   // Only use Vite env (for Render/Production)
-  const key = import.meta.env.VITE_GEMINI_API_KEY;
+  const key = import.meta.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
   const finalKey = (key || "").trim();
   if (!finalKey) {
-    console.warn("Gemini API Key is missing. Ensure VITE_GEMINI_API_KEY is set in your environment.");
+    console.warn("Gemini API Key is missing. Ensure GEMINI_API_KEY is set in your environment.");
   }
   return finalKey;
 };
@@ -457,6 +459,35 @@ export default function App() {
   const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // --- CUSTOM CONFIRM MODAL STATE ---
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    isDanger?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void, confirmText = "Confirm", isDanger = false) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      },
+      confirmText,
+      isDanger
+    });
+  };
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileFormData, setProfileFormData] = useState({
     displayName: '',
@@ -465,13 +496,17 @@ export default function App() {
     dob: ''
   });
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
+  const [examIdInput, setExamIdInput] = useState('');
   const [activeExamHostUid, setActiveExamHostUid] = useState<string | null>(null);
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState(0);
+  const [clearConfirmStep, setClearConfirmStep] = useState(0);
   const [isHostPaid, setIsHostPaid] = useState(false);
   const [isTakingPaid, setIsTakingPaid] = useState(false);
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
   // --- \u{1F4F1} APP STATE ---
   const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam' | 'profile'>('record');
+  const [libraryView, setLibraryView] = useState<'history' | 'library'>('history');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -705,13 +740,21 @@ export default function App() {
   };
 
   const deletePost = async (id: string) => {
-    if (!window.confirm("Delete this post?")) return;
-    try {
-      await deleteDoc(doc(db, 'blogPosts', id));
-      setGodModeNotification("Post deleted.");
-    } catch (error) {
-      console.error("Error deleting post:", error);
-    }
+    showConfirm(
+      "Delete Post",
+      "Are you sure you want to delete this post?",
+      async () => {
+        try {
+          await deleteDoc(doc(db, 'blogPosts', id));
+          setGodModeNotification("Post deleted.");
+          setTimeout(() => setGodModeNotification(null), 3000);
+        } catch (error) {
+          console.error("Error deleting post:", error);
+        }
+      },
+      "Delete",
+      true
+    );
   };
 
   const toggleUserStatus = async (userId: string, currentStatus: string) => {
@@ -816,6 +859,7 @@ export default function App() {
   const examTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- \u{1F6E0}\u{FE0F} ADMIN STATE ---
+  const [examStatus, setExamStatus] = useState<'active' | 'ended' | 'none'>('none');
   const [adminMode, setAdminMode] = useState(false);
   const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
   const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
@@ -1034,14 +1078,32 @@ export default function App() {
       setHostExamId(savedHostExamId);
       setIsHostPaid(true);
       
-      const savedConfig = localStorage.getItem('nsg_host_config');
-      if (savedConfig) setExamConfig(JSON.parse(savedConfig));
-      
-      const savedStudents = localStorage.getItem('nsg_host_students');
-      if (savedStudents) setRegisteredStudents(JSON.parse(savedStudents));
-      
-      const savedQuestions = localStorage.getItem('nsg_host_questions');
-      if (savedQuestions) setExamQuestions(JSON.parse(savedQuestions));
+      // Fetch latest data from Firestore for persistence
+      const fetchExamData = async () => {
+        try {
+          const examDoc = await getDoc(doc(db, 'exams', savedHostExamId));
+          if (examDoc.exists()) {
+            const data = examDoc.data();
+            setExamConfig(data.config || examConfig);
+            setRegisteredStudents(data.registeredStudents || []);
+            setExamQuestions(data.questions || []);
+            setExamStatus(data.status || 'active');
+          } else {
+            // If not in Firestore, fallback to local but warn
+            const savedConfig = localStorage.getItem('nsg_host_config');
+            if (savedConfig) setExamConfig(JSON.parse(savedConfig));
+            
+            const savedStudents = localStorage.getItem('nsg_host_students');
+            if (savedStudents) setRegisteredStudents(JSON.parse(savedStudents));
+            
+            const savedQuestions = localStorage.getItem('nsg_host_questions');
+            if (savedQuestions) setExamQuestions(JSON.parse(savedQuestions));
+          }
+        } catch (err) {
+          console.error("Error fetching hosted exam:", err);
+        }
+      };
+      fetchExamData();
     }
 
     const hasSeenWelcome = localStorage.getItem('nsg_welcome_seen');
@@ -1074,25 +1136,39 @@ export default function App() {
   // Admin-specific Data Sync
   useEffect(() => {
     if (!user || !adminMode) {
-      setRegisteredStudents([]);
-      setExamQuestions([]);
       setScoreSheet([]);
       return;
     }
 
-    // If we have a hostExamId, we should listen to its specific results
+    // If we have a hostExamId, we should listen to its specific results and exam data
     let unsubScores = () => {};
+    let unsubExam = () => {};
+
     if (hostExamId) {
       unsubScores = onSnapshot(collection(db, 'exams', hostExamId, 'results'), (snapshot) => {
         const scores = snapshot.docs.map(doc => doc.data() as StudentResult);
         setScoreSheet(scores.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
       }, (error) => console.error("Exam Results Sync Error:", error));
+
+      unsubExam = onSnapshot(doc(db, 'exams', hostExamId), (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          // Only sync if we're not currently generating questions to avoid overwriting local state
+          if (!isGeneratingAdminQuestions) {
+            setExamConfig(data.config || examConfig);
+            setRegisteredStudents(data.registeredStudents || []);
+            setExamQuestions(data.questions || []);
+            setExamStatus(data.status || 'none');
+          }
+        }
+      }, (error) => console.error("Exam Data Sync Error:", error));
     }
 
     return () => {
       unsubScores();
+      unsubExam();
     };
-  }, [user, adminMode, hostExamId]);
+  }, [user, adminMode, hostExamId, isGeneratingAdminQuestions]);
 
   // User-specific Data Sync
   useEffect(() => {
@@ -1104,14 +1180,14 @@ export default function App() {
     }
 
     const unsubChats = onSnapshot(collection(db, 'users', user.uid, 'chatSessions'), (snapshot) => {
-      const sessions = snapshot.docs.map(doc => doc.data() as ChatSession);
+      const sessions = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ChatSession));
       setChatSessions(sessions);
     });
 
     // For simplicity, we'll keep lecture sessions local or add them to Firestore too
     // Let's add them to Firestore for full persistence
     const unsubLectures = onSnapshot(collection(db, 'users', user.uid, 'lectureSessions'), (snapshot) => {
-      const lectureData = snapshot.docs.map(doc => doc.data() as LectureSession);
+      const lectureData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as LectureSession));
       setSessions(lectureData.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)));
     });
 
@@ -1316,10 +1392,15 @@ export default function App() {
       
       const imageUrl = await uploadToCloudinary(file);
       
+      if (!imageUrl) {
+        throw new Error("Failed to get image URL from upload service");
+      }
+      
       await updateDoc(doc(db, 'users', user.uid), { photoURL: imageUrl });
       
-      // Update local state if needed
+      // Update local state and form data
       setCurrentUserData((prev: any) => ({ ...prev, photoURL: imageUrl }));
+      setProfileFormData(prev => ({ ...prev, photoURL: imageUrl }));
       
       setUserNotification("Profile image updated!");
     } catch (error) {
@@ -1392,7 +1473,7 @@ export default function App() {
     if (!adminQuestionsRaw.trim()) return;
     
     if (!getApiKey()) {
-      setUserNotification("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
+      setUserNotification("Gemini API Key is missing. Please set GEMINI_API_KEY in your environment.");
       return;
     }
 
@@ -1425,8 +1506,13 @@ export default function App() {
       if (data.questions) {
         const formatted = data.questions.map((q: any) => ({ ...q, id: Math.random().toString(36).substr(2, 9) }));
         
-        // Update local state instead of global collection
+        // Update local state
         setExamQuestions(formatted);
+        
+        // Auto-sync to Firestore if hosting
+        if (hostExamId) {
+          await updateDoc(doc(db, 'exams', hostExamId), { questions: formatted });
+        }
         
         setAdminNotification(`Successfully generated ${formatted.length} questions.`);
       }
@@ -1445,42 +1531,80 @@ export default function App() {
     }
   }, [userNotification]);
 
-  const handleMatricLogin = () => {
+  const handleMatricLogin = async () => {
     if (!user) {
       setShowAuthModal(true);
       return;
     }
-    if (!activeExamId) {
-      setUserNotification("No active exam selected. Please use an exam link.");
+    
+    let targetExamId = activeExamId || examIdInput.trim().toUpperCase();
+    
+    if (!targetExamId) {
+      setUserNotification("Please enter a valid Exam ID.");
       return;
     }
+
     if (!matricNumber.trim()) {
       setUserNotification("Please enter your matric number.");
       return;
     }
 
-    let student = registeredStudents.find(s => s.matric.toLowerCase() === matricNumber.toLowerCase());
-    
-    if (student) {
-      setStudentName(student.name);
-      const session = localStorage.getItem(`nsg_exam_session_${activeExamId}_${student.matric}`);
-      if (session) {
-        const data = JSON.parse(session);
-        if (data.status === 'completed') {
-          setUserNotification("You have already completed this exam.");
+    try {
+      setIsAuthLoading(true);
+      const examDoc = await getDoc(doc(db, 'exams', targetExamId));
+      
+      if (examDoc.exists()) {
+        const data = examDoc.data();
+        
+        // Check if exam is active
+        if (data.status === 'ended') {
+          setUserNotification("This exam session has ended.");
           return;
         }
-      }
 
-      // If already paid or no payment required
-      if (isTakingPaid || currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
-        setIsTakingPaid(true);
-        setExamLobbyState('briefing');
+        // Update local state with fetched data
+        setExamConfig(data.config);
+        setExamQuestions(data.questions);
+        const students = data.registeredStudents || [];
+        setRegisteredStudents(students);
+        setActiveExamId(targetExamId);
+        setActiveExamHostUid(data.hostUid || null);
+        
+        // Verify student registration
+        const student = students.find((s: any) => s.matric.toLowerCase() === matricNumber.toLowerCase());
+        
+        if (student) {
+          setStudentName(student.name);
+          
+          // Check for existing session
+          const session = localStorage.getItem(`nsg_exam_session_${targetExamId}_${student.matric}`);
+          if (session) {
+            const sessionData = JSON.parse(session);
+            if (sessionData.status === 'completed') {
+              setUserNotification("You have already completed this exam.");
+              return;
+            }
+          }
+
+          // Check payment status
+          if (isTakingPaid || currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
+            setIsTakingPaid(true);
+            setExamLobbyState('briefing');
+          } else {
+            // Stay in login state to show payment button, but name is now set
+            setUserNotification("Registration verified. Please complete payment to start.");
+          }
+        } else {
+          setUserNotification("You are not registered for this exam.");
+        }
       } else {
-        // Stay in login state to show payment button
+        setUserNotification("Invalid Exam ID. Please check and try again.");
       }
-    } else {
-      setUserNotification("You are not ready (Matric not registered for this exam)");
+    } catch (err) {
+      console.error("Exam Verification Error:", err);
+      setUserNotification("Failed to verify exam details. Check your connection.");
+    } finally {
+      setIsAuthLoading(false);
     }
   };
 
@@ -1582,26 +1706,134 @@ export default function App() {
     const newId = Math.random().toString(36).substr(2, 9).toUpperCase();
     setHostExamId(newId);
     localStorage.setItem('nsg_host_exam_id', newId);
-    setUserNotification("Payment successful! You can now configure your exam.");
+    
+    // Initialize exam in Firestore immediately
+    if (user) {
+      await setDoc(doc(db, 'exams', newId), {
+        id: newId,
+        hostUid: user.uid,
+        hostEmail: user.email,
+        config: examConfig,
+        questions: [],
+        registeredStudents: [],
+        createdAt: new Date().toISOString(),
+        status: 'active'
+      });
+    }
+    
+    setUserNotification("Payment successful! Exam ID generated: " + newId);
   };
 
-  const endHostedExam = () => {
-    if (window.confirm("Are you sure you want to end this exam session? All unsaved local data will be cleared.")) {
-      setIsHostPaid(false);
-      setHostExamId(null);
-      setRegisteredStudents([]);
-      setExamQuestions([]);
-      setAdminQuestionsRaw('');
-      localStorage.removeItem('nsg_host_exam_id');
-      localStorage.removeItem('nsg_host_config');
-      localStorage.removeItem('nsg_host_students');
-      localStorage.removeItem('nsg_host_questions');
-      setUserNotification("Exam session ended.");
+  const endHostedExam = async () => {
+    showConfirm(
+      "End Session",
+      "End this session? This will stop the exam but keep data in the cloud. Use 'Delete All' to wipe everything.",
+      async () => {
+        try {
+          if (hostExamId) {
+            await updateDoc(doc(db, 'exams', hostExamId), { status: 'ended' });
+          }
+          setExamStatus('ended');
+          setUserNotification("Exam session ended. You can now delete all details if needed.");
+        } catch (err) {
+          console.error("End Exam Error:", err);
+          setUserNotification("Failed to end exam session.");
+        }
+      },
+      "End Session",
+      false
+    );
+  };
+
+  const deleteHostedExam = async () => {
+    if (!hostExamId) return;
+    
+    if (deleteConfirmStep === 0) {
+      setDeleteConfirmStep(1);
+      setUserNotification("Tap 'DELETE ALL' again to confirm permanent deletion.");
+      setTimeout(() => setDeleteConfirmStep(0), 5000); // Reset after 5s
+      return;
     }
+
+    showConfirm(
+      "CRITICAL DELETE",
+      "This will PERMANENTLY delete all questions, student logs, and results from the cloud. This action is irreversible. Continue?",
+      async () => {
+        try {
+          setIsAuthLoading(true);
+          
+          // Clear results subcollection first
+          const resultsRef = collection(db, 'exams', hostExamId, 'results');
+          const snapshot = await getDocs(resultsRef);
+          const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
+          await Promise.all(deletePromises);
+
+          // Delete main doc
+          await deleteDoc(doc(db, 'exams', hostExamId));
+          
+          setIsHostPaid(false);
+          setHostExamId(null);
+          setExamStatus('none');
+          setRegisteredStudents([]);
+          setExamQuestions([]);
+          setAdminQuestionsRaw('');
+          setScoreSheet([]);
+          setDeleteConfirmStep(0);
+          localStorage.removeItem('nsg_host_exam_id');
+          localStorage.removeItem('nsg_host_config');
+          localStorage.removeItem('nsg_host_students');
+          localStorage.removeItem('nsg_host_questions');
+          setUserNotification("Exam and all associated data deleted permanently.");
+        } catch (err) {
+          console.error("Delete Exam Error:", err);
+          setUserNotification("Failed to delete exam data.");
+        } finally {
+          setIsAuthLoading(false);
+        }
+      },
+      "Delete Permanently",
+      true
+    );
+  };
+
+  const clearExamResults = async () => {
+    if (!hostExamId) return;
+
+    if (clearConfirmStep === 0) {
+      setClearConfirmStep(1);
+      setUserNotification("Tap 'Clear Results' again to confirm.");
+      setTimeout(() => setClearConfirmStep(0), 5000);
+      return;
+    }
+
+    showConfirm(
+      "Clear Results",
+      "Clear all student results for this exam?",
+      async () => {
+        try {
+          setIsAuthLoading(true);
+          const resultsRef = collection(db, 'exams', hostExamId, 'results');
+          const snapshot = await getDocs(resultsRef);
+          const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
+          await Promise.all(deletePromises);
+          setScoreSheet([]);
+          setClearConfirmStep(0);
+          setUserNotification("Results cleared.");
+        } catch (err) {
+          console.error("Clear Results Error:", err);
+          setUserNotification("Failed to clear results.");
+        } finally {
+          setIsAuthLoading(false);
+        }
+      },
+      "Clear All",
+      true
+    );
   };
 
   useEffect(() => {
     if (isHostPaid && hostExamId) {
+      setExamStatus('active');
       localStorage.setItem('nsg_host_config', JSON.stringify(examConfig));
       localStorage.setItem('nsg_host_students', JSON.stringify(registeredStudents));
       localStorage.setItem('nsg_host_questions', JSON.stringify(examQuestions));
@@ -1625,6 +1857,7 @@ export default function App() {
         config: examConfig,
         questions: examQuestions,
         registeredStudents: registeredStudents,
+        status: examStatus === 'none' ? 'active' : examStatus,
         createdAt: new Date().toISOString()
       };
       await setDoc(doc(db, 'exams', hostExamId), examData);
@@ -1648,27 +1881,55 @@ export default function App() {
     channel.close();
   };
 
-  const addStudent = () => {
+  const addStudent = async () => {
     if (!newStudentMatric.trim() || !newStudentName.trim()) return;
     if (registeredStudents.some(s => s.matric === newStudentMatric)) {
       setAdminNotification("Matric number already exists.");
       return;
     }
     const studentData = { matric: newStudentMatric, name: newStudentName, paymentEnabled: true };
-    setRegisteredStudents(prev => [...prev, studentData]);
+    const updatedStudents = [...registeredStudents, studentData];
+    setRegisteredStudents(updatedStudents);
     setNewStudentMatric('');
     setNewStudentName('');
     setAdminNotification("Student added successfully.");
+
+    // Auto-sync to Firestore
+    if (hostExamId) {
+      try {
+        await updateDoc(doc(db, 'exams', hostExamId), { registeredStudents: updatedStudents });
+      } catch (err) {
+        console.error("Sync Students Error:", err);
+      }
+    }
   };
 
-  const togglePayment = (matric: string) => {
-    setRegisteredStudents(prev => prev.map(s => 
+  const togglePayment = async (matric: string) => {
+    const updatedStudents = registeredStudents.map(s => 
       s.matric === matric ? { ...s, paymentEnabled: !s.paymentEnabled } : s
-    ));
+    );
+    setRegisteredStudents(updatedStudents);
+    
+    if (hostExamId) {
+      try {
+        await updateDoc(doc(db, 'exams', hostExamId), { registeredStudents: updatedStudents });
+      } catch (err) {
+        console.error("Sync Students Error:", err);
+      }
+    }
   };
 
-  const deleteStudent = (matric: string) => {
-    setRegisteredStudents(prev => prev.filter(s => s.matric !== matric));
+  const deleteStudent = async (matric: string) => {
+    const updatedStudents = registeredStudents.filter(s => s.matric !== matric);
+    setRegisteredStudents(updatedStudents);
+    
+    if (hostExamId) {
+      try {
+        await updateDoc(doc(db, 'exams', hostExamId), { registeredStudents: updatedStudents });
+      } catch (err) {
+        console.error("Sync Students Error:", err);
+      }
+    }
   };
 
   const downloadResults = () => {
@@ -1837,13 +2098,17 @@ export default function App() {
     const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
     const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
-    if (!cloudName || !uploadPreset) {
-      console.warn("Cloudinary credentials missing. Falling back to local preview URL.");
+    const getLocalUrl = (): Promise<string> => {
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(file);
       });
+    };
+
+    if (!cloudName || !uploadPreset) {
+      console.warn("Cloudinary credentials missing. Falling back to local preview URL.");
+      return getLocalUrl();
     }
 
     const formData = new FormData();
@@ -1855,10 +2120,31 @@ export default function App() {
         method: 'POST',
         body: formData
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        const msg = errorData.error?.message || "Cloudinary upload failed";
+        
+        if (msg.toLowerCase().includes("unsigned uploads") || msg.toLowerCase().includes("whitelisted")) {
+          setUserNotification("Cloudinary Error: Your upload preset must be set to 'Unsigned' in Cloudinary Settings.");
+          console.error(`CLOUDINARY CONFIG ERROR: The preset '${uploadPreset}' is not configured for unsigned uploads. Please go to your Cloudinary dashboard > Settings > Upload > Upload presets, edit '${uploadPreset}', and change 'Signing Mode' to 'Unsigned'.`);
+          return getLocalUrl();
+        }
+        
+        throw new Error(msg);
+      }
+
       const data = await response.json();
+      if (!data.secure_url) {
+        throw new Error("Cloudinary response missing secure_url");
+      }
       return data.secure_url;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Cloudinary Upload Error:", error);
+      const msg = error.message || String(error);
+      if (msg.toLowerCase().includes("unsigned uploads") || msg.toLowerCase().includes("whitelisted")) {
+        return getLocalUrl();
+      }
       throw error;
     }
   };
@@ -1867,21 +2153,31 @@ export default function App() {
     const adRef = useRef<any>(null);
 
     useEffect(() => {
-      const timer = setTimeout(() => {
-        try {
-          if (adRef.current && !adRef.current.getAttribute('data-adsbygoogle-status')) {
-            const adsbygoogle = (window as any).adsbygoogle || [];
-            adsbygoogle.push({});
+      if (!adRef.current) return;
+
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.contentRect.width > 0) {
+            try {
+              if (adRef.current && !adRef.current.getAttribute('data-adsbygoogle-status')) {
+                const adsbygoogle = (window as any).adsbygoogle || [];
+                adsbygoogle.push({});
+                // Once pushed, we can stop observing
+                observer.disconnect();
+              }
+            } catch (e) {
+              console.error("AdSense error:", e);
+            }
           }
-        } catch (e) {
-          console.error("AdSense error:", e);
         }
-      }, 500);
-      return () => clearTimeout(timer);
+      });
+
+      observer.observe(adRef.current);
+      return () => observer.disconnect();
     }, []);
 
     return (
-      <div className="my-6 overflow-hidden flex flex-col items-center w-full">
+      <div className="my-6 overflow-hidden flex flex-col items-center w-full min-h-[90px]">
         <span className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mb-2">Advertisement</span>
         <ins className="adsbygoogle"
              ref={adRef}
@@ -2439,7 +2735,7 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 font-sans selection:bg-[#DC2626] pb-24 ${theme === 'dark' ? 'bg-[#0A0F1C] text-white dark' : 'bg-white text-slate-900'}`}>
+    <div className={`h-screen flex flex-col transition-colors duration-300 font-sans selection:bg-[#DC2626] ${theme === 'dark' ? 'bg-[#0A0F1C] text-white dark' : 'bg-white text-slate-900'} overflow-hidden`}>
       
       {/* AUTH LOADING OVERLAY */}
       <AnimatePresence>
@@ -2678,7 +2974,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-4xl mx-auto px-2 sm:px-4 pt-4 sm:pt-6">
+      <main className="flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pt-4 sm:pt-6 pb-24 overflow-hidden flex flex-col">
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -2843,6 +3139,24 @@ export default function App() {
                         </div>
                         <div className="flex items-center gap-2">
                           <button 
+                            onClick={() => {
+                              showConfirm(
+                                "Delete Analysis",
+                                "Are you sure you want to delete this analysis result?",
+                                () => {
+                                  setAnalysisResult(null);
+                                  setShowAnalysisInRecord(false);
+                                },
+                                "Delete",
+                                true
+                              );
+                            }}
+                            className={`p-2 ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} rounded-xl hover:text-red-500 transition-all`}
+                            title="Delete Analysis"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                          <button 
                             onClick={() => selectedSession && uploadHistoryToOmni(selectedSession)} 
                             className={`flex items-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70 border-white/10' : 'bg-zinc-100 text-zinc-600 border-zinc-200'} px-3 py-2 rounded-xl text-[10px] font-black hover:text-[#DC2626] transition-all border`}
                           >
@@ -2892,7 +3206,7 @@ export default function App() {
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className={`flex h-[calc(100vh-140px)] sm:h-[calc(100vh-220px)] ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-200'} rounded-2xl sm:rounded-3xl border overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0`}>
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className={`flex flex-1 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-200'} rounded-2xl sm:rounded-3xl border overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0`}>
               
               {/* Sidebar Drawer */}
               <AnimatePresence>
@@ -2909,9 +3223,25 @@ export default function App() {
                       className={`absolute left-0 top-0 bottom-0 w-[80%] max-w-[320px] z-[70] border-r ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]' : 'border-slate-200 bg-white'} flex flex-col shadow-2xl`}
                     >
                       <div className="p-6 border-b border-white/10">
-                        <button onClick={resetChat} className="w-full flex items-center justify-center gap-2 bg-[#DC2626] text-white py-3 rounded-xl text-xs font-black shadow-lg shadow-[#DC2626]/20 mb-6">
+                        <button onClick={resetChat} className="w-full flex items-center justify-center gap-2 bg-[#DC2626] text-white py-3 rounded-xl text-xs font-black shadow-lg shadow-[#DC2626]/20 mb-3">
                           <Plus size={18} /> NEW CHAT
                         </button>
+                        {chatHistory.length > 0 && (
+                          <button 
+                            onClick={() => {
+                              showConfirm(
+                                "Clear Chat",
+                                "Are you sure you want to clear all messages in this session?",
+                                () => setChatHistory([]),
+                                "Clear All",
+                                true
+                              );
+                            }}
+                            className="w-full flex items-center justify-center gap-2 bg-white/5 text-white/40 py-3 rounded-xl text-xs font-black hover:text-red-500 transition-all mb-3"
+                          >
+                            <Trash2 size={16} /> CLEAR ALL
+                          </button>
+                        )}
                         <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Premium Status</span>
@@ -2963,7 +3293,7 @@ export default function App() {
               </AnimatePresence>
 
               {/* Main Chat Area */}
-              <div className="flex-1 flex flex-col relative">
+              <div className="flex-1 flex flex-col relative h-full overflow-hidden">
                 <AnimatePresence>
                   {isLiveActive && (
                     <motion.div 
@@ -3051,13 +3381,37 @@ export default function App() {
                               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
                               
                               {msg.role === 'model' && (
-                                <div className="mt-2 flex justify-end">
+                                <div className="mt-2 flex justify-end gap-2">
                                   <button 
                                     onClick={() => copyToClipboard(msg.text)}
                                     className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-[#DC2626] transition-all border border-white/10 flex items-center gap-1.5 text-[10px] font-bold uppercase"
                                     title="Copy Response"
                                   >
                                     <Copy size={12} /> Copy
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      const newHistory = chatHistory.filter((_, idx) => idx !== i);
+                                      setChatHistory(newHistory);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-red-500 transition-all border border-white/10 flex items-center gap-1.5 text-[10px] font-bold uppercase"
+                                    title="Delete Message"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              )}
+                              {msg.role === 'user' && (
+                                <div className="mt-2 flex justify-start">
+                                  <button 
+                                    onClick={() => {
+                                      const newHistory = chatHistory.filter((_, idx) => idx !== i);
+                                      setChatHistory(newHistory);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-red-500 transition-all border border-white/10 flex items-center gap-1.5 text-[10px] font-bold uppercase"
+                                    title="Delete Message"
+                                  >
+                                    <Trash2 size={12} />
                                   </button>
                                 </div>
                               )}
@@ -3094,7 +3448,7 @@ export default function App() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-2 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent">
+                <div className="p-2 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent flex-shrink-0">
                   <div className="max-w-3xl mx-auto space-y-4">
                     
                     {/* File Preview Area - Moved above input */}
@@ -3203,75 +3557,98 @@ export default function App() {
           )}
 
           {activeTab === 'history' && (
-            <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4">
-              <div className="flex items-center justify-between px-2">
-                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Tools & History</h2>
+            <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4 h-full flex flex-col">
+              <div className="flex items-center justify-between px-2 flex-shrink-0">
+                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Tools & Library</h2>
                 {selectedSession && <button onClick={() => setSelectedSession(null)} className="text-[#DC2626] text-xs font-bold flex items-center gap-1"><ArrowLeft size={14} /> Back</button>}
               </div>
 
-              {/* Premium Status Widget */}
-              <div className="bg-gradient-to-br from-yellow-500/20 to-transparent p-6 rounded-3xl border border-yellow-500/20 mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-yellow-500/10 rounded-2xl flex items-center justify-center">
-                    <Sparkles size={24} className="text-yellow-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                      {isPremium ? `Active \u{2022} ${premiumTimeLeft} Remaining` : "Inactive \u{2022} Upgrade for full access"}
-                    </p>
-                  </div>
-                </div>
-                {!isPremium ? (
-                  <button onClick={() => setShowPremiumModal(true)} className="bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20">Upgrade</button>
-                ) : (
-                  <div className="bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-green-500/20">Active</div>
-                )}
+              <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 mx-2 flex-shrink-0">
+                <button 
+                  onClick={() => setLibraryView('history')}
+                  className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${libraryView === 'history' ? 'bg-white/10 text-white' : 'text-white/40'}`}
+                >
+                  Lecture History
+                </button>
+                <button 
+                  onClick={() => setLibraryView('library')}
+                  className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${libraryView === 'library' ? 'bg-white/10 text-white' : 'text-white/40'}`}
+                >
+                  NSG AI Library
+                </button>
               </div>
 
-              {!selectedSession ? (
-                <div className="space-y-3">
-                  {sessions.length === 0 ? (
-                    <div className={`text-center py-20 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl border border-dashed`}>
-                      <History size={40} className={`mx-auto mb-4 ${theme === 'dark' ? 'text-white/10' : 'text-slate-200'}`} />
-                      <p className={`text-sm font-bold ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>No saved lectures found</p>
-                    </div>
-                  ) : (
-                    sessions.map(session => (
-                      <div key={session.id} className="w-full bg-white/5 p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-[#DC2626]/30 transition-all group shadow-sm">
-                        <div onClick={() => setSelectedSession(session)} className="flex items-center gap-4 cursor-pointer flex-1">
-                          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
-                            {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
-                          </div>
-                          <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} \u{2022} {session.duration}</p></div>
+              <div className="flex-1 overflow-hidden">
+                {libraryView === 'library' ? (
+                  <AILibrary theme={theme as 'dark' | 'light'} />
+                ) : (
+                  <div className="space-y-4 h-full overflow-y-auto no-scrollbar pb-24 px-2">
+                    {/* Premium Status Widget */}
+                    <div className="bg-gradient-to-br from-yellow-500/20 to-transparent p-6 rounded-3xl border border-yellow-500/20 mb-6 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-yellow-500/10 rounded-2xl flex items-center justify-center">
+                          <Sparkles size={24} className="text-yellow-500" />
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
-                            <Pin size={16} className={session.isPinned ? 'fill-[#DC2626] text-[#DC2626]' : ''} />
-                          </button>
-                          <button onClick={() => deleteLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Delete Lecture">
-                            <Trash2 size={16} />
-                          </button>
+                        <div>
+                          <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
+                          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                            {isPremium ? `Active \u{2022} ${premiumTimeLeft} Remaining` : "Inactive \u{2022} Upgrade for full access"}
+                          </p>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              ) : (
-                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-6 shadow-sm`}>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-white">{selectedSession.title}</h3>
-                    <button onClick={() => {
-                      setChatHistory([{ role: 'model', text: selectedSession.fullAnalysis, timestamp: new Date().toLocaleTimeString() }]);
-                      setActiveTab('ai');
-                      setSelectedSession(null);
-                    }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-[#DC2626]/20"><Brain size={14} /> Continue in Chat</button>
+                      {!isPremium ? (
+                        <button onClick={() => setShowPremiumModal(true)} className="bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20">Upgrade</button>
+                      ) : (
+                        <div className="bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-green-500/20">Active</div>
+                      )}
+                    </div>
+
+                    {!selectedSession ? (
+                      <div className="space-y-3">
+                        {sessions.length === 0 ? (
+                          <div className={`text-center py-20 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl border border-dashed`}>
+                            <History size={40} className={`mx-auto mb-4 ${theme === 'dark' ? 'text-white/10' : 'text-slate-200'}`} />
+                            <p className={`text-sm font-bold ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>No saved lectures found</p>
+                          </div>
+                        ) : (
+                          sessions.map(session => (
+                            <div key={session.id} className="w-full bg-white/5 p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-[#DC2626]/30 transition-all group shadow-sm">
+                              <div onClick={() => setSelectedSession(session)} className="flex items-center gap-4 cursor-pointer flex-1">
+                                <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
+                                  {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
+                                </div>
+                                <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} \u{2022} {session.duration}</p></div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
+                                  <Pin size={16} className={session.isPinned ? 'fill-[#DC2626] text-[#DC2626]' : ''} />
+                                </button>
+                                <button onClick={() => deleteLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Delete Lecture">
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : (
+                      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-6 shadow-sm`}>
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-bold text-white">{selectedSession.title}</h3>
+                          <button onClick={() => {
+                            setChatHistory([{ role: 'model', text: selectedSession.fullAnalysis, timestamp: new Date().toLocaleTimeString() }]);
+                            setActiveTab('ai');
+                            setSelectedSession(null);
+                          }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-[#DC2626]/20"><Brain size={14} /> Continue in Chat</button>
+                        </div>
+                        <div className="markdown-body text-sm leading-relaxed text-white/70">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{selectedSession.fullAnalysis}</ReactMarkdown>
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
-                  <div className="markdown-body text-sm leading-relaxed text-white/70">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{selectedSession.fullAnalysis}</ReactMarkdown>
-                  </div>
-                </motion.div>
-              )}
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -3456,14 +3833,23 @@ export default function App() {
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
-                          <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">VERIFY MATRIC</button>
-                      <button 
-                        onClick={() => setAdminMode(true)} 
-                        className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-3 rounded-2xl text-xs hover:bg-[#DC2626]/10 transition-all`}
-                      >
-                        {"HOST AN EXAM (\u{20A6}200)"}
-                      </button>
+                          <div className="space-y-2">
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Exam ID</p>
+                            <input type="text" value={examIdInput} onChange={(e) => setExamIdInput(e.target.value.toUpperCase())} placeholder="Enter 7-Character ID" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all font-mono`} />
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Matric Number</p>
+                            <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
+                          </div>
+                          <button onClick={handleMatricLogin} disabled={isAuthLoading} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                            {isAuthLoading ? <RefreshCcw size={18} className="animate-spin" /> : <Zap size={18} />} VERIFY & PROCEED
+                          </button>
+                          <button 
+                            onClick={() => setAdminMode(true)} 
+                            className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-3 rounded-2xl text-xs hover:bg-[#DC2626]/10 transition-all`}
+                          >
+                            {"HOST AN EXAM (\u{20A6}200)"}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -3610,69 +3996,69 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }} 
               animate={{ opacity: 1, y: 0 }} 
               exit={{ opacity: 0, y: -20 }} 
-              className="max-w-4xl mx-auto space-y-6 sm:space-y-8 pb-32 px-2 sm:px-0"
+              className="flex-1 flex flex-col overflow-hidden space-y-4 sm:space-y-6 px-2 sm:px-0"
             >
+              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 sm:space-y-6 pb-4">
               {/* Profile Header Card */}
-              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-10 rounded-[2.5rem] shadow-2xl relative overflow-hidden group`}>
-                <div className="absolute top-0 left-0 w-full h-48 bg-gradient-to-b from-[#DC2626]/20 via-[#DC2626]/5 to-transparent opacity-50" />
-                <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#DC2626]/10 rounded-full blur-3xl group-hover:bg-[#DC2626]/20 transition-all duration-700" />
+              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-4 sm:p-6 rounded-[2rem] shadow-2xl relative overflow-hidden group`}>
+                <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-[#DC2626]/20 via-[#DC2626]/5 to-transparent opacity-50" />
                 
-                <div className="relative flex flex-col md:flex-row items-center md:items-end gap-6 sm:gap-10">
+                <div className="relative flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6">
                   <div className="relative">
-                    <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full border-4 border-[#DC2626] overflow-hidden bg-white/5 shadow-2xl shadow-[#DC2626]/30 group-hover:scale-105 transition-transform duration-500">
+                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-[#DC2626] overflow-hidden bg-white/5 shadow-2xl shadow-[#DC2626]/30 group-hover:scale-105 transition-transform duration-500">
                       {currentUserData?.photoURL ? (
                         <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-white/10 bg-gradient-to-br from-white/5 to-white/10">
-                          <User size={64} className="sm:size-[80px]" />
+                          <User size={48} className="sm:size-[64px]" />
                         </div>
                       )}
                     </div>
-                    <label className="absolute bottom-2 right-2 p-3 bg-[#DC2626] text-white rounded-2xl cursor-pointer shadow-xl hover:scale-110 active:scale-95 transition-all border-4 border-[#0A0F1C] z-10">
-                      <Camera size={20} />
+                    <label className="absolute bottom-1 right-1 p-2 bg-[#DC2626] text-white rounded-xl cursor-pointer shadow-xl hover:scale-110 active:scale-95 transition-all border-2 border-[#0A0F1C] z-10">
+                      <Camera size={16} />
                       <input type="file" className="hidden" accept="image/*" onChange={handleProfileImageUpload} />
                     </label>
                   </div>
 
-                  <div className="flex-1 text-center md:text-left space-y-3 pb-2">
-                    <div className="space-y-1">
-                      <div className="flex flex-col md:flex-row items-center gap-3">
-                        <h2 className="text-3xl sm:text-4xl font-black text-white uppercase tracking-tighter italic leading-none">
+                  <div className="flex-1 text-center sm:text-left space-y-2 pb-1">
+                    <div className="space-y-0.5">
+                      <div className="flex flex-col sm:flex-row items-center gap-2">
+                        <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tighter italic leading-none">
                           {currentUserData?.displayName || 'Student Name'}
                         </h2>
                         {isPremium && (
-                          <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
-                            <Sparkles size={10} /> Premium
+                          <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-2 py-0.5 rounded-full text-[7px] font-black uppercase tracking-widest flex items-center gap-1">
+                            <Sparkles size={8} /> Premium
                           </span>
                         )}
                       </div>
-                      <p className="text-xs sm:text-sm font-bold text-[#DC2626] uppercase tracking-[0.4em] opacity-80">
+                      <p className="text-[10px] sm:text-xs font-bold text-[#DC2626] uppercase tracking-[0.3em] opacity-80">
                         {currentUserData?.email || 'email@example.com'}
                       </p>
                     </div>
                     
-                    <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-2">
-                      <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/10">
-                        <Calendar size={14} className="text-white/40" />
-                        <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">Joined 2026</span>
+                    <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
+                      <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-xl border border-white/10">
+                        <Calendar size={12} className="text-white/40" />
+                        <span className="text-[8px] font-black text-white/60 uppercase tracking-widest">Joined 2026</span>
                       </div>
-                      <div className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/10">
-                        <ShieldCheck size={14} className="text-white/40" />
-                        <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">Verified Account</span>
+                      <div className="flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-xl border border-white/10">
+                        <ShieldCheck size={12} className="text-white/40" />
+                        <span className="text-[8px] font-black text-white/60 uppercase tracking-widest">Verified</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="md:absolute md:top-10 md:right-10">
+                  <div className="sm:absolute sm:top-6 sm:right-6">
                     <button 
                       onClick={() => setIsEditingProfile(!isEditingProfile)}
-                      className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 border ${
+                      className={`px-4 py-2 rounded-xl font-black text-[8px] uppercase tracking-widest transition-all flex items-center gap-1.5 border ${
                         isEditingProfile 
                         ? 'bg-[#DC2626] text-white border-[#DC2626] shadow-lg shadow-[#DC2626]/20' 
                         : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
                       }`}
                     >
-                      {isEditingProfile ? <X size={14} /> : <Edit3 size={14} />}
+                      {isEditingProfile ? <X size={12} /> : <Edit3 size={12} />}
                       {isEditingProfile ? 'Cancel' : 'Edit Profile'}
                     </button>
                   </div>
@@ -3680,7 +4066,7 @@ export default function App() {
               </div>
 
               {/* Stats Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                 {[
                   { label: 'Lectures', value: sessions.length, icon: BookOpen, color: 'text-blue-500' },
                   { label: 'AI Chats', value: chatSessions.length, icon: MessageSquare, color: 'text-purple-500' },
@@ -3689,33 +4075,33 @@ export default function App() {
                 ].map((stat, i) => (
                   <motion.div 
                     key={i}
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    className="bg-[#0A0F1C] border border-white/10 p-6 rounded-[2rem] text-center space-y-2 hover:border-[#DC2626]/30 transition-all group"
+                    transition={{ delay: i * 0.05 }}
+                    className="bg-[#0A0F1C] border border-white/10 p-3 sm:p-4 rounded-2xl text-center space-y-1 hover:border-[#DC2626]/30 transition-all group"
                   >
-                    <div className={`w-10 h-10 mx-auto rounded-xl bg-white/5 flex items-center justify-center ${stat.color} group-hover:scale-110 transition-transform`}>
-                      <stat.icon size={20} />
+                    <div className={`w-8 h-8 mx-auto rounded-lg bg-white/5 flex items-center justify-center ${stat.color} group-hover:scale-110 transition-transform`}>
+                      <stat.icon size={16} />
                     </div>
                     <div>
-                      <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">{stat.label}</p>
-                      <p className="text-xl font-black text-white">{stat.value}</p>
+                      <p className="text-[7px] font-black text-white/30 uppercase tracking-widest">{stat.label}</p>
+                      <p className="text-sm sm:text-base font-black text-white">{stat.value}</p>
                     </div>
                   </motion.div>
                 ))}
               </div>
 
               {/* Editable Fields Section */}
-              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-10 rounded-[2.5rem] shadow-2xl space-y-8`}>
-                <div className="flex items-center justify-between border-b border-white/5 pb-6">
+              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-4 sm:p-6 rounded-[2rem] shadow-2xl space-y-4 sm:space-y-6`}>
+                <div className="flex items-center justify-between border-b border-white/5 pb-4">
                   <div>
-                    <h3 className="text-xl font-black text-white uppercase tracking-tighter italic">Personal Information</h3>
-                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Manage your identity and academic details</p>
+                    <h3 className="text-lg font-black text-white uppercase tracking-tighter italic leading-none">Personal Info</h3>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1">Academic details</p>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-col items-end gap-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Profile Strength</span>
-                      <span className="text-[10px] font-black text-[#DC2626]">
+                      <span className="text-[7px] font-black text-white/40 uppercase tracking-widest">Strength</span>
+                      <span className="text-[9px] font-black text-[#DC2626]">
                         {Math.round(([
                           currentUserData?.displayName,
                           currentUserData?.fullName,
@@ -3725,7 +4111,7 @@ export default function App() {
                         ].filter(Boolean).length / 5) * 100)}%
                       </span>
                     </div>
-                    <div className="w-32 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                    <div className="w-24 h-1 bg-white/5 rounded-full overflow-hidden border border-white/10">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${([
@@ -3735,22 +4121,22 @@ export default function App() {
                           currentUserData?.dob,
                           currentUserData?.photoURL
                         ].filter(Boolean).length / 5) * 100}%` }}
-                        className="h-full bg-[#DC2626] shadow-[0_0_10px_rgba(220,38,38,0.5)]"
+                        className="h-full bg-[#DC2626]"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   {[
                     { label: 'Display Name', key: 'displayName', icon: User, placeholder: 'How should we call you?' },
-                    { label: 'Full Official Name', key: 'fullName', icon: FileText, placeholder: 'Your legal name for certificates' },
+                    { label: 'Full Official Name', key: 'fullName', icon: FileText, placeholder: 'Legal name' },
                     { label: 'Matric Number', key: 'matricNumber', icon: ShieldCheck, placeholder: 'e.g. DEL/2024/001' },
                     { label: 'Date of Birth', key: 'dob', icon: Calendar, placeholder: 'YYYY-MM-DD', type: 'date' }
                   ].map((field) => (
-                    <div key={field.key} className="space-y-3">
-                      <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1 flex items-center gap-2">
-                        <field.icon size={12} /> {field.label}
+                    <div key={field.key} className="space-y-2">
+                      <label className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                        <field.icon size={10} /> {field.label}
                       </label>
                       <div className="relative group">
                         <input 
@@ -3758,7 +4144,7 @@ export default function App() {
                           value={profileFormData[field.key as keyof typeof profileFormData]} 
                           onChange={(e) => setProfileFormData({ ...profileFormData, [field.key]: e.target.value })}
                           disabled={!isEditingProfile}
-                          className={`w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none transition-all ${
+                          className={`w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs outline-none transition-all ${
                             isEditingProfile 
                             ? 'text-white focus:border-[#DC2626]/50 focus:bg-white/[0.08]' 
                             : 'text-white/40 cursor-not-allowed'
@@ -3766,8 +4152,8 @@ export default function App() {
                           placeholder={field.placeholder}
                         />
                         {!isEditingProfile && (
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-20">
-                            <Lock size={14} />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-20">
+                            <Lock size={12} />
                           </div>
                         )}
                       </div>
@@ -3779,45 +4165,82 @@ export default function App() {
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="pt-6 flex flex-col sm:flex-row gap-4"
+                    className="pt-2 flex flex-col sm:flex-row gap-3"
                   >
                     <button 
                       onClick={handleSaveProfile}
                       disabled={isAuthLoading}
-                      className="flex-1 bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-5 rounded-2xl text-xs uppercase tracking-[0.2em] shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                      className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-3 rounded-xl text-[10px] uppercase tracking-widest shadow-lg shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                      {isAuthLoading ? <RefreshCcw className="animate-spin" size={18} /> : <Save size={18} />}
-                      Save Profile Changes
+                      {isAuthLoading ? <RefreshCcw className="animate-spin" size={14} /> : <Save size={14} />}
+                      Save Changes
                     </button>
                     <button 
                       onClick={() => setIsEditingProfile(false)}
-                      className="px-8 bg-white/5 hover:bg-white/10 text-white/60 font-black py-5 rounded-2xl text-xs uppercase tracking-[0.2em] transition-all border border-white/10"
+                      className="flex-1 bg-white/5 hover:bg-white/10 text-white/60 font-black py-3 rounded-xl text-[10px] uppercase tracking-widest transition-all border border-white/10"
                     >
                       Discard
                     </button>
                   </motion.div>
                 )}
 
-                <div className="pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center">
-                      <LogOut size={24} className="text-white/20" />
+                <div className="pt-4 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center">
+                      <LogOut size={20} className="text-white/20" />
                     </div>
                     <div>
-                      <p className="text-xs font-black text-white/80 uppercase tracking-tighter italic">Session Security</p>
-                      <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Logged in as {user?.email}</p>
+                      <p className="text-[10px] font-black text-white/80 uppercase tracking-tighter italic">Security</p>
+                      <p className="text-[7px] font-bold text-white/30 uppercase tracking-widest">Logged in as {user?.email}</p>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => signOut(auth)}
-                    className="w-full sm:w-auto px-10 py-4 bg-white/5 hover:bg-[#DC2626]/10 text-white/40 hover:text-[#DC2626] rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10 hover:border-[#DC2626]/20 flex items-center justify-center gap-2"
-                  >
-                    <LogOut size={16} /> Logout
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <button 
+                      onClick={() => {
+                        showConfirm(
+                          "Sign Out",
+                          "Are you sure you want to log out?",
+                          () => signOut(auth),
+                          "Log Out",
+                          false
+                        );
+                      }}
+                      className="w-full sm:w-auto px-6 py-3 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/10 flex items-center justify-center gap-2"
+                    >
+                      <LogOut size={14} /> Sign Out
+                    </button>
+                    <button 
+                      onClick={() => {
+                        showConfirm(
+                          "Delete Account",
+                          "CRITICAL: This will permanently delete your profile and all your data. This action is irreversible. Continue?",
+                          async () => {
+                            try {
+                              setIsAuthLoading(true);
+                              if (user) await deleteDoc(doc(db, 'users', user.uid));
+                              await signOut(auth);
+                              setUserNotification("Account deleted.");
+                            } catch (err) {
+                              console.error(err);
+                              setUserNotification("Failed to delete account.");
+                            } finally {
+                              setIsAuthLoading(false);
+                            }
+                          },
+                          "Delete Permanently",
+                          true
+                        );
+                      }}
+                      className="w-full sm:w-auto px-6 py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white font-black rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-red-500/20 flex items-center justify-center gap-2"
+                    >
+                      <Trash2 size={14} /> Delete Account
+                    </button>
+                  </div>
                 </div>
               </div>
-            </motion.div>
-          )}
+            </div>
+          </motion.div>
+        )}
 
           {/* HOST EXAM PANEL (FORMERLY ADMIN) */}
           {adminMode && (
@@ -3885,13 +4308,24 @@ export default function App() {
                           <div className="flex items-center gap-3 w-full sm:w-auto">
                             <div className="w-8 h-8 bg-green-500 rounded-lg flex-shrink-0 flex items-center justify-center text-white"><Share2 size={16} /></div>
                             <div className="overflow-hidden">
-                              <p className="text-[8px] sm:text-[10px] font-black text-green-500 uppercase tracking-widest">Exam Share Link</p>
-                              <p className="text-[10px] sm:text-xs font-mono text-white/60 truncate">{window.location.origin}?examId={hostExamId}</p>
+                              <p className="text-[8px] sm:text-[10px] font-black text-green-500 uppercase tracking-widest">Exam ID</p>
+                              <p className="text-lg font-black font-mono text-white tracking-widest">{hostExamId}</p>
                             </div>
                           </div>
                           <div className="flex gap-2 w-full sm:w-auto">
-                            <button onClick={() => copyToClipboard(`${window.location.origin}?examId=${hostExamId}`)} className="flex-1 sm:flex-none p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold"><Copy size={14} /> COPY LINK</button>
-                            <button onClick={endHostedExam} className="flex-1 sm:flex-none p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold" title="End Exam Session"><XCircle size={14} /> END EXAM</button>
+                            <button onClick={() => copyToClipboard(hostExamId)} className="flex-1 sm:flex-none p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold"><Copy size={14} /> COPY ID</button>
+                            {examStatus === 'active' ? (
+                              <motion.button whileTap={{ scale: 0.95 }} onClick={endHostedExam} className="flex-1 sm:flex-none p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold" title="End Session Locally"><XCircle size={14} /> END SESSION</motion.button>
+                            ) : (
+                              <motion.button 
+                                whileTap={{ scale: 0.95 }} 
+                                onClick={deleteHostedExam} 
+                                className={`flex-1 sm:flex-none p-2 ${deleteConfirmStep === 1 ? 'bg-red-700 animate-pulse' : 'bg-red-500'} text-white rounded-lg hover:bg-red-600 transition-all flex items-center justify-center gap-2 text-[10px] font-bold`} 
+                                title="Delete All Details Permanently"
+                              >
+                                <Trash2 size={14} /> {deleteConfirmStep === 1 ? 'CONFIRM DELETE' : 'DELETE ALL'}
+                              </motion.button>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -3982,7 +4416,17 @@ export default function App() {
                       <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-4 shadow-sm">
                         <div className="flex items-center justify-between">
                           <h3 className="font-bold flex items-center gap-2 text-white"><ListChecks size={18} className="text-[#DC2626]" /> Exam Results</h3>
-                          <button onClick={downloadResults} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-all"><FileDown size={20} /></button>
+                          <div className="flex items-center gap-2">
+                            <motion.button 
+                              whileTap={{ scale: 0.9 }}
+                              onClick={clearExamResults} 
+                              className={`${clearConfirmStep === 1 ? 'text-red-500 animate-pulse' : 'text-white/30'} hover:text-red-500 transition-all`} 
+                              title="Clear All Results"
+                            >
+                              <Trash2 size={16} />
+                            </motion.button>
+                            <button onClick={downloadResults} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-all"><FileDown size={20} /></button>
+                          </div>
                         </div>
                         <div className="flex-1 overflow-y-auto space-y-2 pr-2 max-h-[250px] sm:max-h-none">
                           {scoreSheet.length === 0 ? (
@@ -4052,6 +4496,51 @@ export default function App() {
           ))}
         </div>
       </nav>
+
+      {/* CUSTOM CONFIRM MODAL */}
+      <AnimatePresence>
+        {confirmModal.isOpen && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className={`relative w-full max-w-sm ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-6 shadow-2xl space-y-6`}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${confirmModal.isDanger ? 'bg-red-500/10 text-red-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
+                  <AlertCircle size={24} />
+                </div>
+                <div>
+                  <h3 className={`font-black uppercase tracking-tighter text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{confirmModal.title}</h3>
+                  <p className={`text-xs ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>{confirmModal.message}</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                  className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${theme === 'dark' ? 'bg-white/5 text-white/40 hover:bg-white/10' : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'}`}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmModal.onConfirm}
+                  className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-white shadow-lg ${confirmModal.isDanger ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : 'bg-[#DC2626] hover:bg-[#DC2626]/90 shadow-[#DC2626]/20'}`}
+                >
+                  {confirmModal.confirmText}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* GOD MODE PANEL */}
       <AnimatePresence>
@@ -4264,6 +4753,18 @@ export default function App() {
 
                 <div className="flex gap-2 pt-4">
                   <button type="button" onClick={() => setIsEditingPost(false)} className="flex-1 bg-white/5 text-white/60 font-bold py-4 rounded-2xl text-sm">CANCEL</button>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      if (editingPost) {
+                        deletePost(editingPost.id);
+                        setIsEditingPost(false);
+                      }
+                    }} 
+                    className="flex-1 bg-red-500/10 text-red-500 font-bold py-4 rounded-2xl text-sm hover:bg-red-500/20 transition-all"
+                  >
+                    DELETE
+                  </button>
                   <button type="submit" className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
                     <Save size={16} /> SAVE CHANGES
                   </button>
@@ -4274,7 +4775,7 @@ export default function App() {
         )}
 
         {editingUser && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-md w-full space-y-6`}>
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-black text-white uppercase tracking-tighter">Edit User Information</h3>
@@ -4312,7 +4813,7 @@ export default function App() {
       {/* SHARE MODAL */}
       <AnimatePresence>
         {showShareModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-sm w-full space-y-6`}>
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-black text-white uppercase tracking-tighter">Share Your Result</h3>
