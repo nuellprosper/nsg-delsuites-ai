@@ -484,6 +484,8 @@ interface HomeHistoryItem {
   type: 'quiz' | 'recording';
   progress?: number;
   date?: string;
+  score?: number;
+  total?: number;
 }
 
 export default function App() {
@@ -597,6 +599,19 @@ export default function App() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
+  const [finishedHistory, setFinishedHistory] = useState<HomeHistoryItem[]>([]);
+
+  // Load finished history from local storage
+  useEffect(() => {
+    const saved = localStorage.getItem('nsg_finished_history');
+    if (saved) setFinishedHistory(JSON.parse(saved));
+  }, []);
+
+  const addToFinishedHistory = (item: HomeHistoryItem) => {
+    const newHistory = [item, ...finishedHistory].slice(0, 20); // Keep last 20
+    setFinishedHistory(newHistory);
+    localStorage.setItem('nsg_finished_history', JSON.stringify(newHistory));
+  };
 
   // --- \u{1F4E6} PWA STATE ---
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -903,7 +918,7 @@ export default function App() {
   // Helper to get unfinished items
   const unfinishedQuizzes: HomeHistoryItem[] = quizQuestions.length > 0 && quizState === 'active' ? [{ id: 'current-quiz', title: quizTopic || 'Ongoing Quiz', type: 'quiz', progress: Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100) }] : [];
   const unanalyzedRecordings: HomeHistoryItem[] = sessions.filter(s => !s.fullAnalysis).map(s => ({ id: s.id, title: s.title, type: 'recording', date: s.date }));
-  const homeHistory = [...unfinishedQuizzes, ...unanalyzedRecordings];
+  const homeHistory = [...unfinishedQuizzes, ...finishedHistory, ...unanalyzedRecordings];
 
   // --- \u{1F393} CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
@@ -1761,6 +1776,16 @@ export default function App() {
     setExamScore(score);
     setExamFinished(true);
     setExamLobbyState('result');
+
+    addToFinishedHistory({
+      id: `exam-${Date.now()}`,
+      title: `Exam: ${examIdInput || 'CBT Exam'}`,
+      type: 'quiz',
+      progress: 100,
+      date: new Date().toLocaleDateString(),
+      score: score,
+      total: examQuestions.length
+    });
 
     if (user && activeExamId) {
       const result: StudentResult = {
@@ -2832,18 +2857,21 @@ export default function App() {
   };
 
   const handleOptionSelect = (index: number) => {
-    if (isAnswered) return;
     setSelectedOption(index);
-    setIsAnswered(true);
     
-    // Store user answer
+    // Store user answer (but don't lock yet)
     setUserQuizAnswers(prev => {
       const newAnswers = [...prev];
       newAnswers[currentQuestionIndex] = index;
       return newAnswers;
     });
+  };
 
-    if (index === quizQuestions[currentQuestionIndex].correctAnswer) {
+  const submitAnswer = () => {
+    if (selectedOption === null) return;
+    setIsAnswered(true);
+    
+    if (selectedOption === quizQuestions[currentQuestionIndex].correctAnswer) {
       setQuizScore(prev => prev + 1);
     }
   };
@@ -2855,6 +2883,15 @@ export default function App() {
       setIsAnswered(false);
     } else {
       setQuizState('finished');
+      addToFinishedHistory({
+        id: `quiz-${Date.now()}`,
+        title: quizTopic || 'Quiz Result',
+        type: 'quiz',
+        progress: 100,
+        date: new Date().toLocaleDateString(),
+        score: quizScore,
+        total: quizQuestions.length
+      });
     }
   };
 
@@ -3126,7 +3163,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pt-4 sm:pt-6 pb-24 overflow-hidden flex flex-col">
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pt-4 sm:pt-6 pb-24 overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'}`}>
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -3155,47 +3192,46 @@ export default function App() {
             <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
               {/* Home Header with Bell and Premium */}
               <div className="flex items-center justify-between px-2 mb-4">
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-3">
-                      <Home size={24} className="text-[#DC2626]" />
-                      <h2 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Home</h2>
-                    </div>
-                  <div className="relative">
-                    <button 
-                      onClick={() => setActiveTab('notifications')}
-                      className={`p-2.5 rounded-2xl border transition-all relative ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
-                    >
-                      <Bell size={22} />
-                      {unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#DC2626] text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-[#0A0F1C]">
-                          {unreadCount}
-                        </span>
-                      )}
-                    </button>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <Home size={24} className="text-[#DC2626]" />
+                  <h2 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Home</h2>
+                </div>
+                
+                <div className="flex items-center gap-2">
                   {!isPremium && (
                     <button 
                       onClick={() => setShowPremiumModal(true)}
-                      className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 flex items-center gap-2"
+                      className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 flex items-center gap-1 hover:scale-105 transition-all"
                     >
-                      <Sparkles size={14} /> Try Premium
+                      <Sparkles size={12} /> PREMIUM
                     </button>
                   )}
-                </div>
-                <div className="flex items-center gap-2">
-                   <div className="text-right">
-                    <p className={`text-[10px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentUserData?.displayName || 'Student'}</p>
-                    <p className={`text-[8px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
-                  </div>
-                  <button onClick={() => setActiveTab('profile')} className="w-10 h-10 rounded-full border-2 border-[#DC2626] overflow-hidden bg-white/5 shadow-lg">
-                    {currentUserData?.photoURL ? (
-                      <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-white/20">
-                        <User size={20} />
-                      </div>
+                  <button 
+                    onClick={() => setActiveTab('notifications')}
+                    className={`p-2 rounded-xl border transition-all relative ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    <Bell size={18} />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-[#0A0F1C]">
+                        {unreadCount}
+                      </span>
                     )}
                   </button>
+                  <div className="flex items-center gap-2 ml-2">
+                    <div className="text-right hidden xs:block">
+                      <p className={`text-[9px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentUserData?.displayName?.split(' ')[0] || 'Student'}</p>
+                      <p className={`text-[7px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
+                    </div>
+                    <button onClick={() => setActiveTab('profile')} className="w-9 h-9 rounded-full border-2 border-[#DC2626] overflow-hidden bg-white/5 shadow-lg">
+                      {currentUserData?.photoURL ? (
+                        <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white/20">
+                          <User size={18} />
+                        </div>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3243,7 +3279,11 @@ export default function App() {
                               <p className={`text-xs font-black uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title}</p>
                               <div className="flex flex-col gap-1 mt-1">
                                 <p className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} uppercase`}>
-                                  {item.type === 'quiz' ? `Unfinished Quiz \u{2022} ${item.progress ?? 0}% Complete` : `Unanalyzed Recording \u{2022} ${item.date || 'No Date'}`}
+                                  {item.type === 'quiz' 
+                                    ? (item.score !== undefined 
+                                        ? `Score: ${item.score}/${item.total} \u{2022} ${item.date}` 
+                                        : `Unfinished \u{2022} ${item.progress ?? 0}% Complete`)
+                                    : `Unanalyzed Recording \u{2022} ${item.date || 'No Date'}`}
                                 </p>
                                 {item.type === 'quiz' && item.progress !== undefined && (
                                   <div className="h-1 w-32 bg-white/5 rounded-full overflow-hidden">
@@ -3599,27 +3639,44 @@ export default function App() {
                     />
                     <div className="space-y-3">
                       {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
-                        <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}>
-                          <div className="flex items-start gap-3">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20 text-white/40'}`}>
-                              {String.fromCharCode(65 + idx)}
-                            </div>
+                        <button 
+                          key={idx} 
+                          onClick={() => handleOptionSelect(idx)} 
+                          className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center gap-3 ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}
+                        >
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] border ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20 text-white/40'}`}>
+                            {String.fromCharCode(65 + idx)}
+                          </div>
+                          <div className="flex-1">
                             <MarkdownRenderer 
                               content={option}
-                              className="flex-1 text-sm font-medium"
+                              className="text-sm font-medium"
                             />
                           </div>
+                          {isAnswered && idx === quizQuestions[currentQuestionIndex].correctAnswer && <Check size={16} className="text-green-500" />}
+                          {isAnswered && selectedOption === idx && idx !== quizQuestions[currentQuestionIndex].correctAnswer && <X size={16} className="text-[#DC2626]" />}
                         </button>
                       ))}
                     </div>
-                    {isAnswered && (
-                      <button 
-                        onClick={nextQuestion} 
-                        className={`w-full ${theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white'} font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition-all`}
-                      >
-                        {currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"} <ChevronRight size={18} />
-                      </button>
-                    )}
+
+                    <div className="pt-4">
+                      {!isAnswered ? (
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={selectedOption === null}
+                          className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest"
+                        >
+                          Submit Answer
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={nextQuestion}
+                          className="w-full bg-green-600 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-green-600/20 transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
+                        >
+                          {currentQuestionIndex < quizQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'} <ChevronRight size={18} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -4001,12 +4058,8 @@ export default function App() {
             </motion.div>
           )}
                   {toolsSubTab === 'faculty' && (
-                    <div className="text-center py-20 space-y-4">
-                      <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
-                        <GraduationCap size={40} className="text-[#DC2626]" />
-                      </div>
-                      <h3 className="text-white font-black uppercase tracking-tighter text-xl">Faculty Specials</h3>
-                      <p className="text-white/40 text-xs max-w-xs mx-auto">This section is being tailored for your specific department. Stay tuned for specialized study tools.</p>
+                    <div className="h-full">
+                      <AILibrary theme={theme} setUserNotification={setUserNotification} />
                     </div>
                   )}
                 </div>
@@ -4141,39 +4194,48 @@ export default function App() {
                   <AdUnit slot="7536999840" />
                   {chatHistory.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center px-4">
-                      <div className="max-w-2xl w-full text-left space-y-8">
+                      <div className="max-w-2xl w-full text-center space-y-12">
                         <motion.div 
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="space-y-2"
+                          className="space-y-4"
                         >
-                          <h2 className="text-4xl sm:text-5xl font-black text-white tracking-tighter">
+                          <div className="w-20 h-20 bg-[#DC2626]/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                            <Brain size={40} className="text-[#DC2626]" />
+                          </div>
+                          <h2 className="text-4xl sm:text-6xl font-black text-white tracking-tighter leading-none">
                             Hi {currentUserData?.displayName?.split(' ')[0] || 'there'},
                           </h2>
-                          <h3 className="text-3xl sm:text-4xl font-black text-white/40 tracking-tighter">
+                          <h3 className="text-2xl sm:text-3xl font-black text-white/30 tracking-tighter uppercase">
                             Where should we start?
                           </h3>
                         </motion.div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {[
-                            { icon: ImageIcon, label: 'Create image', color: 'text-blue-400', prompt: 'Generate a creative image of...' },
-                            { icon: Mic, label: 'Create music', color: 'text-red-400', prompt: 'Compose a short melody about...' },
-                            { icon: FileText, label: 'Write anything', color: 'text-green-400', prompt: 'Write a professional article about...' },
-                            { icon: BookOpen, label: 'Help me learn', color: 'text-yellow-400', prompt: 'Explain the concept of...' }
+                            { icon: ImageIcon, label: 'Create Image', desc: 'Generate creative visuals', color: 'text-blue-400', prompt: 'Generate a creative image of...' },
+                            { icon: Mic, label: 'Create Music', desc: 'Compose short melodies', color: 'text-red-400', prompt: 'Compose a short melody about...' },
+                            { icon: FileText, label: 'Write Anything', desc: 'Articles, essays & more', color: 'text-green-400', prompt: 'Write a professional article about...' },
+                            { icon: BookOpen, label: 'Help Me Learn', desc: 'Explain complex topics', color: 'text-yellow-400', prompt: 'Explain the concept of...' }
                           ].map((btn, idx) => (
                             <motion.button
                               key={idx}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
                               transition={{ delay: idx * 0.1 }}
                               onClick={() => setChatInput(btn.prompt)}
-                              className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 hover:border-white/20 transition-all group text-left"
+                              className="flex items-center gap-4 p-5 bg-white/5 border border-white/10 rounded-3xl hover:bg-white/10 hover:border-[#DC2626]/50 transition-all group text-left relative overflow-hidden"
                             >
-                              <div className={`w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                                <btn.icon size={20} className={btn.color} />
+                              <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Plus size={14} className="text-white/20" />
                               </div>
-                              <span className="text-sm font-bold text-white/80">{btn.label}</span>
+                              <div className={`w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0`}>
+                                <btn.icon size={24} className={btn.color} />
+                              </div>
+                              <div>
+                                <p className="text-sm font-black text-white uppercase tracking-tight">{btn.label}</p>
+                                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{btn.desc}</p>
+                              </div>
                             </motion.button>
                           ))}
                         </div>
@@ -4928,6 +4990,19 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        {/* FOOTER */}
+        <footer className="w-full px-4 py-8 pb-32 border-t border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-white/20">
+          {user?.email === "nuellkelechi@gmail.com" && (
+            <button onClick={() => setShowGodMode(true)} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-colors flex items-center gap-1">
+              <ShieldCheck size={12} /> GOD MODE
+            </button>
+          )}
+          <button onClick={() => setLegalPage('about')} className="hover:text-[#DC2626] transition-colors">About Us</button>
+          <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
+          <button onClick={() => setLegalPage('privacy')} className="hover:text-[#DC2626] transition-colors">Privacy Policy</button>
+          <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
+          <span>{"\u{00A9} 2026 Nuell Graphics"}</span>
+        </footer>
       </main>
 
       {/* CUSTOM CONFIRM MODAL */}
@@ -5324,19 +5399,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* FOOTER */}
-      <footer className="max-w-4xl mx-auto px-4 py-8 pb-32 border-t border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-white/20">
-        {user?.email === "nuellkelechi@gmail.com" && (
-          <button onClick={() => setShowGodMode(true)} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-colors flex items-center gap-1">
-            <ShieldCheck size={12} /> GOD MODE
-          </button>
-        )}
-        <button onClick={() => setLegalPage('about')} className="hover:text-[#DC2626] transition-colors">About Us</button>
-        <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
-        <button onClick={() => setLegalPage('privacy')} className="hover:text-[#DC2626] transition-colors">Privacy Policy</button>
-        <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
-        <span>{"\u{00A9} 2026 Nuell Graphics"}</span>
-      </footer>
+      {/* FOOTER REMOVED FROM HERE */}
     </div>
   );
 }
