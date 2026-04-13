@@ -5,7 +5,8 @@ import {
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks,
-  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save
+  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save,
+  Search, Check, Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI, Type, Modality, LiveServerMessage } from "@google/genai";
@@ -453,6 +454,30 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   );
 };
 
+const MarkdownRenderer = ({ content, className = "" }: { content: string, className?: string }) => {
+  // Pre-process content to ensure LaTeX is correctly formatted for remark-math
+  const processedContent = (content || "")
+    .replace(/\\\\\(/g, '$')
+    .replace(/\\\\\)/g, '$')
+    .replace(/\\\\\[/g, '$$')
+    .replace(/\\\\\]/g, '$$')
+    .replace(/\\\( /g, '$ ')
+    .replace(/ \\\)/g, ' $')
+    .replace(/\\\[ /g, '$$ ')
+    .replace(/ \\\]/g, ' $$');
+
+  return (
+    <div className={`markdown-body ${className}`}>
+      <ReactMarkdown 
+        remarkPlugins={[remarkGfm, remarkMath]} 
+        rehypePlugins={[rehypeKatex]}
+      >
+        {processedContent}
+      </ReactMarkdown>
+    </div>
+  );
+};
+
 export default function App() {
   // --- \u{1F510} AUTH STATE ---
   const [user, setUser] = useState<any>(null);
@@ -844,11 +869,12 @@ export default function App() {
   const [quizState, setQuizState] = useState<'idle' | 'active' | 'finished' | 'review'>('idle');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+  const [userQuizAnswers, setUserQuizAnswers] = useState<number[]>([]);
 
   // --- \u{1F393} CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
-  const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result'>('login');
+  const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result' | 'review'>('login');
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
   const [examTimer, setExamTimer] = useState(3600); // 1 hour default
   const [examScore, setExamScore] = useState(0);
@@ -1515,6 +1541,8 @@ export default function App() {
         IMPORTANT: For any mathematical formulas or scientific notations, ALWAYS use LaTeX notation. 
         Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
         NEVER use other delimiters like \( \) or [ ].
+        NEVER wrap LaTeX in code blocks.
+        Ensure all backslashes are properly escaped for JSON.
         Return ONLY a JSON object with this structure:
         {
           "questions": [
@@ -1522,7 +1550,7 @@ export default function App() {
               "question": "string",
               "options": ["string", "string", "string", "string"],
               "correctAnswer": number,
-              "explanation": "string"
+              "explanation": "A comprehensive breakdown. 1. Why the correct answer is right. 2. Why the other options are incorrect or common pitfalls. Ensure this is detailed enough for a thorough review."
             }
           ]
         }
@@ -2284,6 +2312,8 @@ export default function App() {
         IMPORTANT: For any mathematical formulas or scientific notations, ALWAYS use LaTeX notation. 
         Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
         NEVER use other delimiters like \( \) or [ ].
+        NEVER wrap LaTeX in code blocks.
+        Ensure all backslashes are preserved.
       ` });
 
       const aiInstance = getAiInstance();
@@ -2575,7 +2605,7 @@ export default function App() {
           model: MODEL_NAME,
           contents: [{ role: 'user', parts }],
           config: {
-            systemInstruction: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. NEVER use other delimiters like \\( \\) or [ ]."
+            systemInstruction: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. NEVER use other delimiters like \\( \\) or [ ]. NEVER wrap LaTeX in code blocks. Ensure all backslashes are preserved."
           }
         });
         responseText = response.text || "I'm sorry, I couldn't generate a response.";
@@ -2701,7 +2731,7 @@ export default function App() {
               "question": "string",
               "options": ["string", "string", "string", "string"],
               "correctAnswer": number (0-3),
-              "explanation": "Detailed explanation of why the correct answer is right and others are wrong."
+              "explanation": "A comprehensive breakdown. 1. Why the correct answer is right. 2. Why the other options are incorrect or common pitfalls. Ensure this is detailed enough for a thorough review."
             }
           ]
         }
@@ -2740,6 +2770,7 @@ export default function App() {
         setQuizQuestions(data.questions);
         setCurrentQuestionIndex(0);
         setQuizScore(0);
+        setUserQuizAnswers([]);
         setQuizState('active');
         setSelectedOption(null);
         setIsAnswered(false);
@@ -2768,6 +2799,14 @@ export default function App() {
     if (isAnswered) return;
     setSelectedOption(index);
     setIsAnswered(true);
+    
+    // Store user answer
+    setUserQuizAnswers(prev => {
+      const newAnswers = [...prev];
+      newAnswers[currentQuestionIndex] = index;
+      return newAnswers;
+    });
+
     if (index === quizQuestions[currentQuestionIndex].correctAnswer) {
       setQuizScore(prev => prev + 1);
     }
@@ -3227,9 +3266,7 @@ export default function App() {
 
                       <div className="bg-white/5 rounded-2xl p-6 overflow-y-auto max-h-[60vh] shadow-inner">
                         <div className="markdown-body text-sm text-white leading-relaxed">
-                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                            {analysisResult}
-                          </ReactMarkdown>
+                          <MarkdownRenderer content={analysisResult} />
                         </div>
                       </div>
 
@@ -3432,7 +3469,7 @@ export default function App() {
                           </div>
                           <div className={`space-y-1 sm:space-y-2 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <div className={`p-3 sm:p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${msg.role === 'user' ? 'bg-[#DC2626] text-white rounded-tr-none' : `${theme === 'dark' ? 'bg-white/5 text-white/90 border-white/10' : 'bg-slate-50 text-slate-700 border-slate-200'} border rounded-tl-none`}`}>
-                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.text}</ReactMarkdown>
+                                  <MarkdownRenderer content={msg.text} />
                               
                               {msg.role === 'model' && (
                                 <div className="mt-2 flex justify-end gap-2">
@@ -3696,7 +3733,7 @@ export default function App() {
                           }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-[#DC2626]/20"><Brain size={14} /> Continue in Chat</button>
                         </div>
                         <div className="markdown-body text-sm leading-relaxed text-white/70">
-                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{selectedSession.fullAnalysis}</ReactMarkdown>
+                          <MarkdownRenderer content={selectedSession.fullAnalysis} />
                         </div>
                       </motion.div>
                     )}
@@ -3778,20 +3815,21 @@ export default function App() {
                     <div className="text-right"><p className="text-[10px] font-black text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
                   </div>
                   <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-8 shadow-sm`}>
-                    <div className="text-lg font-bold leading-tight text-white markdown-body">
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                        {quizQuestions[currentQuestionIndex].question}
-                      </ReactMarkdown>
-                    </div>
+                    <MarkdownRenderer 
+                      content={quizQuestions[currentQuestionIndex].question}
+                      className="text-lg font-bold leading-tight text-white"
+                    />
                     <div className="space-y-3">
                       {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
-                        <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${isAnswered ? (idx === quizQuestions[currentQuestionIndex].correctAnswer ? 'bg-green-500/10 border-green-500 text-green-500' : (selectedOption === idx ? 'bg-[#DC2626]/10 border-[#DC2626] text-[#DC2626]' : 'bg-white/5 opacity-40')) : (selectedOption === idx ? 'border-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80')}`}>
+                        <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}>
                           <div className="flex items-start gap-3">
-                            <div className="flex-1 markdown-body text-sm font-medium">
-                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                {option}
-                              </ReactMarkdown>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20 text-white/40'}`}>
+                              {String.fromCharCode(65 + idx)}
                             </div>
+                            <MarkdownRenderer 
+                              content={option}
+                              className="flex-1 text-sm font-medium"
+                            />
                           </div>
                         </button>
                       ))}
@@ -3830,8 +3868,92 @@ export default function App() {
                     <button onClick={handleShareResult} className="w-full bg-red-500 hover:bg-red-500/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-500/20 transition-all flex items-center justify-center gap-2">
                       <Share2 size={18} /> SHARE SCORE CARD
                     </button>
+                    <button onClick={() => setQuizState('review')} className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all flex items-center justify-center gap-2">
+                      <Search size={18} /> CHECK QUIZ RESULTS & EXPLANATIONS
+                    </button>
                     <button onClick={() => setQuizState('idle')} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all">TRY ANOTHER TOPIC</button>
                   </div>
+                </div>
+              )}
+
+              {quizState === 'review' && (
+                <div className="space-y-6">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
+                    <button onClick={() => setQuizState('finished')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back to Results</button>
+                    <h3 className="text-sm font-black text-white uppercase tracking-tighter">Detailed Review</h3>
+                    <div className="w-10"></div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {quizQuestions.map((q, qIdx) => {
+                      const userAns = userQuizAnswers[qIdx];
+                      const isCorrect = userAns === q.correctAnswer;
+                      
+                      return (
+                        <div key={qIdx} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-4 shadow-sm`}>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="text-[10px] font-black text-[#DC2626] uppercase mb-1">Question {qIdx + 1}</p>
+                              <MarkdownRenderer content={q.question} className="text-sm font-bold text-white leading-tight" />
+                            </div>
+                            <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${isCorrect ? 'bg-green-500/10 text-green-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
+                              {isCorrect ? 'Correct' : 'Incorrect'}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2">
+                            {q.options.map((opt, oIdx) => {
+                              const isUserChoice = userAns === oIdx;
+                              const isCorrectChoice = q.correctAnswer === oIdx;
+                              
+                              let borderClass = 'border-white/5 bg-white/5';
+                              let textClass = 'text-white/60';
+                              let label = '';
+                              
+                              if (isCorrectChoice) {
+                                borderClass = 'border-green-500/50 bg-green-500/10';
+                                textClass = 'text-green-500 font-bold';
+                                label = 'CORRECT ANSWER';
+                              } else if (isUserChoice && !isCorrect) {
+                                borderClass = 'border-[#DC2626]/50 bg-[#DC2626]/10';
+                                textClass = 'text-[#DC2626] font-bold';
+                                label = 'YOUR CHOICE';
+                              } else if (isUserChoice && isCorrect) {
+                                label = 'YOUR CHOICE (CORRECT)';
+                              }
+
+                              return (
+                                <div key={oIdx} className={`p-3 rounded-xl border text-xs flex items-center gap-3 ${borderClass} ${textClass}`}>
+                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${isCorrectChoice ? 'border-green-500 bg-green-500 text-white' : (isUserChoice ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20')}`}>
+                                    {String.fromCharCode(65 + oIdx)}
+                                  </div>
+                                  <div className="flex-1 flex flex-col">
+                                    <MarkdownRenderer content={opt} />
+                                    {label && <span className="text-[8px] font-black uppercase mt-1 opacity-60">{label}</span>}
+                                  </div>
+                                  {isCorrectChoice && <Check size={14} />}
+                                  {isUserChoice && !isCorrect && <X size={14} />}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {q.explanation && (
+                            <div className={`p-4 rounded-2xl ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'} border border-dashed border-white/10`}>
+                              <p className="text-[9px] font-black text-white/30 uppercase mb-2 flex items-center gap-1.5">
+                                <Info size={12} className="text-[#DC2626]" /> Explanation
+                              </p>
+                              <MarkdownRenderer content={q.explanation} className="text-xs text-white/70 leading-relaxed" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button onClick={() => setQuizState('idle')} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                    RETAKE OR TRY NEW TOPIC
+                  </button>
                 </div>
               )}
             </motion.div>
@@ -3965,20 +4087,18 @@ export default function App() {
                   </div>
 
                   <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 sm:space-y-8 shadow-sm`}>
-                    <div className={`text-base sm:text-lg font-bold leading-tight markdown-body ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                        {examQuestions[currentExamIndex].question}
-                      </ReactMarkdown>
-                    </div>
+                    <MarkdownRenderer 
+                      content={examQuestions[currentExamIndex].question}
+                      className={`text-base sm:text-lg font-bold leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+                    />
                     <div className="space-y-3">
                       {examQuestions[currentExamIndex].options.map((option, idx) => (
                         <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/80' : 'bg-slate-50 border-slate-200 text-slate-700'}`}`}>
                           <div className="flex items-start gap-3">
-                            <div className="flex-1 markdown-body text-sm font-medium">
-                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                {option}
-                              </ReactMarkdown>
-                            </div>
+                            <MarkdownRenderer 
+                              content={option}
+                              className="flex-1 text-sm font-medium"
+                            />
                           </div>
                         </button>
                       ))}
@@ -4005,11 +4125,100 @@ export default function App() {
                     <p className="text-5xl font-black text-[#DC2626]">{examScore} / {examQuestions.length}</p>
                     <p className={`text-sm font-bold mt-2 ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{Math.round((examScore / (examQuestions.length || 1)) * 100)}% Proficiency</p>
                   </div>
-                  <button 
-                    onClick={() => setExamLobbyState('login')} 
-                    className={`w-full ${theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white'} font-black py-4 rounded-2xl text-sm transition-all`}
-                  >
-                    LOGOUT
+                  <div className="flex flex-col gap-3">
+                    <button 
+                      onClick={() => setExamLobbyState('review')} 
+                      className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Search size={18} /> REVIEW EXAM & EXPLANATIONS
+                    </button>
+                    <button 
+                      onClick={() => setExamLobbyState('login')} 
+                      className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-slate-100 text-slate-600'} font-black py-4 rounded-2xl text-sm transition-all`}
+                    >
+                      LOGOUT
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {examLobbyState === 'review' && (
+                <div className="space-y-6">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
+                    <button onClick={() => setExamLobbyState('result')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back to Results</button>
+                    <h3 className="text-sm font-black text-white uppercase tracking-tighter">Exam Review</h3>
+                    <div className="w-10"></div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {examQuestions.map((q, qIdx) => {
+                      const userAns = examAnswers[qIdx];
+                      const isCorrect = userAns === q.correctAnswer;
+                      
+                      return (
+                        <div key={qIdx} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-4 shadow-sm`}>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="text-[10px] font-black text-[#DC2626] uppercase mb-1">Question {qIdx + 1}</p>
+                              <MarkdownRenderer content={q.question} className="text-sm font-bold text-white leading-tight" />
+                            </div>
+                            <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${isCorrect ? 'bg-green-500/10 text-green-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
+                              {isCorrect ? 'Correct' : 'Incorrect'}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2">
+                            {q.options.map((opt, oIdx) => {
+                              const isUserChoice = userAns === oIdx;
+                              const isCorrectChoice = q.correctAnswer === oIdx;
+                              
+                              let borderClass = 'border-white/5 bg-white/5';
+                              let textClass = 'text-white/60';
+                              let label = '';
+                              
+                              if (isCorrectChoice) {
+                                borderClass = 'border-green-500/50 bg-green-500/10';
+                                textClass = 'text-green-500 font-bold';
+                                label = 'CORRECT ANSWER';
+                              } else if (isUserChoice && !isCorrect) {
+                                borderClass = 'border-[#DC2626]/50 bg-[#DC2626]/10';
+                                textClass = 'text-[#DC2626] font-bold';
+                                label = 'YOUR CHOICE';
+                              } else if (isUserChoice && isCorrect) {
+                                label = 'YOUR CHOICE (CORRECT)';
+                              }
+
+                              return (
+                                <div key={oIdx} className={`p-3 rounded-xl border text-xs flex items-center gap-3 ${borderClass} ${textClass}`}>
+                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${isCorrectChoice ? 'border-green-500 bg-green-500 text-white' : (isUserChoice ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20')}`}>
+                                    {String.fromCharCode(65 + oIdx)}
+                                  </div>
+                                  <div className="flex-1 flex flex-col">
+                                    <MarkdownRenderer content={opt} />
+                                    {label && <span className="text-[8px] font-black uppercase mt-1 opacity-60">{label}</span>}
+                                  </div>
+                                  {isCorrectChoice && <Check size={14} />}
+                                  {isUserChoice && !isCorrect && <X size={14} />}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {q.explanation && (
+                            <div className={`p-4 rounded-2xl ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'} border border-dashed border-white/10`}>
+                              <p className="text-[9px] font-black text-white/30 uppercase mb-2 flex items-center gap-1.5">
+                                <Info size={12} className="text-[#DC2626]" /> Explanation
+                              </p>
+                              <MarkdownRenderer content={q.explanation} className="text-xs text-white/70 leading-relaxed" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button onClick={() => setExamLobbyState('login')} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                    FINISH REVIEW & LOGOUT
                   </button>
                 </div>
               )}
@@ -4039,9 +4248,7 @@ export default function App() {
                       <h2 className="text-2xl font-black text-white uppercase tracking-tighter leading-tight">{post.title}</h2>
                     </div>
                     <div className={`markdown-body text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                        {post.content}
-                      </ReactMarkdown>
+                      <MarkdownRenderer content={post.content} />
                     </div>
 
                     {/* Reactions Section */}
@@ -4530,18 +4737,17 @@ export default function App() {
                           ) : (
                             examQuestions.map((q, i) => (
                               <div key={i} className="p-3 rounded-xl border space-y-2 bg-white/5 border-white/5">
-                                <div className="text-[10px] font-bold leading-tight text-white markdown-body">
-                                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                    {`${i + 1}. ${q.question}`}
-                                  </ReactMarkdown>
-                                </div>
+                                <MarkdownRenderer 
+                                  content={`${i + 1}. ${q.question}`}
+                                  className="text-[10px] font-bold leading-tight text-white"
+                                />
                                 <div className="grid grid-cols-2 gap-1">
                                   {q.options.map((opt, idx) => (
-                                    <div key={idx} className={`text-[8px] px-2 py-1 rounded markdown-body ${idx === q.correctAnswer ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40'}`}>
-                                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                                        {opt}
-                                      </ReactMarkdown>
-                                    </div>
+                                    <MarkdownRenderer 
+                                      key={idx}
+                                      content={opt}
+                                      className={`text-[8px] px-2 py-1 rounded ${idx === q.correctAnswer ? 'bg-green-500/20 text-green-400' : 'bg-white/5 text-white/40'}`}
+                                    />
                                   ))}
                                 </div>
                               </div>
