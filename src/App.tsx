@@ -4,7 +4,7 @@ import {
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
-  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks,
+  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save,
   Search, Check, Info
 } from 'lucide-react';
@@ -478,6 +478,14 @@ const MarkdownRenderer = ({ content, className = "" }: { content: string, classN
   );
 };
 
+interface HomeHistoryItem {
+  id: string;
+  title: string;
+  type: 'quiz' | 'recording';
+  progress?: number;
+  date?: string;
+}
+
 export default function App() {
   // --- \u{1F510} AUTH STATE ---
   const [user, setUser] = useState<any>(null);
@@ -530,7 +538,32 @@ export default function App() {
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
   // --- \u{1F4F1} APP STATE ---
-  const [activeTab, setActiveTab] = useState<'record' | 'ai' | 'history' | 'quiz' | 'blog' | 'exam' | 'profile'>('record');
+  const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications'>('home');
+  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'quiz' | 'exam' | 'faculty'>('menu');
+  const [readArticles, setReadArticles] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
+  const [blogPosts, setBlogPosts] = useState<any[]>([]);
+  const [isAddingPost, setIsAddingPost] = useState(false);
+  const [editingPost, setEditingPost] = useState<any | null>(null);
+  const [isEditingPost, setIsEditingPost] = useState(false);
+  const [newPost, setNewPost] = useState({ title: '', content: '' });
+
+  // Load read articles from local storage
+  useEffect(() => {
+    const saved = localStorage.getItem('nsg_read_articles');
+    if (saved) setReadArticles(JSON.parse(saved));
+  }, []);
+
+  const markArticleAsRead = (id: string) => {
+    if (!readArticles.includes(id)) {
+      const newRead = [...readArticles, id];
+      setReadArticles(newRead);
+      localStorage.setItem('nsg_read_articles', JSON.stringify(newRead));
+    }
+  };
+
+  const unreadCount = blogPosts.filter(post => !readArticles.includes(post.id)).length;
   const [libraryView, setLibraryView] = useState<'history' | 'library'>('history');
   const [showRecordSidebar, setShowRecordSidebar] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -559,11 +592,6 @@ export default function App() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [godModeNotification, setGodModeNotification] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
-  const [blogPosts, setBlogPosts] = useState<any[]>([]);
-  const [isAddingPost, setIsAddingPost] = useState(false);
-  const [editingPost, setEditingPost] = useState<any | null>(null);
-  const [isEditingPost, setIsEditingPost] = useState(false);
-  const [newPost, setNewPost] = useState({ title: '', content: '' });
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | 'privacy' | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -855,6 +883,7 @@ export default function App() {
 
   // --- \u{1F4DA} PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
+
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
   // --- \u{1F4DD} QUIZ STATE ---
@@ -870,6 +899,11 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [userQuizAnswers, setUserQuizAnswers] = useState<number[]>([]);
+
+  // Helper to get unfinished items
+  const unfinishedQuizzes: HomeHistoryItem[] = quizQuestions.length > 0 && quizState === 'active' ? [{ id: 'current-quiz', title: quizTopic || 'Ongoing Quiz', type: 'quiz', progress: Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100) }] : [];
+  const unanalyzedRecordings: HomeHistoryItem[] = sessions.filter(s => !s.fullAnalysis).map(s => ({ id: s.id, title: s.title, type: 'recording', date: s.date }));
+  const homeHistory = [...unfinishedQuizzes, ...unanalyzedRecordings];
 
   // --- \u{1F393} CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
@@ -1090,7 +1124,8 @@ export default function App() {
     const examId = urlParams.get('examId');
     if (examId) {
       setActiveExamId(examId);
-      setActiveTab('exam');
+      setActiveTab('tools');
+      setToolsSubTab('exam');
       loadSharedExam(examId);
     }
 
@@ -2665,7 +2700,8 @@ export default function App() {
         setQuizQuestions(data.questions);
         setQuizTopic(data.topic);
         setQuizState('active');
-        setActiveTab('quiz');
+        setActiveTab('tools');
+        setToolsSubTab('quiz');
         setCurrentQuestionIndex(0);
         setQuizScore(0);
         setIsAnswered(false);
@@ -3033,6 +3069,29 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* Try Premium Button */}
+          {!isPremium && (
+            <button 
+              onClick={() => setShowPremiumModal(true)}
+              className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-amber-600 text-black px-4 py-2 rounded-xl text-[10px] font-black shadow-lg shadow-yellow-500/20 hover:scale-105 transition-all"
+            >
+              <Sparkles size={14} /> TRY PREMIUM
+            </button>
+          )}
+
+          {/* Notification Bell */}
+          <button 
+            onClick={() => setActiveTab('notifications')}
+            className={`relative p-2 rounded-xl transition-all ${activeTab === 'notifications' ? 'bg-[#DC2626] text-white' : (theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70' : 'bg-slate-100 border-slate-200 text-slate-600')} hover:text-[#DC2626]`}
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-[#0A0F1C] animate-bounce">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
           {!isStandalone && showInstallTimer && (
             <button 
               onClick={handleInstallClick}
@@ -3091,207 +3150,867 @@ export default function App() {
         </AnimatePresence>
         <AnimatePresence mode="wait">
           
-          {/* RECORD TAB */}
-          {activeTab === 'record' && (
-            <motion.div key="record" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity: 0}} className="space-y-6 relative">
-              
-              {/* Sliding Record Sidebar */}
-              <AnimatePresence>
-                {showRecordSidebar && (
-                  <>
-                    <motion.div 
-                      initial={{ opacity: 0 }} 
-                      animate={{ opacity: 1 }} 
-                      exit={{ opacity: 0 }}
-                      onClick={() => setShowRecordSidebar(false)}
-                      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
-                    />
-                    <motion.div 
-                      initial={{ x: '-100%' }} 
-                      animate={{ x: 0 }} 
-                      exit={{ x: '-100%' }}
-                      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                      className={`fixed left-0 top-0 bottom-0 w-1/2 min-w-[280px] z-[70] border-r ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]' : 'border-slate-200 bg-white'} flex flex-col shadow-2xl`}
+          {/* HOME TAB */}
+          {activeTab === 'home' && (
+            <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
+              {/* Home Header with Bell and Premium */}
+              <div className="flex items-center justify-between px-2 mb-4">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      <Home size={24} className="text-[#DC2626]" />
+                      <h2 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Home</h2>
+                    </div>
+                  <div className="relative">
+                    <button 
+                      onClick={() => setActiveTab('notifications')}
+                      className={`p-2.5 rounded-2xl border transition-all relative ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
                     >
-                      <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between`}>
-                        <button 
-                          onClick={() => {
-                            setShowAnalysisInRecord(false);
-                            setSelectedSession(null);
-                            setShowRecordSidebar(false);
-                            setAudioUrl(null);
-                            setRecordedBlob(null);
-                            setUploadedImages([]);
-                          }} 
-                          className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626] text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all"
-                        >
-                          <PlusCircle size={16} /> New Recording
-                        </button>
-                        <button onClick={() => setShowRecordSidebar(false)} className={`p-2 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} ml-2 hover:text-[#DC2626] transition-colors`}><XCircle size={20} /></button>
+                      <Bell size={22} />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#DC2626] text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-[#0A0F1C]">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                  {!isPremium && (
+                    <button 
+                      onClick={() => setShowPremiumModal(true)}
+                      className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 flex items-center gap-2"
+                    >
+                      <Sparkles size={14} /> Try Premium
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                   <div className="text-right">
+                    <p className={`text-[10px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentUserData?.displayName || 'Student'}</p>
+                    <p className={`text-[8px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
+                  </div>
+                  <button onClick={() => setActiveTab('profile')} className="w-10 h-10 rounded-full border-2 border-[#DC2626] overflow-hidden bg-white/5 shadow-lg">
+                    {currentUserData?.photoURL ? (
+                      <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/20">
+                        <User size={20} />
                       </div>
-                      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                        <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/20' : 'text-slate-300'} uppercase tracking-widest px-3 py-2`}>Analysis History</p>
-                        {sessions.map(session => (
-                          <div key={session.id} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${selectedSession?.id === session.id ? 'bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626]' : `hover:bg-white/5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}`}>
-                            <div 
-                              onClick={() => {
-                                setSelectedSession(session);
-                                setAnalysisResult(session.fullAnalysis);
-                                setShowAnalysisInRecord(true);
-                                setShowRecordSidebar(false);
-                              }} 
-                              className="flex items-center gap-2 overflow-hidden flex-1"
-                            >
-                              {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
-                              <div className="flex flex-col overflow-hidden">
-                                <span className="text-[10px] font-bold truncate">{session.title}</span>
-                                <span className="text-[8px] opacity-60">{session.date} \u{2022} {session.duration}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 transition-opacity">
-                              <button onClick={(e) => { e.stopPropagation(); togglePinLectureSession(session.id); }} className="p-1.5 hover:text-red-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" title="Pin Lecture">
-                                <Pin size={12} className={session.isPinned ? 'fill-red-500 text-red-500' : 'text-slate-400'} />
-                              </button>
-                              <button onClick={(e) => { e.stopPropagation(); deleteLectureSession(session.id); }} className="p-1.5 hover:text-red-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" title="Delete Lecture">
-                                <Trash2 size={12} className="text-slate-400" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        <AdUnit slot="7536999840" />
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-
-              <div className="flex items-center justify-between mb-2">
-                <button onClick={() => setShowRecordSidebar(true)} className={`p-2 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-xl ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'} hover:text-[#DC2626] transition-all flex items-center gap-2`}>
-                  <History size={18} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">History</span>
-                </button>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              <AnimatePresence mode="wait">
-                {!showAnalysisInRecord ? (
-                  <motion.div key="recorder" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-6">
-                    <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl p-8 border relative overflow-hidden shadow-sm`}>
-                      <div className="flex flex-col items-center text-center relative z-10">
-                        <div className="relative mb-6">
-                          {isRecording && <motion.div animate={{ scale: 1.6, opacity: 0.1 }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626] rounded-full blur-2xl pointer-events-none" />}
-                          <button 
-                            onClick={handleToggleRecording} 
-                            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? (theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white') : 'bg-[#DC2626] text-white'} hover:scale-105 active:scale-95`}
-                          >
-                            {isRecording ? <StopCircle size={32} /> : <Mic size={32} />}
-                          </button>
-                        </div>
-
-                        <h2 className="text-xl font-black tracking-tighter mb-1 uppercase text-white">{isRecording ? "Capture Active" : "Engine Idle"}</h2>
-                        <p className="font-mono text-4xl text-[#DC2626] font-bold mb-6 tracking-tight">{formatTime(recordingTime)}</p>
-
-                        {audioUrl && (
-                          <div className="w-full max-w-sm bg-white/5 p-4 rounded-2xl border border-white/10 mb-6">
-                            <p className="text-[10px] font-black text-white/30 uppercase mb-2">Recording Preview</p>
-                            <audio src={audioUrl} controls className="w-full h-8" />
+              {/* Home Feed */}
+              <div className="space-y-4">
+                <h2 className={`text-xl font-black uppercase tracking-tighter px-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Recent Activity</h2>
+                
+                {homeHistory.length === 0 ? (
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-12 rounded-3xl border shadow-sm text-center space-y-4`}>
+                    <div className="w-16 h-16 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
+                      <History size={32} className="text-[#DC2626]" />
+                    </div>
+                    <p className={`text-sm ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>No recent activity found. Start studying to see your history here!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 overflow-y-auto max-h-[60vh] no-scrollbar pb-4">
+                    {homeHistory.map((item) => (
+                      <div 
+                        key={item.id}
+                        onClick={() => {
+                          if (item.type === 'quiz') {
+                            setActiveTab('tools');
+                            setToolsSubTab('quiz');
+                          } else if (item.type === 'recording') {
+                            setActiveTab('tools');
+                            setToolsSubTab('record');
+                            const session = sessions.find(s => s.id === item.id);
+                            if (session) {
+                              setSelectedSession(session);
+                              setShowRecordSidebar(true);
+                            }
+                          }
+                        }}
+                        className={`group relative overflow-hidden rounded-2xl border transition-all cursor-pointer ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white border-slate-200 hover:bg-slate-50 shadow-sm'}`}
+                      >
+                        {/* Gradient Bar */}
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-red-600 to-yellow-500" />
+                        
+                        <div className="p-4 pl-6 flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'}`}>
+                              {item.type === 'quiz' ? <Zap size={20} className="text-yellow-500" /> : <Mic size={20} className="text-red-500" />}
+                            </div>
+                            <div>
+                              <p className={`text-xs font-black uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title}</p>
+                              <div className="flex flex-col gap-1 mt-1">
+                                <p className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} uppercase`}>
+                                  {item.type === 'quiz' ? `Unfinished Quiz \u{2022} ${item.progress ?? 0}% Complete` : `Unanalyzed Recording \u{2022} ${item.date || 'No Date'}`}
+                                </p>
+                                {item.type === 'quiz' && item.progress !== undefined && (
+                                  <div className="h-1 w-32 bg-white/5 rounded-full overflow-hidden">
+                                    <motion.div 
+                                      initial={{ width: 0 }} 
+                                      animate={{ width: `${item.progress}%` }} 
+                                      className="h-full bg-gradient-to-r from-red-600 to-yellow-500" 
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        )}
-
-                        <div className="flex gap-2 w-full max-w-xs">
-                          {audioUrl && (
-                            <a 
-                              href={audioUrl} 
-                              download="NSG_Lecture.mp3" 
-                              className={`flex-1 flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/10 text-white border-white/10' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} px-4 py-3 rounded-2xl text-xs font-bold transition-all border`}
-                            >
-                              <Download size={16} /> Download
-                            </a>
-                          )}
-                          <button onClick={triggerFullAnalysis} disabled={isAnalyzing || !recordedBlob} className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white px-4 py-3 rounded-2xl text-xs font-bold border border-[#DC2626]/30 transition-all disabled:opacity-50">
-                            <Sparkles size={16} /> Analyze
-                          </button>
+                          <ChevronRight size={18} className="text-white/20 group-hover:text-[#DC2626] transition-all" />
                         </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* TOOLS & STUDY TAB */}
+          {activeTab === 'tools' && (
+            <motion.div key="tools" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
+              {toolsSubTab === 'menu' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between px-2">
+                    <h2 className="text-xl font-black uppercase tracking-tighter text-white">Tools & Study</h2>
+                    <Brain size={20} className="text-[#DC2626]" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {[
+                      { id: 'record', title: 'Record Lecture', icon: Mic, color: 'from-red-600 to-red-400', desc: 'AI-Powered Recording' },
+                      { id: 'quiz', title: 'Smart Quiz', icon: Zap, color: 'from-yellow-500 to-amber-400', desc: 'Test Your Knowledge' },
+                      { id: 'exam', title: 'CBT Exam', icon: ShieldCheck, color: 'from-orange-600 to-orange-400', desc: 'Professional Testing' },
+                      { id: 'faculty', title: 'Faculty Specials', icon: GraduationCap, color: 'from-blue-600 to-indigo-400', desc: 'Department Specific' }
+                    ].map((tool) => (
+                      <button 
+                        key={tool.id}
+                        onClick={() => setToolsSubTab(tool.id as any)}
+                        className={`flex flex-col items-start p-5 rounded-3xl border transition-all text-left group relative overflow-hidden ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
+                      >
+                        <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white mb-4 shadow-lg group-hover:scale-110 transition-transform`}>
+                          <tool.icon size={24} />
+                        </div>
+                        <h3 className={`font-black text-sm uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{tool.title}</h3>
+                        <p className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} uppercase`}>{tool.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {toolsSubTab !== 'menu' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <button 
+                      onClick={() => setToolsSubTab('menu')}
+                      className="flex items-center gap-2 text-[10px] font-black text-[#DC2626] uppercase tracking-widest hover:opacity-70 transition-all"
+                    >
+                      <ArrowLeft size={14} /> Back to Tools
+                    </button>
+                    <div className="flex items-center gap-2">
+                       <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">
+                        {toolsSubTab === 'record' && 'Recording Engine'}
+                        {toolsSubTab === 'quiz' && 'Quiz Engine'}
+                        {toolsSubTab === 'exam' && 'CBT Examination'}
+                        {toolsSubTab === 'faculty' && 'Faculty Specials'}
+                       </span>
                     </div>
-                    <AdUnit slot="7536999840" />
-                  </motion.div>
-                ) : (
-                  <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                    <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
-                      <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center">
-                            <Sparkles size={20} className="text-[#DC2626]" />
+                  </div>
+                  
+                  {toolsSubTab === 'record' && (
+                    <motion.div key="record" initial={{opacity:0, y: 10}} animate={{opacity:1, y: 0}} exit={{opacity: 0}} className="space-y-6 relative">
+                      {/* Sliding Record Sidebar */}
+                      <AnimatePresence>
+                        {showRecordSidebar && (
+                          <>
+                            <motion.div 
+                              initial={{ opacity: 0 }} 
+                              animate={{ opacity: 1 }} 
+                              exit={{ opacity: 0 }}
+                              onClick={() => setShowRecordSidebar(false)}
+                              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
+                            />
+                            <motion.div 
+                              initial={{ x: '-100%' }} 
+                              animate={{ x: 0 }} 
+                              exit={{ x: '-100%' }}
+                              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                              className={`fixed left-0 top-0 bottom-0 w-1/2 min-w-[280px] z-[70] border-r ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]' : 'border-slate-200 bg-white'} flex flex-col shadow-2xl`}
+                            >
+                              <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between`}>
+                                <button 
+                                  onClick={() => {
+                                    setShowAnalysisInRecord(false);
+                                    setSelectedSession(null);
+                                    setShowRecordSidebar(false);
+                                    setAudioUrl(null);
+                                    setRecordedBlob(null);
+                                    setUploadedImages([]);
+                                  }} 
+                                  className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626] text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all"
+                                >
+                                  <PlusCircle size={16} /> New Recording
+                                </button>
+                                <button onClick={() => setShowRecordSidebar(false)} className={`p-2 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} ml-2 hover:text-[#DC2626] transition-colors`}><XCircle size={20} /></button>
+                              </div>
+                              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/20' : 'text-slate-300'} uppercase tracking-widest px-3 py-2`}>Analysis History</p>
+                                {sessions.map(session => (
+                                  <div key={session.id} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${selectedSession?.id === session.id ? 'bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626]' : `hover:bg-white/5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}`}>
+                                    <div 
+                                      onClick={() => {
+                                        setSelectedSession(session);
+                                        setAnalysisResult(session.fullAnalysis);
+                                        setShowAnalysisInRecord(true);
+                                        setShowRecordSidebar(false);
+                                      }} 
+                                      className="flex items-center gap-2 overflow-hidden flex-1"
+                                    >
+                                      {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
+                                      <div className="flex flex-col overflow-hidden">
+                                        <span className="text-[10px] font-bold truncate">{session.title}</span>
+                                        <span className="text-[8px] opacity-60">{session.date} \u{2022} {session.duration}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 transition-opacity">
+                                      <button onClick={(e) => { e.stopPropagation(); togglePinLectureSession(session.id); }} className="p-1.5 hover:text-red-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" title="Pin Lecture">
+                                        <Pin size={12} className={session.isPinned ? 'fill-red-500 text-red-500' : 'text-slate-400'} />
+                                      </button>
+                                      <button onClick={(e) => { e.stopPropagation(); deleteLectureSession(session.id); }} className="p-1.5 hover:text-red-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" title="Delete Lecture">
+                                        <Trash2 size={12} className="text-slate-400" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                                <AdUnit slot="7536999840" />
+                              </div>
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="flex items-center justify-between mb-2">
+                        <button onClick={() => setShowRecordSidebar(true)} className={`p-2 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-xl ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'} hover:text-[#DC2626] transition-all flex items-center gap-2`}>
+                          <History size={18} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">History</span>
+                        </button>
+                      </div>
+
+                      <AnimatePresence mode="wait">
+                        {!showAnalysisInRecord ? (
+                          <motion.div key="recorder" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-6">
+                            <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl p-8 border relative overflow-hidden shadow-sm`}>
+                              <div className="flex flex-col items-center text-center relative z-10">
+                                <div className="relative mb-6">
+                                  {isRecording && <motion.div animate={{ scale: 1.6, opacity: 0.1 }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626] rounded-full blur-2xl pointer-events-none" />}
+                                  <button 
+                                    onClick={handleToggleRecording} 
+                                    className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-2xl ${isRecording ? (theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white') : 'bg-[#DC2626] text-white'} hover:scale-105 active:scale-95`}
+                                  >
+                                    {isRecording ? <StopCircle size={32} /> : <Mic size={32} />}
+                                  </button>
+                                </div>
+
+                                <h2 className="text-xl font-black tracking-tighter mb-1 uppercase text-white">{isRecording ? "Capture Active" : "Engine Idle"}</h2>
+                                <p className="font-mono text-4xl text-[#DC2626] font-bold mb-6 tracking-tight">{formatTime(recordingTime)}</p>
+
+                                {audioUrl && (
+                                  <div className="w-full max-w-sm bg-white/5 p-4 rounded-2xl border border-white/10 mb-6">
+                                    <p className="text-[10px] font-black text-white/30 uppercase mb-2">Recording Preview</p>
+                                    <audio src={audioUrl} controls className="w-full h-8" />
+                                  </div>
+                                )}
+
+                                <div className="flex gap-2 w-full max-w-xs">
+                                  {audioUrl && (
+                                    <a 
+                                      href={audioUrl} 
+                                      download="NSG_Lecture.mp3" 
+                                      className={`flex-1 flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/10 text-white border-white/10' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} px-4 py-3 rounded-2xl text-xs font-bold transition-all border`}
+                                    >
+                                      <Download size={16} /> Download
+                                    </a>
+                                  )}
+                                  <button onClick={triggerFullAnalysis} disabled={isAnalyzing || !recordedBlob} className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white px-4 py-3 rounded-2xl text-xs font-bold border border-[#DC2626]/30 transition-all disabled:opacity-50">
+                                    <Sparkles size={16} /> Analyze
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                            <AdUnit slot="7536999840" />
+                          </motion.div>
+                        ) : (
+                          <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                            <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
+                              <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center">
+                                    <Sparkles size={20} className="text-[#DC2626]" />
+                                  </div>
+                                  <div>
+                                    <h2 className="text-lg font-black text-white uppercase tracking-tighter">Omni Ai Analysis</h2>
+                                    <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
+                                      {selectedSession ? selectedSession.title : 'Deep Learning Insights'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => {
+                                      showConfirm(
+                                        "Delete Analysis",
+                                        "Are you sure you want to delete this analysis result?",
+                                        () => {
+                                          setAnalysisResult(null);
+                                          setShowAnalysisInRecord(false);
+                                        },
+                                        "Delete",
+                                        true
+                                      );
+                                    }}
+                                    className={`p-2 ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} rounded-xl hover:text-red-500 transition-all`}
+                                    title="Delete Analysis"
+                                  >
+                                    <Trash2 size={20} />
+                                  </button>
+                                  <button 
+                                    onClick={() => selectedSession && uploadHistoryToOmni(selectedSession)} 
+                                    className={`flex items-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70 border-white/10' : 'bg-zinc-100 text-zinc-600 border-zinc-200'} px-3 py-2 rounded-xl text-[10px] font-black hover:text-[#DC2626] transition-all border`}
+                                  >
+                                    <UserPlus size={14} /> UPLOAD TO OMNI
+                                  </button>
+                                  <button 
+                                    onClick={() => setShowAnalysisInRecord(false)} 
+                                    className={`p-2 ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} rounded-xl hover:text-[#DC2626] transition-all`}
+                                  >
+                                    <ArrowLeft size={20} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="bg-white/5 rounded-2xl p-6 overflow-y-auto max-h-[60vh] shadow-inner">
+                                <div className="markdown-body text-sm text-white leading-relaxed">
+                                  <MarkdownRenderer content={analysisResult} />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <button onClick={() => copyToClipboard(analysisResult)} className={`flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70' : 'bg-zinc-100 text-zinc-600'} py-4 rounded-2xl text-[10px] font-black hover:bg-zinc-200 transition-all`}>
+                                  <Copy size={16} /> COPY
+                                </button>
+                                <button onClick={() => shareAnalysis(analysisResult || '')} className={`flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70' : 'bg-zinc-100 text-zinc-600'} py-4 rounded-2xl text-[10px] font-black hover:bg-zinc-200 transition-all`}>
+                                  <Share2 size={16} /> SHARE
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    const newHistory: ChatMessage[] = [...chatHistory, { role: 'model', text: analysisResult, timestamp: new Date().toLocaleTimeString() }];
+                                    setChatHistory(newHistory);
+                                    setActiveTab('ai');
+                                  }} 
+                                  className="flex items-center justify-center gap-2 bg-[#DC2626] text-white py-4 rounded-2xl text-[10px] font-black hover:bg-[#DC2626]/90 transition-all shadow-lg shadow-[#DC2626]/20"
+                                >
+                                  <Brain size={16} /> CHAT
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  )}
+
+          {/* TOOLS SUB-SECTIONS CONTINUED */}
+          {toolsSubTab === 'quiz' && (
+            <motion.div key="quiz" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
+              <AdUnit slot="7536999840" />
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Quiz Engine</h2>
+                <Zap size={20} className="text-[#DC2626]" />
+              </div>
+
+              {quizState === 'idle' && (
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-6 shadow-sm`}>
+                  <div className="text-center space-y-2 mb-4">
+                    <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><Sparkles size={24} className="text-[#DC2626]" /></div>
+                    <h3 className="font-bold text-lg text-white">Generate Interactive Quiz</h3>
+                    <p className="text-xs text-white/40">Test your knowledge with AI-generated questions.</p>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    {!user ? (
+                      <div className="text-center space-y-4 py-6">
+                        <p className="text-sm text-white/60">You must be logged in to generate quizzes.</p>
+                        <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">
+                          LOGIN TO PROCEED
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Topic</p>
+                          <input type="text" value={quizTopic} onChange={(e) => setQuizTopic(e.target.value)} placeholder="e.g. Quantum Physics, EEE 101..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all text-white" />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Questions</p>
+                            <div className="flex flex-wrap gap-2">
+                              {[15, 25, 50, 100].map(count => (
+                                <button key={count} onClick={() => setQuizQuestionCount(count)} className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${quizQuestionCount === count ? 'bg-[#DC2626] border-[#DC2626] text-white' : 'bg-white/5 border-white/10 text-white/40'}`}>
+                                  {count}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                           <div>
-                            <h2 className="text-lg font-black text-white uppercase tracking-tighter">Omni Ai Analysis</h2>
-                            <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
-                              {selectedSession ? selectedSession.title : 'Deep Learning Insights'}
-                            </p>
+                            <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Difficulty</p>
+                            <div className="flex flex-wrap gap-2">
+                              {['Easy', 'Medium', 'Hard', 'Professional'].map(level => (
+                                <button key={level} onClick={() => setQuizDifficulty(level as any)} className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${quizDifficulty === level ? 'bg-[#DC2626] border-[#DC2626] text-white' : 'bg-white/5 border-white/10 text-white/40'}`}>
+                                  {level}
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => {
-                              showConfirm(
-                                "Delete Analysis",
-                                "Are you sure you want to delete this analysis result?",
-                                () => {
-                                  setAnalysisResult(null);
-                                  setShowAnalysisInRecord(false);
-                                },
-                                "Delete",
-                                true
-                              );
-                            }}
-                            className={`p-2 ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} rounded-xl hover:text-red-500 transition-all`}
-                            title="Delete Analysis"
-                          >
-                            <Trash2 size={20} />
-                          </button>
-                          <button 
-                            onClick={() => selectedSession && uploadHistoryToOmni(selectedSession)} 
-                            className={`flex items-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70 border-white/10' : 'bg-zinc-100 text-zinc-600 border-zinc-200'} px-3 py-2 rounded-xl text-[10px] font-black hover:text-[#DC2626] transition-all border`}
-                          >
-                            <UserPlus size={14} /> UPLOAD TO OMNI
-                          </button>
-                          <button 
-                            onClick={() => setShowAnalysisInRecord(false)} 
-                            className={`p-2 ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} rounded-xl hover:text-[#DC2626] transition-all`}
-                          >
-                            <ArrowLeft size={20} />
-                          </button>
-                        </div>
-                      </div>
+                      </>
+                    )}
+                  </div>
 
-                      <div className="bg-white/5 rounded-2xl p-6 overflow-y-auto max-h-[60vh] shadow-inner">
-                        <div className="markdown-body text-sm text-white leading-relaxed">
-                          <MarkdownRenderer content={analysisResult} />
-                        </div>
-                      </div>
+                  <button onClick={generateQuiz} disabled={isGeneratingQuiz} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    {isGeneratingQuiz ? <><RefreshCcw size={18} className="animate-spin" /> GENERATING...</> : <><Zap size={18} /> START ASSESSMENT</>}
+                  </button>
+                </div>
+              )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <button onClick={() => copyToClipboard(analysisResult)} className={`flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70' : 'bg-zinc-100 text-zinc-600'} py-4 rounded-2xl text-[10px] font-black hover:bg-zinc-200 transition-all`}>
-          <Copy size={16} /> COPY
-        </button>
-        <button onClick={() => shareAnalysis(analysisResult || '')} className={`flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/5 text-white/70' : 'bg-zinc-100 text-zinc-600'} py-4 rounded-2xl text-[10px] font-black hover:bg-zinc-200 transition-all`}>
-          <Share2 size={16} /> SHARE
-        </button>
-        <button 
-          onClick={() => {
-            const newHistory: ChatMessage[] = [...chatHistory, { role: 'model', text: analysisResult, timestamp: new Date().toLocaleTimeString() }];
-            setChatHistory(newHistory);
-            setActiveTab('ai');
-          }} 
-          className="flex items-center justify-center gap-2 bg-[#DC2626] text-white py-4 rounded-2xl text-[10px] font-black hover:bg-[#DC2626]/90 transition-all shadow-lg shadow-[#DC2626]/20"
-        >
-          <Brain size={16} /> CHAT
-        </button>
-      </div>
+              {quizState === 'active' && quizQuestions.length > 0 && (
+                <div className="space-y-6">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
+                    <button onClick={() => setQuizState('idle')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back</button>
+                    <div className="text-center"><p className="text-[10px] font-black text-white/30 uppercase">Progress</p><p className="text-sm font-black text-[#DC2626]">{currentQuestionIndex + 1} / {quizQuestions.length}</p></div>
+                    <div className="text-right"><p className="text-[10px] font-black text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
+                  </div>
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-8 shadow-sm`}>
+                    <MarkdownRenderer 
+                      content={quizQuestions[currentQuestionIndex].question}
+                      className="text-lg font-bold leading-tight text-white"
+                    />
+                    <div className="space-y-3">
+                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
+                        <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}>
+                          <div className="flex items-start gap-3">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20 text-white/40'}`}>
+                              {String.fromCharCode(65 + idx)}
+                            </div>
+                            <MarkdownRenderer 
+                              content={option}
+                              className="flex-1 text-sm font-medium"
+                            />
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    {isAnswered && (
+                      <button 
+                        onClick={nextQuestion} 
+                        className={`w-full ${theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white'} font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition-all`}
+                      >
+                        {currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"} <ChevronRight size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {quizState === 'finished' && (
+                <div className="bg-white dark:bg-[#0a0a0a] p-10 rounded-3xl border border-slate-200 dark:border-white/10 text-center space-y-8 shadow-sm">
+                  <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto relative">
+                    <Trophy size={48} className="text-red-500" />
+                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-red-500/5 rounded-full" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Assessment Complete</h3>
+                    <p className="text-slate-500 dark:text-white/40 text-sm mt-1">You've successfully finished the quiz.</p>
+                  </div>
+                  <div className="py-8 border-y border-slate-100 dark:border-white/5">
+                    <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-1">Your Score</p>
+                    <p className="text-6xl font-black text-red-500">{quizScore} / {quizQuestions.length || 1}</p>
+                    <p className="text-xs font-bold text-slate-400 dark:text-white/30 mt-2 uppercase tracking-widest">{Math.round((quizScore / (quizQuestions.length || 1)) * 100)}% Proficiency</p>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button onClick={shareQuiz} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2">
+                      <Share2 size={18} /> SHARE QUIZ LINK
+                    </button>
+                    <button onClick={handleShareResult} className="w-full bg-red-500 hover:bg-red-500/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-500/20 transition-all flex items-center justify-center gap-2">
+                      <Share2 size={18} /> SHARE SCORE CARD
+                    </button>
+                    <button onClick={() => setQuizState('review')} className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all flex items-center justify-center gap-2">
+                      <Search size={18} /> CHECK QUIZ RESULTS & EXPLANATIONS
+                    </button>
+                    <button onClick={() => setQuizState('idle')} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all">TRY ANOTHER TOPIC</button>
+                  </div>
+                </div>
+              )}
+
+              {quizState === 'review' && (
+                <div className="space-y-6">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
+                    <button onClick={() => setQuizState('finished')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back to Results</button>
+                    <h3 className="text-sm font-black text-white uppercase tracking-tighter">Detailed Review</h3>
+                    <div className="w-10"></div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {quizQuestions.map((q, qIdx) => {
+                      const userAns = userQuizAnswers[qIdx];
+                      const isCorrect = userAns === q.correctAnswer;
+                      
+                      return (
+                        <div key={qIdx} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-4 shadow-sm`}>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="text-[10px] font-black text-[#DC2626] uppercase mb-1">Question {qIdx + 1}</p>
+                              <MarkdownRenderer content={q.question} className="text-sm font-bold text-white leading-tight" />
+                            </div>
+                            <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${isCorrect ? 'bg-green-500/10 text-green-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
+                              {isCorrect ? 'Correct' : 'Incorrect'}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2">
+                            {q.options.map((opt, oIdx) => {
+                              const isUserChoice = userAns === oIdx;
+                              const isCorrectChoice = q.correctAnswer === oIdx;
+                              
+                              let borderClass = 'border-white/5 bg-white/5';
+                              let textClass = 'text-white/60';
+                              let label = '';
+                              
+                              if (isCorrectChoice) {
+                                borderClass = 'border-green-500/50 bg-green-500/10';
+                                textClass = 'text-green-500 font-bold';
+                                label = 'CORRECT ANSWER';
+                              } else if (isUserChoice && !isCorrect) {
+                                borderClass = 'border-[#DC2626]/50 bg-[#DC2626]/10';
+                                textClass = 'text-[#DC2626] font-bold';
+                                label = 'YOUR CHOICE';
+                              } else if (isUserChoice && isCorrect) {
+                                label = 'YOUR CHOICE (CORRECT)';
+                              }
+
+                              return (
+                                <div key={oIdx} className={`p-3 rounded-xl border text-xs flex items-center gap-3 ${borderClass} ${textClass}`}>
+                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${isCorrectChoice ? 'border-green-500 bg-green-500 text-white' : (isUserChoice ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20')}`}>
+                                    {String.fromCharCode(65 + oIdx)}
+                                  </div>
+                                  <div className="flex-1 flex flex-col">
+                                    <MarkdownRenderer content={opt} />
+                                    {label && <span className="text-[8px] font-black uppercase mt-1 opacity-60">{label}</span>}
+                                  </div>
+                                  {isCorrectChoice && <Check size={14} />}
+                                  {isUserChoice && !isCorrect && <X size={14} />}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {q.explanation && (
+                            <div className={`p-4 rounded-2xl ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'} border border-dashed border-white/10`}>
+                              <p className="text-[9px] font-black text-white/30 uppercase mb-2 flex items-center gap-1.5">
+                                <Info size={12} className="text-[#DC2626]" /> Explanation
+                              </p>
+                              <MarkdownRenderer content={q.explanation} className="text-xs text-white/70 leading-relaxed" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button onClick={() => setQuizState('idle')} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                    RETAKE OR TRY NEW TOPIC
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+                  {toolsSubTab === 'exam' && (
+
+            <motion.div key="exam" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xl font-black uppercase tracking-tighter text-white">CBT Examination</h2>
+                <ShieldCheck size={20} className="text-[#DC2626]" />
+              </div>
+
+              {examLobbyState === 'login' && (
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
+                  <div className="text-center space-y-2">
+                    <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><User size={24} className="text-[#DC2626]" /></div>
+                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Student Verification</h3>
+                    <p className={`text-xs ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>Enter your credentials to access the examination hall.</p>
+                  </div>
+                  {!showAdminLogin ? (
+                    <div className="space-y-4">
+                      {!user ? (
+                        <div className="text-center space-y-4 py-6">
+                          <p className={`text-sm ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'}`}>You must be logged in to access examinations.</p>
+                          <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">
+                            LOGIN TO PROCEED
+                          </button>
+                        </div>
+                      ) : studentName ? (
+                        <div className={`p-6 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-3xl border space-y-4 text-center`}>
+                          <div className="w-16 h-16 bg-[#DC2626] rounded-full flex items-center justify-center text-white font-black text-2xl mx-auto shadow-lg shadow-[#DC2626]/20">{studentName.charAt(0)}</div>
+                          <div>
+                            <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest`}>Authenticated Student</p>
+                            <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{studentName}</p>
+                            <p className="text-xs font-mono text-[#DC2626] font-bold">{matricNumber}</p>
+                          </div>
+                          
+                          {isTakingPaid ? (
+                            <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
+                              <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">PROCEED TO HALL</button>
+                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
+                            </div>
+                          ) : (
+                            <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
+                              <p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} leading-relaxed italic`}>This examination requires a one-time access fee of <span className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{"\u{20A6}100"}</span>. Please complete payment to proceed.</p>
+                              <button 
+                                onClick={() => {
+                                  if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
+                                    handleTakingPaymentSuccess({ reference: 'GOD_MODE_BYPASS' });
+                                  } else {
+                                    initializePayment({ onSuccess: handleTakingPaymentSuccess, onClose: handlePaystackClose });
+                                  }
+                                }} 
+                                className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
+                              >
+                                <CreditCard size={18} /> {"PAY \u{20A6}100 & PROCEED"}
+                              </button>
+                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Exam ID</p>
+                            <input type="text" value={examIdInput} onChange={(e) => setExamIdInput(e.target.value.toUpperCase())} placeholder="Enter 7-Character ID" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all font-mono`} />
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Matric Number</p>
+                            <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
+                          </div>
+                          <button onClick={handleMatricLogin} disabled={isAuthLoading} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                            {isAuthLoading ? <RefreshCcw size={18} className="animate-spin" /> : <Zap size={18} />} VERIFY & PROCEED
+                          </button>
+                          <button 
+                            onClick={() => setAdminMode(true)} 
+                            className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-3 rounded-2xl text-xs hover:bg-[#DC2626]/10 transition-all`}
+                          >
+                            {"HOST AN EXAM (\u{20A6}200)"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin PIN" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setShowAdminLogin(false)} 
+                          className={`flex-1 ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-4 rounded-2xl text-sm`}
+                        >
+                          BACK
+                        </button>
+                        <button onClick={handleAdminLogin} className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">LOGIN AS ADMIN</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {examLobbyState === 'briefing' && (
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
+                  <div className={`flex items-center gap-4 p-4 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-2xl border`}>
+                    <div className="w-12 h-12 bg-[#DC2626] rounded-full flex items-center justify-center text-white font-black text-xl">{studentName.charAt(0)}</div>
+                    <div><p className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'} uppercase tracking-tighter`}>{studentName}</p><p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} font-mono`}>{matricNumber}</p></div>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Examination Briefing</h3>
+                    <div className={`${theme === 'dark' ? 'bg-[#DC2626]/5 border-[#DC2626]/20' : 'bg-red-50 border-red-100'} p-4 rounded-2xl border space-y-3`}>
+                      <p className="text-xs text-[#DC2626] font-bold flex items-center gap-2"><XCircle size={14} /> WARNING: {studentName}, if you leave this app, you automatically forfeit the exam.</p>
+                      <p className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'} leading-relaxed`}>This is a professional CBT Mock Exam. You have {Math.floor(examConfig.duration / 60)} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
+                    </div>
+                  </div>
+                  <button onClick={startExam} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                    <Zap size={18} /> START EXAMINATION NOW
+                  </button>
+                </div>
+              )}
+
+              {examLobbyState === 'exam' && (
+                <div className="space-y-4 sm:space-y-6">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-3 sm:p-4 rounded-2xl border shadow-sm sticky top-16 sm:top-20 z-30`}>
+                    <div className="flex items-center gap-2 text-[#DC2626] font-black">
+                      <Clock size={16} className="sm:size-[18px]" />
+                      <span className="font-mono text-base sm:text-lg">{Math.floor(examTimer / 60)}:{(examTimer % 60).toString().padStart(2, '0')}</span>
+                    </div>
+                    <div className="text-center"><p className={`text-[8px] sm:text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase`}>Question</p><p className={`text-xs sm:text-sm font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentExamIndex + 1} / {examQuestions.length}</p></div>
+                    <button onClick={submitExam} disabled={Object.keys(examAnswers).length < (examQuestions.length * 0.5)} className="bg-[#DC2626] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[8px] sm:text-[10px] font-black uppercase tracking-widest disabled:opacity-30">Submit</button>
+                  </div>
+
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 sm:space-y-8 shadow-sm`}>
+                    <MarkdownRenderer 
+                      content={examQuestions[currentExamIndex].question}
+                      className={`text-base sm:text-lg font-bold leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+                    />
+                    <div className="space-y-3">
+                      {examQuestions[currentExamIndex].options.map((option, idx) => (
+                        <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/80' : 'bg-slate-50 border-slate-200 text-slate-700'}`}`}>
+                          <div className="flex items-start gap-3">
+                            <MarkdownRenderer 
+                              content={option}
+                              className="flex-1 text-sm font-medium"
+                            />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-between pt-4">
+                      <button onClick={() => setCurrentExamIndex(prev => Math.max(0, prev - 1))} disabled={currentExamIndex === 0} className={`p-3 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} hover:text-[#DC2626] disabled:opacity-20`}><ArrowLeft size={24} /></button>
+                      <button onClick={() => setCurrentExamIndex(prev => Math.min(examQuestions.length - 1, prev + 1))} disabled={currentExamIndex === examQuestions.length - 1} className={`p-3 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} hover:text-[#DC2626] disabled:opacity-20`}><ChevronRight size={24} /></button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {examLobbyState === 'result' && (
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-10 rounded-3xl border text-center space-y-6 shadow-sm`}>
+                  <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle2 size={48} className="text-[#DC2626]" />
+                  </div>
+                  <div>
+                    <h3 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Exam Submitted</h3>
+                    <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>Your results have been recorded in the system.</p>
+                  </div>
+                  <div className={`py-6 border-y ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+                    <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest mb-1`}>Final Score</p>
+                    <p className="text-5xl font-black text-[#DC2626]">{examScore} / {examQuestions.length}</p>
+                    <p className={`text-sm font-bold mt-2 ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{Math.round((examScore / (examQuestions.length || 1)) * 100)}% Proficiency</p>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button 
+                      onClick={() => setExamLobbyState('review')} 
+                      className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Search size={18} /> REVIEW EXAM & EXPLANATIONS
+                    </button>
+                    <button 
+                      onClick={() => setExamLobbyState('login')} 
+                      className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-slate-100 text-slate-600'} font-black py-4 rounded-2xl text-sm transition-all`}
+                    >
+                      LOGOUT
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {examLobbyState === 'review' && (
+                <div className="space-y-6">
+                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
+                    <button onClick={() => setExamLobbyState('result')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back to Results</button>
+                    <h3 className="text-sm font-black text-white uppercase tracking-tighter">Exam Review</h3>
+                    <div className="w-10"></div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {examQuestions.map((q, qIdx) => {
+                      const userAns = examAnswers[qIdx];
+                      const isCorrect = userAns === q.correctAnswer;
+                      
+                      return (
+                        <div key={qIdx} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-4 shadow-sm`}>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="text-[10px] font-black text-[#DC2626] uppercase mb-1">Question {qIdx + 1}</p>
+                              <MarkdownRenderer content={q.question} className="text-sm font-bold text-white leading-tight" />
+                            </div>
+                            <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${isCorrect ? 'bg-green-500/10 text-green-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
+                              {isCorrect ? 'Correct' : 'Incorrect'}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2">
+                            {q.options.map((opt, oIdx) => {
+                              const isUserChoice = userAns === oIdx;
+                              const isCorrectChoice = q.correctAnswer === oIdx;
+                              
+                              let borderClass = 'border-white/5 bg-white/5';
+                              let textClass = 'text-white/60';
+                              let label = '';
+                              
+                              if (isCorrectChoice) {
+                                borderClass = 'border-green-500/50 bg-green-500/10';
+                                textClass = 'text-green-500 font-bold';
+                                label = 'CORRECT ANSWER';
+                              } else if (isUserChoice && !isCorrect) {
+                                borderClass = 'border-[#DC2626]/50 bg-[#DC2626]/10';
+                                textClass = 'text-[#DC2626] font-bold';
+                                label = 'YOUR CHOICE';
+                              } else if (isUserChoice && isCorrect) {
+                                label = 'YOUR CHOICE (CORRECT)';
+                              }
+
+                              return (
+                                <div key={oIdx} className={`p-3 rounded-xl border text-xs flex items-center gap-3 ${borderClass} ${textClass}`}>
+                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${isCorrectChoice ? 'border-green-500 bg-green-500 text-white' : (isUserChoice ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20')}`}>
+                                    {String.fromCharCode(65 + oIdx)}
+                                  </div>
+                                  <div className="flex-1 flex flex-col">
+                                    <MarkdownRenderer content={opt} />
+                                    {label && <span className="text-[8px] font-black uppercase mt-1 opacity-60">{label}</span>}
+                                  </div>
+                                  {isCorrectChoice && <Check size={14} />}
+                                  {isUserChoice && !isCorrect && <X size={14} />}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {q.explanation && (
+                            <div className={`p-4 rounded-2xl ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'} border border-dashed border-white/10`}>
+                              <p className="text-[9px] font-black text-white/30 uppercase mb-2 flex items-center gap-1.5">
+                                <Info size={12} className="text-[#DC2626]" /> Explanation
+                              </p>
+                              <MarkdownRenderer content={q.explanation} className="text-xs text-white/70 leading-relaxed" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button onClick={() => setExamLobbyState('login')} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
+                    FINISH REVIEW & LOGOUT
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+                  {toolsSubTab === 'faculty' && (
+                    <div className="text-center py-20 space-y-4">
+                      <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
+                        <GraduationCap size={40} className="text-[#DC2626]" />
+                      </div>
+                      <h3 className="text-white font-black uppercase tracking-tighter text-xl">Faculty Specials</h3>
+                      <p className="text-white/40 text-xs max-w-xs mx-auto">This section is being tailored for your specific department. Stay tuned for specialized study tools.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -3647,625 +4366,72 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeTab === 'history' && (
-            <motion.div key="history" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-4 h-full flex flex-col">
-              <div className="flex items-center justify-between px-2 flex-shrink-0">
-                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Tools & Library</h2>
-                {selectedSession && <button onClick={() => setSelectedSession(null)} className="text-[#DC2626] text-xs font-bold flex items-center gap-1"><ArrowLeft size={14} /> Back</button>}
-              </div>
-
-              <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 mx-2 flex-shrink-0">
-                <button 
-                  onClick={() => setLibraryView('history')}
-                  className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${libraryView === 'history' ? 'bg-white/10 text-white' : 'text-white/40'}`}
-                >
-                  Lecture History
-                </button>
-                <button 
-                  onClick={() => setLibraryView('library')}
-                  className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${libraryView === 'library' ? 'bg-white/10 text-white' : 'text-white/40'}`}
-                >
-                  NSG AI Library
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-hidden">
-                {libraryView === 'library' ? (
-                  <AILibrary theme={theme as 'dark' | 'light'} setUserNotification={setUserNotification} />
-                ) : (
-                  <div className="space-y-4 h-full overflow-y-auto no-scrollbar pb-24 px-2">
-                    {/* Premium Status Widget */}
-                    <div className="bg-gradient-to-br from-yellow-500/20 to-transparent p-6 rounded-3xl border border-yellow-500/20 mb-6 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-yellow-500/10 rounded-2xl flex items-center justify-center">
-                          <Sparkles size={24} className="text-yellow-500" />
-                        </div>
-                        <div>
-                          <h3 className="font-black text-sm uppercase tracking-tight text-white">Premium Membership</h3>
-                          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                            {isPremium ? `Active \u{2022} ${premiumTimeLeft} Remaining` : "Inactive \u{2022} Upgrade for full access"}
-                          </p>
-                        </div>
-                      </div>
-                      {!isPremium ? (
-                        <button onClick={() => setShowPremiumModal(true)} className="bg-yellow-500 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20">Upgrade</button>
-                      ) : (
-                        <div className="bg-green-500/10 text-green-500 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-green-500/20">Active</div>
-                      )}
-                    </div>
-
-                    {!selectedSession ? (
-                      <div className="space-y-3">
-                        {sessions.length === 0 ? (
-                          <div className={`text-center py-20 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl border border-dashed`}>
-                            <History size={40} className={`mx-auto mb-4 ${theme === 'dark' ? 'text-white/10' : 'text-slate-200'}`} />
-                            <p className={`text-sm font-bold ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'}`}>No saved lectures found</p>
-                          </div>
-                        ) : (
-                          sessions.map(session => (
-                            <div key={session.id} className="w-full bg-white/5 p-4 rounded-2xl flex items-center justify-between border border-white/10 hover:border-[#DC2626]/30 transition-all group shadow-sm">
-                              <div onClick={() => setSelectedSession(session)} className="flex items-center gap-4 cursor-pointer flex-1">
-                                <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#DC2626]/10 transition-all">
-                                  {session.isPinned ? <Pin size={20} className="text-[#DC2626]" /> : <FileAudio size={20} className="text-white/20 group-hover:text-[#DC2626]" />}
-                                </div>
-                                <div><p className="font-bold text-sm text-white">{session.title}</p><p className="text-[10px] text-white/40 font-mono uppercase">{session.date} \u{2022} {session.duration}</p></div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button onClick={() => togglePinLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Pin Lecture">
-                                  <Pin size={16} className={session.isPinned ? 'fill-[#DC2626] text-[#DC2626]' : ''} />
-                                </button>
-                                <button onClick={() => deleteLectureSession(session.id)} className="p-2.5 bg-white/5 rounded-xl text-white/20 hover:text-[#DC2626] transition-all" title="Delete Lecture">
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    ) : (
-                      <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-6 shadow-sm`}>
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-lg font-bold text-white">{selectedSession.title}</h3>
-                          <button onClick={() => {
-                            setChatHistory([{ role: 'model', text: selectedSession.fullAnalysis, timestamp: new Date().toLocaleTimeString() }]);
-                            setActiveTab('ai');
-                            setSelectedSession(null);
-                          }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-[#DC2626]/20"><Brain size={14} /> Continue in Chat</button>
-                        </div>
-                        <div className="markdown-body text-sm leading-relaxed text-white/70">
-                          <MarkdownRenderer content={selectedSession.fullAnalysis} />
-                        </div>
-                      </motion.div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          {/* QUIZ TAB */}
-          {activeTab === 'quiz' && (
-            <motion.div key="quiz" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
-              <AdUnit slot="7536999840" />
+          {/* NOTIFICATIONS TAB */}
+          {activeTab === 'notifications' && (
+            <motion.div key="notifications" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
               <div className="flex items-center justify-between px-2">
-                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Quiz Engine</h2>
-                <Zap size={20} className="text-[#DC2626]" />
+                <h2 className="text-xl font-black uppercase tracking-tighter text-white">Notifications</h2>
+                <Bell size={20} className="text-[#DC2626]" />
               </div>
 
-              {quizState === 'idle' && (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-6 shadow-sm`}>
-                  <div className="text-center space-y-2 mb-4">
-                    <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><Sparkles size={24} className="text-[#DC2626]" /></div>
-                    <h3 className="font-bold text-lg text-white">Generate Interactive Quiz</h3>
-                    <p className="text-xs text-white/40">Test your knowledge with AI-generated questions.</p>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    {!user ? (
-                      <div className="text-center space-y-4 py-6">
-                        <p className="text-sm text-white/60">You must be logged in to generate quizzes.</p>
-                        <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">
-                          LOGIN TO PROCEED
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div>
-                          <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Topic</p>
-                          <input type="text" value={quizTopic} onChange={(e) => setQuizTopic(e.target.value)} placeholder="e.g. Quantum Physics, EEE 101..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all text-white" />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Questions</p>
-                            <div className="flex flex-wrap gap-2">
-                              {[15, 25, 50, 100].map(count => (
-                                <button key={count} onClick={() => setQuizQuestionCount(count)} className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${quizQuestionCount === count ? 'bg-[#DC2626] border-[#DC2626] text-white' : 'bg-white/5 border-white/10 text-white/40'}`}>
-                                  {count}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Difficulty</p>
-                            <div className="flex flex-wrap gap-2">
-                              {['Easy', 'Medium', 'Hard', 'Professional'].map(level => (
-                                <button key={level} onClick={() => setQuizDifficulty(level as any)} className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${quizDifficulty === level ? 'bg-[#DC2626] border-[#DC2626] text-white' : 'bg-white/5 border-white/10 text-white/40'}`}>
-                                  {level}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <button onClick={generateQuiz} disabled={isGeneratingQuiz} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-                    {isGeneratingQuiz ? <><RefreshCcw size={18} className="animate-spin" /> GENERATING...</> : <><Zap size={18} /> START ASSESSMENT</>}
-                  </button>
-                </div>
-              )}
-
-              {quizState === 'active' && quizQuestions.length > 0 && (
+              {selectedArticle ? (
                 <div className="space-y-6">
-                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
-                    <button onClick={() => setQuizState('idle')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back</button>
-                    <div className="text-center"><p className="text-[10px] font-black text-white/30 uppercase">Progress</p><p className="text-sm font-black text-[#DC2626]">{currentQuestionIndex + 1} / {quizQuestions.length}</p></div>
-                    <div className="text-right"><p className="text-[10px] font-black text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
-                  </div>
-                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-8 shadow-sm`}>
-                    <MarkdownRenderer 
-                      content={quizQuestions[currentQuestionIndex].question}
-                      className="text-lg font-bold leading-tight text-white"
-                    />
-                    <div className="space-y-3">
-                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
-                        <button key={idx} onClick={() => handleOptionSelect(idx)} disabled={isAnswered} className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}>
-                          <div className="flex items-start gap-3">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20 text-white/40'}`}>
-                              {String.fromCharCode(65 + idx)}
-                            </div>
-                            <MarkdownRenderer 
-                              content={option}
-                              className="flex-1 text-sm font-medium"
-                            />
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    {isAnswered && (
-                      <button 
-                        onClick={nextQuestion} 
-                        className={`w-full ${theme === 'dark' ? 'bg-white text-black' : 'bg-zinc-900 text-white'} font-black py-4 rounded-2xl text-sm flex items-center justify-center gap-2 transition-all`}
-                      >
-                        {currentQuestionIndex === quizQuestions.length - 1 ? "FINISH QUIZ" : "NEXT QUESTION"} <ChevronRight size={18} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {quizState === 'finished' && (
-                <div className="bg-white dark:bg-[#0a0a0a] p-10 rounded-3xl border border-slate-200 dark:border-white/10 text-center space-y-8 shadow-sm">
-                  <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto relative">
-                    <Trophy size={48} className="text-red-500" />
-                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-red-500/5 rounded-full" />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Assessment Complete</h3>
-                    <p className="text-slate-500 dark:text-white/40 text-sm mt-1">You've successfully finished the quiz.</p>
-                  </div>
-                  <div className="py-8 border-y border-slate-100 dark:border-white/5">
-                    <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-1">Your Score</p>
-                    <p className="text-6xl font-black text-red-500">{quizScore} / {quizQuestions.length || 1}</p>
-                    <p className="text-xs font-bold text-slate-400 dark:text-white/30 mt-2 uppercase tracking-widest">{Math.round((quizScore / (quizQuestions.length || 1)) * 100)}% Proficiency</p>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <button onClick={shareQuiz} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2">
-                      <Share2 size={18} /> SHARE QUIZ LINK
-                    </button>
-                    <button onClick={handleShareResult} className="w-full bg-red-500 hover:bg-red-500/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-red-500/20 transition-all flex items-center justify-center gap-2">
-                      <Share2 size={18} /> SHARE SCORE CARD
-                    </button>
-                    <button onClick={() => setQuizState('review')} className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all flex items-center justify-center gap-2">
-                      <Search size={18} /> CHECK QUIZ RESULTS & EXPLANATIONS
-                    </button>
-                    <button onClick={() => setQuizState('idle')} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all">TRY ANOTHER TOPIC</button>
-                  </div>
-                </div>
-              )}
-
-              {quizState === 'review' && (
-                <div className="space-y-6">
-                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
-                    <button onClick={() => setQuizState('finished')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back to Results</button>
-                    <h3 className="text-sm font-black text-white uppercase tracking-tighter">Detailed Review</h3>
-                    <div className="w-10"></div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {quizQuestions.map((q, qIdx) => {
-                      const userAns = userQuizAnswers[qIdx];
-                      const isCorrect = userAns === q.correctAnswer;
-                      
-                      return (
-                        <div key={qIdx} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-4 shadow-sm`}>
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <p className="text-[10px] font-black text-[#DC2626] uppercase mb-1">Question {qIdx + 1}</p>
-                              <MarkdownRenderer content={q.question} className="text-sm font-bold text-white leading-tight" />
-                            </div>
-                            <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${isCorrect ? 'bg-green-500/10 text-green-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
-                              {isCorrect ? 'Correct' : 'Incorrect'}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-2">
-                            {q.options.map((opt, oIdx) => {
-                              const isUserChoice = userAns === oIdx;
-                              const isCorrectChoice = q.correctAnswer === oIdx;
-                              
-                              let borderClass = 'border-white/5 bg-white/5';
-                              let textClass = 'text-white/60';
-                              let label = '';
-                              
-                              if (isCorrectChoice) {
-                                borderClass = 'border-green-500/50 bg-green-500/10';
-                                textClass = 'text-green-500 font-bold';
-                                label = 'CORRECT ANSWER';
-                              } else if (isUserChoice && !isCorrect) {
-                                borderClass = 'border-[#DC2626]/50 bg-[#DC2626]/10';
-                                textClass = 'text-[#DC2626] font-bold';
-                                label = 'YOUR CHOICE';
-                              } else if (isUserChoice && isCorrect) {
-                                label = 'YOUR CHOICE (CORRECT)';
-                              }
-
-                              return (
-                                <div key={oIdx} className={`p-3 rounded-xl border text-xs flex items-center gap-3 ${borderClass} ${textClass}`}>
-                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${isCorrectChoice ? 'border-green-500 bg-green-500 text-white' : (isUserChoice ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20')}`}>
-                                    {String.fromCharCode(65 + oIdx)}
-                                  </div>
-                                  <div className="flex-1 flex flex-col">
-                                    <MarkdownRenderer content={opt} />
-                                    {label && <span className="text-[8px] font-black uppercase mt-1 opacity-60">{label}</span>}
-                                  </div>
-                                  {isCorrectChoice && <Check size={14} />}
-                                  {isUserChoice && !isCorrect && <X size={14} />}
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {q.explanation && (
-                            <div className={`p-4 rounded-2xl ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'} border border-dashed border-white/10`}>
-                              <p className="text-[9px] font-black text-white/30 uppercase mb-2 flex items-center gap-1.5">
-                                <Info size={12} className="text-[#DC2626]" /> Explanation
-                              </p>
-                              <MarkdownRenderer content={q.explanation} className="text-xs text-white/70 leading-relaxed" />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <button onClick={() => setQuizState('idle')} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
-                    RETAKE OR TRY NEW TOPIC
+                  <button 
+                    onClick={() => setSelectedArticle(null)}
+                    className="flex items-center gap-2 text-[10px] font-black text-[#DC2626] uppercase tracking-widest hover:opacity-70 transition-all"
+                  >
+                    <ArrowLeft size={14} /> Back to List
                   </button>
-                </div>
-              )}
-            </motion.div>
-          )}
-
-
-          {/* EXAM TAB */}
-          {activeTab === 'exam' && (
-            <motion.div key="exam" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
-              <div className="flex items-center justify-between px-2">
-                <h2 className="text-xl font-black uppercase tracking-tighter text-white">CBT Examination</h2>
-                <ShieldCheck size={20} className="text-[#DC2626]" />
-              </div>
-
-              {examLobbyState === 'login' && (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
-                  <div className="text-center space-y-2">
-                    <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><User size={24} className="text-[#DC2626]" /></div>
-                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Student Verification</h3>
-                    <p className={`text-xs ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>Enter your credentials to access the examination hall.</p>
-                  </div>
-                  {!showAdminLogin ? (
-                    <div className="space-y-4">
-                      {!user ? (
-                        <div className="text-center space-y-4 py-6">
-                          <p className={`text-sm ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'}`}>You must be logged in to access examinations.</p>
-                          <button onClick={() => setShowAuthModal(true)} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">
-                            LOGIN TO PROCEED
-                          </button>
-                        </div>
-                      ) : studentName ? (
-                        <div className={`p-6 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-3xl border space-y-4 text-center`}>
-                          <div className="w-16 h-16 bg-[#DC2626] rounded-full flex items-center justify-center text-white font-black text-2xl mx-auto shadow-lg shadow-[#DC2626]/20">{studentName.charAt(0)}</div>
-                          <div>
-                            <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest`}>Authenticated Student</p>
-                            <p className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{studentName}</p>
-                            <p className="text-xs font-mono text-[#DC2626] font-bold">{matricNumber}</p>
-                          </div>
-                          
-                          {isTakingPaid ? (
-                            <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
-                              <button onClick={handleMatricLogin} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">PROCEED TO HALL</button>
-                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
-                            </div>
-                          ) : (
-                            <div className={`pt-4 space-y-3 border-t ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'}`}>
-                              <p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} leading-relaxed italic`}>This examination requires a one-time access fee of <span className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{"\u{20A6}100"}</span>. Please complete payment to proceed.</p>
-                              <button 
-                                onClick={() => {
-                                  if (currentUserData?.bypassTakingPayment || currentUserData?.bypassAllPayments) {
-                                    handleTakingPaymentSuccess({ reference: 'GOD_MODE_BYPASS' });
-                                  } else {
-                                    initializePayment({ onSuccess: handleTakingPaymentSuccess, onClose: handlePaystackClose });
-                                  }
-                                }} 
-                                className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
-                              >
-                                <CreditCard size={18} /> {"PAY \u{20A6}100 & PROCEED"}
-                              </button>
-                              <button onClick={() => { setStudentName(''); setMatricNumber(''); }} className={`w-full text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase hover:text-[#DC2626] transition-all`}>Not you? Switch Account</button>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Exam ID</p>
-                            <input type="text" value={examIdInput} onChange={(e) => setExamIdInput(e.target.value.toUpperCase())} placeholder="Enter 7-Character ID" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all font-mono`} />
-                          </div>
-                          <div className="space-y-2">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Matric Number</p>
-                            <input type="text" value={matricNumber} onChange={(e) => setMatricNumber(e.target.value)} placeholder="Enter Matric Number" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
-                          </div>
-                          <button onClick={handleMatricLogin} disabled={isAuthLoading} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
-                            {isAuthLoading ? <RefreshCcw size={18} className="animate-spin" /> : <Zap size={18} />} VERIFY & PROCEED
-                          </button>
-                          <button 
-                            onClick={() => setAdminMode(true)} 
-                            className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-3 rounded-2xl text-xs hover:bg-[#DC2626]/10 transition-all`}
-                          >
-                            {"HOST AN EXAM (\u{20A6}200)"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <input type="password" value={adminPin} onChange={(e) => setAdminPin(e.target.value)} placeholder="Admin PIN" className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'} border rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all`} />
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => setShowAdminLogin(false)} 
-                          className={`flex-1 ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-zinc-100 text-zinc-500'} font-bold py-4 rounded-2xl text-sm`}
-                        >
-                          BACK
-                        </button>
-                        <button onClick={handleAdminLogin} className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">LOGIN AS ADMIN</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {examLobbyState === 'briefing' && (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 shadow-sm`}>
-                  <div className={`flex items-center gap-4 p-4 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-2xl border`}>
-                    <div className="w-12 h-12 bg-[#DC2626] rounded-full flex items-center justify-center text-white font-black text-xl">{studentName.charAt(0)}</div>
-                    <div><p className={`font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'} uppercase tracking-tighter`}>{studentName}</p><p className={`text-[10px] ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} font-mono`}>{matricNumber}</p></div>
-                  </div>
-                  <div className="space-y-4">
-                    <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Examination Briefing</h3>
-                    <div className={`${theme === 'dark' ? 'bg-[#DC2626]/5 border-[#DC2626]/20' : 'bg-red-50 border-red-100'} p-4 rounded-2xl border space-y-3`}>
-                      <p className="text-xs text-[#DC2626] font-bold flex items-center gap-2"><XCircle size={14} /> WARNING: {studentName}, if you leave this app, you automatically forfeit the exam.</p>
-                      <p className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'} leading-relaxed`}>This is a professional CBT Mock Exam. You have {Math.floor(examConfig.duration / 60)} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
-                    </div>
-                  </div>
-                  <button onClick={startExam} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
-                    <Zap size={18} /> START EXAMINATION NOW
-                  </button>
-                </div>
-              )}
-
-              {examLobbyState === 'exam' && (
-                <div className="space-y-4 sm:space-y-6">
-                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-3 sm:p-4 rounded-2xl border shadow-sm sticky top-16 sm:top-20 z-30`}>
-                    <div className="flex items-center gap-2 text-[#DC2626] font-black">
-                      <Clock size={16} className="sm:size-[18px]" />
-                      <span className="font-mono text-base sm:text-lg">{Math.floor(examTimer / 60)}:{(examTimer % 60).toString().padStart(2, '0')}</span>
-                    </div>
-                    <div className="text-center"><p className={`text-[8px] sm:text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase`}>Question</p><p className={`text-xs sm:text-sm font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentExamIndex + 1} / {examQuestions.length}</p></div>
-                    <button onClick={submitExam} disabled={Object.keys(examAnswers).length < (examQuestions.length * 0.5)} className="bg-[#DC2626] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[8px] sm:text-[10px] font-black uppercase tracking-widest disabled:opacity-30">Submit</button>
-                  </div>
-
-                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 sm:space-y-8 shadow-sm`}>
-                    <MarkdownRenderer 
-                      content={examQuestions[currentExamIndex].question}
-                      className={`text-base sm:text-lg font-bold leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
-                    />
-                    <div className="space-y-3">
-                      {examQuestions[currentExamIndex].options.map((option, idx) => (
-                        <button key={idx} onClick={() => setExamAnswers({ ...examAnswers, [currentExamIndex]: idx })} className={`w-full text-left p-4 rounded-2xl border transition-all ${examAnswers[currentExamIndex] === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/80' : 'bg-slate-50 border-slate-200 text-slate-700'}`}`}>
-                          <div className="flex items-start gap-3">
-                            <MarkdownRenderer 
-                              content={option}
-                              className="flex-1 text-sm font-medium"
-                            />
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex justify-between pt-4">
-                      <button onClick={() => setCurrentExamIndex(prev => Math.max(0, prev - 1))} disabled={currentExamIndex === 0} className={`p-3 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} hover:text-[#DC2626] disabled:opacity-20`}><ArrowLeft size={24} /></button>
-                      <button onClick={() => setCurrentExamIndex(prev => Math.min(examQuestions.length - 1, prev + 1))} disabled={currentExamIndex === examQuestions.length - 1} className={`p-3 ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} hover:text-[#DC2626] disabled:opacity-20`}><ChevronRight size={24} /></button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {examLobbyState === 'result' && (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-10 rounded-3xl border text-center space-y-6 shadow-sm`}>
-                  <div className="w-20 h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle2 size={48} className="text-[#DC2626]" />
-                  </div>
-                  <div>
-                    <h3 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Exam Submitted</h3>
-                    <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>Your results have been recorded in the system.</p>
-                  </div>
-                  <div className={`py-6 border-y ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
-                    <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest mb-1`}>Final Score</p>
-                    <p className="text-5xl font-black text-[#DC2626]">{examScore} / {examQuestions.length}</p>
-                    <p className={`text-sm font-bold mt-2 ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{Math.round((examScore / (examQuestions.length || 1)) * 100)}% Proficiency</p>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <button 
-                      onClick={() => setExamLobbyState('review')} 
-                      className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 hover:bg-[#DC2626]/90 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Search size={18} /> REVIEW EXAM & EXPLANATIONS
-                    </button>
-                    <button 
-                      onClick={() => setExamLobbyState('login')} 
-                      className={`w-full ${theme === 'dark' ? 'bg-white/5 text-white/60' : 'bg-slate-100 text-slate-600'} font-black py-4 rounded-2xl text-sm transition-all`}
-                    >
-                      LOGOUT
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {examLobbyState === 'review' && (
-                <div className="space-y-6">
-                  <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
-                    <button onClick={() => setExamLobbyState('result')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back to Results</button>
-                    <h3 className="text-sm font-black text-white uppercase tracking-tighter">Exam Review</h3>
-                    <div className="w-10"></div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {examQuestions.map((q, qIdx) => {
-                      const userAns = examAnswers[qIdx];
-                      const isCorrect = userAns === q.correctAnswer;
-                      
-                      return (
-                        <div key={qIdx} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-6 rounded-3xl border space-y-4 shadow-sm`}>
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <p className="text-[10px] font-black text-[#DC2626] uppercase mb-1">Question {qIdx + 1}</p>
-                              <MarkdownRenderer content={q.question} className="text-sm font-bold text-white leading-tight" />
-                            </div>
-                            <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${isCorrect ? 'bg-green-500/10 text-green-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
-                              {isCorrect ? 'Correct' : 'Incorrect'}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-2">
-                            {q.options.map((opt, oIdx) => {
-                              const isUserChoice = userAns === oIdx;
-                              const isCorrectChoice = q.correctAnswer === oIdx;
-                              
-                              let borderClass = 'border-white/5 bg-white/5';
-                              let textClass = 'text-white/60';
-                              let label = '';
-                              
-                              if (isCorrectChoice) {
-                                borderClass = 'border-green-500/50 bg-green-500/10';
-                                textClass = 'text-green-500 font-bold';
-                                label = 'CORRECT ANSWER';
-                              } else if (isUserChoice && !isCorrect) {
-                                borderClass = 'border-[#DC2626]/50 bg-[#DC2626]/10';
-                                textClass = 'text-[#DC2626] font-bold';
-                                label = 'YOUR CHOICE';
-                              } else if (isUserChoice && isCorrect) {
-                                label = 'YOUR CHOICE (CORRECT)';
-                              }
-
-                              return (
-                                <div key={oIdx} className={`p-3 rounded-xl border text-xs flex items-center gap-3 ${borderClass} ${textClass}`}>
-                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${isCorrectChoice ? 'border-green-500 bg-green-500 text-white' : (isUserChoice ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20')}`}>
-                                    {String.fromCharCode(65 + oIdx)}
-                                  </div>
-                                  <div className="flex-1 flex flex-col">
-                                    <MarkdownRenderer content={opt} />
-                                    {label && <span className="text-[8px] font-black uppercase mt-1 opacity-60">{label}</span>}
-                                  </div>
-                                  {isCorrectChoice && <Check size={14} />}
-                                  {isUserChoice && !isCorrect && <X size={14} />}
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {q.explanation && (
-                            <div className={`p-4 rounded-2xl ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'} border border-dashed border-white/10`}>
-                              <p className="text-[9px] font-black text-white/30 uppercase mb-2 flex items-center gap-1.5">
-                                <Info size={12} className="text-[#DC2626]" /> Explanation
-                              </p>
-                              <MarkdownRenderer content={q.explanation} className="text-xs text-white/70 leading-relaxed" />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <button onClick={() => setExamLobbyState('login')} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
-                    FINISH REVIEW & LOGOUT
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* BLOG TAB */}
-          {activeTab === 'blog' && (
-            <motion.div key="blog" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-8 pb-20">
-              <AdUnit slot="7536999840" />
-              {blogPosts.length === 0 ? (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-12 rounded-3xl border shadow-sm text-center space-y-4`}>
-                  <div className="w-16 h-16 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
-                    <BookOpen size={32} className="text-[#DC2626]" />
-                  </div>
-                  <h2 className="text-xl font-black text-white uppercase tracking-tighter">No Articles Yet</h2>
-                  <p className="text-sm text-white/40">Check back later for updates from the NSG team.</p>
-                </div>
-              ) : (
-                blogPosts.map((post) => (
-                  <div key={post.id} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
+                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-[10px] font-black text-[#DC2626] uppercase tracking-widest">
                         <Calendar size={12} />
-                        {post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Just now'}
+                        {selectedArticle.timestamp?.toDate ? selectedArticle.timestamp.toDate().toLocaleDateString() : 'Just now'}
                       </div>
-                      <h2 className="text-2xl font-black text-white uppercase tracking-tighter leading-tight">{post.title}</h2>
+                      <h2 className="text-2xl font-black text-white uppercase tracking-tighter leading-tight">{selectedArticle.title}</h2>
                     </div>
                     <div className={`markdown-body text-sm leading-relaxed ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`}>
-                      <MarkdownRenderer content={post.content} />
-                    </div>
-
-                    {/* Reactions Section */}
-                    <div className="pt-4 border-t border-white/5 flex flex-wrap items-center gap-2">
-                      {['\u{1F525}', '\u{2764}\u{FE0F}', '\u{1F44F}', '\u{1F64C}', '\u{1F4A1}'].map(emoji => (
-                        <button 
-                          key={emoji}
-                          onClick={() => handleReaction(post.id, emoji)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}
-                        >
-                          <span>{emoji}</span>
-                          <span className="text-[10px] font-bold opacity-60">{post.reactions?.[emoji] || 0}</span>
-                        </button>
-                      ))}
+                      <MarkdownRenderer content={selectedArticle.content} />
                     </div>
                   </div>
-                ))
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {blogPosts.length === 0 ? (
+                    <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-12 rounded-3xl border shadow-sm text-center space-y-4`}>
+                      <div className="w-16 h-16 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
+                        <BookOpen size={32} className="text-[#DC2626]" />
+                      </div>
+                      <h2 className="text-xl font-black text-white uppercase tracking-tighter">No Articles Yet</h2>
+                      <p className="text-sm text-white/40">Check back later for updates from the NSG team.</p>
+                    </div>
+                  ) : (
+                    blogPosts.map((post) => (
+                      <div 
+                        key={post.id} 
+                        onClick={() => {
+                          setSelectedArticle(post);
+                          markArticleAsRead(post.id);
+                        }}
+                        className={`p-5 rounded-3xl border transition-all cursor-pointer relative overflow-hidden group ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
+                      >
+                        {!readArticles.includes(post.id) && (
+                          <div className="absolute top-4 right-4 w-2 h-2 bg-[#DC2626] rounded-full animate-pulse" />
+                        )}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-[8px] font-black text-[#DC2626] uppercase tracking-widest">
+                            <Calendar size={10} />
+                            {post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Just now'}
+                          </div>
+                          <h3 className="text-sm font-black text-white uppercase tracking-tight group-hover:text-[#DC2626] transition-colors">{post.title}</h3>
+                          <p className="text-[10px] text-white/40 line-clamp-2 leading-relaxed">
+                            {post.content.replace(/[#*`]/g, '').substring(0, 120)}...
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
             </motion.div>
           )}
@@ -4764,27 +4930,6 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* NAVIGATION */}
-      <nav className={`fixed bottom-0 left-0 right-0 ${theme === 'dark' ? 'bg-[#0A0F1C]/95 border-white/10' : 'bg-white/95 border-slate-200'} backdrop-blur-xl border-t z-50 shadow-2xl`}>
-        <div className="flex items-center justify-around py-1 sm:py-2 max-w-2xl mx-auto px-2">
-          {[
-            { id: 'record', icon: Mic, label: 'Capture' },
-            { id: 'ai', icon: Brain, label: 'Omni AI' },
-            { id: 'history', icon: Database, label: 'Tools' },
-            { id: 'quiz', icon: Zap, label: 'Quiz' },
-            { id: 'exam', icon: ShieldCheck, label: 'Exam' },
-            { id: 'blog', icon: FileText, label: 'Blog' },
-            { id: 'profile', icon: User, label: 'Profile' }
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex flex-col items-center py-2 px-2 sm:px-4 transition-all relative ${activeTab === tab.id ? 'text-[#DC2626]' : 'text-white/30 hover:text-[#DC2626]'}`}>
-              {activeTab === tab.id && <motion.div layoutId="nav-active" className="absolute inset-0 bg-[#DC2626]/5 rounded-2xl -z-10" />}
-              <tab.icon size={18} className="sm:size-[22px]" strokeWidth={activeTab === tab.id ? 2.5 : 2} />
-              <span className="text-[7px] sm:text-[9px] font-black mt-1 uppercase tracking-tighter">{tab.label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
-
       {/* CUSTOM CONFIRM MODAL */}
       <AnimatePresence>
         {confirmModal.isOpen && (
@@ -5159,8 +5304,28 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* BOTTOM NAVIGATION */}
+      <div className={`fixed bottom-0 left-0 right-0 z-[100] ${theme === 'dark' ? 'bg-[#0A0F1C]/80 border-white/10' : 'bg-white/80 border-slate-200'} backdrop-blur-xl border-t px-6 py-3 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.1)]`}>
+        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'home' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+          <Home size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Home</span>
+        </button>
+        <button onClick={() => setActiveTab('ai')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'ai' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+          <MessageSquare size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Chat</span>
+        </button>
+        <button onClick={() => setActiveTab('tools')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tools' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+          <LayoutGrid size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Tools</span>
+        </button>
+        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'profile' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+          <User size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Profile</span>
+        </button>
+      </div>
+
       {/* FOOTER */}
-      <footer className="max-w-4xl mx-auto px-4 py-8 border-t border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-white/20">
+      <footer className="max-w-4xl mx-auto px-4 py-8 pb-32 border-t border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-white/20">
         {user?.email === "nuellkelechi@gmail.com" && (
           <button onClick={() => setShowGodMode(true)} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-colors flex items-center gap-1">
             <ShieldCheck size={12} /> GOD MODE
