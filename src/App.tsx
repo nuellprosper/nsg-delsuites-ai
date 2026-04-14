@@ -68,7 +68,7 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3-flash-preview";
+const MODEL_NAME = "gemini-3.1-flash-lite-preview"; // Updated to Gemini 3.1 as requested
 
 const formatAiError = (error: any) => {
   const message = error.message || "Unknown error";
@@ -245,7 +245,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       try {
         const aiInstance = getAiInstance();
         const session = await aiInstance.live.connect({
-          model: "gemini-3.1-flash-live-preview",
+          model: "gemini-3.1-flash-live-preview", // Updated to Gemini 3.1 Live
           config: {
             responseModalities: [Modality.AUDIO],
             systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, and academic.",
@@ -481,7 +481,7 @@ const MarkdownRenderer = ({ content, className = "" }: { content: string, classN
 interface HomeHistoryItem {
   id: string;
   title: string;
-  type: 'quiz' | 'recording';
+  type: 'quiz' | 'recording' | 'exam';
   progress?: number;
   date?: string;
   score?: number;
@@ -540,7 +540,7 @@ export default function App() {
   const [hostExamId, setHostExamId] = useState<string | null>(null);
 
   // --- \u{1F4F1} APP STATE ---
-  const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications' | 'exam'>('home');
   const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'quiz' | 'exam' | 'faculty'>('menu');
   const [readArticles, setReadArticles] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -898,6 +898,43 @@ export default function App() {
 
   // --- \u{1F4DA} PERSISTENCE ---
   const [sessions, setSessions] = useState<LectureSession[]>([]);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Offline Sync for Recordings
+  useEffect(() => {
+    if (isOnline && user) {
+      const syncOfflineRecordings = async () => {
+        const offlineData = localStorage.getItem('nsg_offline_recordings');
+        if (offlineData) {
+          const recordings = JSON.parse(offlineData);
+          if (recordings.length > 0) {
+            setUserNotification(`Syncing ${recordings.length} offline recordings...`);
+            for (const rec of recordings) {
+              try {
+                await addDoc(collection(db, 'users', user.uid, 'lectureSessions'), rec);
+              } catch (err) {
+                console.error("Sync Error:", err);
+              }
+            }
+            localStorage.setItem('nsg_offline_recordings', '[]');
+            setUserNotification("Offline recordings synced successfully!");
+          }
+        }
+      };
+      syncOfflineRecordings();
+    }
+  }, [isOnline, user]);
 
   const [selectedSession, setSelectedSession] = useState<LectureSession | null>(null);
 
@@ -1607,9 +1644,9 @@ export default function App() {
         Raw Text: ${adminQuestionsRaw}
       `;
       const aiInstance = getAiInstance();
-      const response = await aiInstance.models.generateContent({
+      const response = await (aiInstance as any).models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
         config: { responseMimeType: "application/json" }
       });
       const data = JSON.parse(response.text || "{}");
@@ -1687,7 +1724,7 @@ export default function App() {
         if (student) {
           setStudentName(student.name);
           
-          // Check for existing session
+          // Check for existing session in localStorage
           const session = localStorage.getItem(`nsg_exam_session_${targetExamId}_${student.matric}`);
           if (session) {
             const sessionData = JSON.parse(session);
@@ -1695,6 +1732,16 @@ export default function App() {
               setUserNotification("You have already completed this exam.");
               return;
             }
+          }
+
+          // Secondary check: Firestore results subcollection
+          const resultsSnap = await getDocs(collection(db, 'exams', targetExamId, 'results'));
+          const alreadyFinished = resultsSnap.docs.some(doc => doc.data().matric === student.matric);
+          if (alreadyFinished) {
+            setUserNotification("You have already completed this exam (Verified by Server).");
+            // Update local storage to match server state
+            localStorage.setItem(`nsg_exam_session_${targetExamId}_${student.matric}`, JSON.stringify({ status: 'completed' }));
+            return;
           }
 
           // Check payment status
@@ -1780,7 +1827,7 @@ export default function App() {
     addToFinishedHistory({
       id: `exam-${Date.now()}`,
       title: `Exam: ${examIdInput || 'CBT Exam'}`,
-      type: 'quiz',
+      type: 'exam',
       progress: 100,
       date: new Date().toLocaleDateString(),
       score: score,
@@ -2344,6 +2391,47 @@ export default function App() {
     setAnalysisResult(null);
     setShowAnalysisInRecord(false);
 
+    if (!isOnline) {
+      try {
+        const base64Images = await Promise.all(uploadedImages.map(async (img) => {
+          const part = await fileToGenerativePart(img.file);
+          return `data:${img.file.type};base64,${part.inlineData.data}`;
+        }));
+
+        let base64Audio = "";
+        if (recordedBlob) {
+          const part = await fileToGenerativePart(recordedBlob);
+          base64Audio = `data:${recordedBlob.type};base64,${part.inlineData.data}`;
+        }
+
+        const offlineSession = {
+          title: `Offline Lecture ${new Date().toLocaleTimeString()}`,
+          date: new Date().toLocaleDateString(),
+          duration: formatTime(recordingTime),
+          imageCount: uploadedImages.length,
+          summary: "Offline recording pending analysis...",
+          fullAnalysis: "This recording was captured offline. It will be analyzed once you are back online.",
+          images: base64Images,
+          audioBase64: base64Audio,
+          isOffline: true
+        };
+
+        const existing = JSON.parse(localStorage.getItem('nsg_offline_recordings') || '[]');
+        localStorage.setItem('nsg_offline_recordings', JSON.stringify([...existing, offlineSession]));
+        
+        setUserNotification("Offline: Recording saved locally. It will sync when you are online.");
+        setIsAnalyzing(false);
+        setRecordedBlob(null);
+        setUploadedImages([]);
+        return;
+      } catch (err) {
+        console.error("Offline Save Error:", err);
+        setUserNotification("Failed to save offline recording.");
+        setIsAnalyzing(false);
+        return;
+      }
+    }
+
     try {
       const parts: any[] = [];
 
@@ -2377,7 +2465,7 @@ export default function App() {
       ` });
 
       const aiInstance = getAiInstance();
-      const response = await aiInstance.models.generateContent({
+      const response = await (aiInstance as any).models.generateContent({
         model: MODEL_NAME,
         contents: [{ parts }]
       });
@@ -2422,12 +2510,15 @@ export default function App() {
     if (history.length < 2) return "New Chat Session";
     try {
       const prompt = `Based on this chat history, generate a very short (max 5 words) title for this conversation. Return ONLY the title text. Do not include quotes or any other text.\n\nHistory:\n${history.map(m => `${m.role}: ${m.text}`).join('\n')}`;
-      const aiInstance = getAiInstance();
-      const response = await aiInstance.models.generateContent({
-        model: MODEL_NAME,
-        contents: [{ parts: [{ text: prompt }] }]
+      const hfInstance = getHfInstance();
+      const response = await hfInstance.chatCompletion({
+        model: HF_MODELS.TEXT,
+        messages: [
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 20
       });
-      return response.text?.trim() || "New Chat Session";
+      return response.choices[0].message.content?.trim() || "New Chat Session";
     } catch (e) {
       return "New Chat Session";
     }
@@ -2539,14 +2630,14 @@ export default function App() {
           console.log("Starting voice transcription with model:", MODEL_NAME);
           const part = await fileToGenerativePart(blob);
           const aiInstance = getAiInstance();
-          const response = await aiInstance.models.generateContent({
+          const response = await (aiInstance as any).models.generateContent({
             model: MODEL_NAME,
-            contents: { 
+            contents: [{ 
               parts: [
                 part, 
                 { text: "Transcribe this audio exactly. If it's a question, just transcribe it. Return ONLY the transcription." }
               ] 
-            }
+            }]
           });
           
           const transcription = response.text;
@@ -2597,7 +2688,17 @@ export default function App() {
     }
 
     // Check for image generation request
-    const isImageRequest = chatMode === 'Creative' || textToSend.toLowerCase().includes("generate image") || textToSend.toLowerCase().includes("create image") || textToSend.toLowerCase().includes("draw");
+    const isImageRequest = (chatMode === 'Creative' && (
+      textToSend.toLowerCase().includes("generate") || 
+      textToSend.toLowerCase().includes("create") || 
+      textToSend.toLowerCase().includes("draw") || 
+      textToSend.toLowerCase().includes("image") ||
+      textToSend.toLowerCase().includes("picture") ||
+      textToSend.toLowerCase().includes("visual")
+    )) || 
+    textToSend.toLowerCase().includes("generate image") || 
+    textToSend.toLowerCase().includes("create image") || 
+    textToSend.toLowerCase().includes("draw an image");
     
     if (isImageRequest && !isPremium) {
       setShowPremiumModal(true);
@@ -2640,35 +2741,53 @@ export default function App() {
           responseText = "Failed to generate image. Please try again.";
         }
       } else {
-        const parts: any[] = [{ text: textToSend || "Analyze this content." }];
-        
+        if (!getHfKey()) {
+          setUserNotification("HuggingFace API Key is missing. Please set VITE_HUGGINGFACE_API_KEY in your environment.");
+          return;
+        }
+
+        const hfInstance = getHfInstance();
+        const hfModel = uploadedImages.length > 0 ? HF_MODELS.VISION : HF_MODELS.TEXT;
+
+        // Prepare messages for HF
+        const messages: any[] = chatHistory.map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.text
+        }));
+
         if (uploadedImages.length > 0) {
           // Upload all images to Cloudinary and get URLs for history persistence
           const cloudinaryUrls = await Promise.all(
             uploadedImages.map(img => uploadToCloudinary(img.file))
           );
           
-          // For Gemini API, we still need the parts
-          const imageParts = await Promise.all(
-            uploadedImages.map(img => fileToGenerativePart(img.file))
-          );
-          imageParts.forEach(p => parts.push(p));
-
-          // Store the first image URL in the message for history (simplified)
+          // Store the first image URL in the message for history
           if (cloudinaryUrls.length > 0) {
             newHistory[newHistory.length - 1].image = cloudinaryUrls[0];
           }
+
+          const contentParts: any[] = [{ type: 'text', text: textToSend || "Analyze this image" }];
+          for (const img of uploadedImages) {
+            const part = await fileToGenerativePart(img.file);
+            contentParts.push({
+              type: 'image_url',
+              image_url: { url: `data:${img.file.type};base64,${part.inlineData.data}` }
+            });
+          }
+          messages.push({ role: 'user', content: contentParts });
+        } else {
+          messages.push({ role: 'user', content: textToSend || "Hello" });
         }
 
-        const aiInstance = getAiInstance();
-        const response = await aiInstance.models.generateContent({
-          model: MODEL_NAME,
-          contents: [{ role: 'user', parts }],
-          config: {
-            systemInstruction: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. NEVER use other delimiters like \\( \\) or [ ]. NEVER wrap LaTeX in code blocks. Ensure all backslashes are preserved."
-          }
+        const response = await hfInstance.chatCompletion({
+          model: hfModel,
+          messages: [
+            { role: "system", content: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. NEVER use other delimiters like \\( \\) or [ ]. NEVER wrap LaTeX in code blocks. Ensure all backslashes are preserved." },
+            ...messages
+          ],
+          max_tokens: 1000
         });
-        responseText = response.text || "I'm sorry, I couldn't generate a response.";
+        responseText = response.choices[0].message.content || "I'm sorry, I couldn't generate a response.";
       }
 
       const updatedHistory: ChatMessage[] = [...newHistory, { 
@@ -2799,7 +2918,7 @@ export default function App() {
       `;
 
       const aiInstance = getAiInstance();
-      const response = await aiInstance.models.generateContent({
+      const response = await (aiInstance as any).models.generateContent({
         model: MODEL_NAME,
         contents: [{ parts: [{ text: prompt }] }],
         config: {
@@ -2857,9 +2976,10 @@ export default function App() {
   };
 
   const handleOptionSelect = (index: number) => {
+    if (quizState === 'finished') return;
     setSelectedOption(index);
     
-    // Store user answer (but don't lock yet)
+    // Store user answer
     setUserQuizAnswers(prev => {
       const newAnswers = [...prev];
       newAnswers[currentQuestionIndex] = index;
@@ -2867,21 +2987,19 @@ export default function App() {
     });
   };
 
-  const submitAnswer = () => {
-    if (selectedOption === null) return;
-    setIsAnswered(true);
-    
-    if (selectedOption === quizQuestions[currentQuestionIndex].correctAnswer) {
-      setQuizScore(prev => prev + 1);
-    }
-  };
-
   const nextQuestion = () => {
     if (currentQuestionIndex < quizQuestions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-      setSelectedOption(null);
-      setIsAnswered(false);
+      const nextIdx = currentQuestionIndex + 1;
+      setCurrentQuestionIndex(nextIdx);
+      setSelectedOption(userQuizAnswers[nextIdx] !== undefined ? userQuizAnswers[nextIdx] : null);
     } else {
+      // Calculate final score
+      let finalScore = 0;
+      quizQuestions.forEach((q, idx) => {
+        if (userQuizAnswers[idx] === q.correctAnswer) finalScore++;
+      });
+      
+      setQuizScore(finalScore);
       setQuizState('finished');
       addToFinishedHistory({
         id: `quiz-${Date.now()}`,
@@ -2889,9 +3007,17 @@ export default function App() {
         type: 'quiz',
         progress: 100,
         date: new Date().toLocaleDateString(),
-        score: quizScore,
+        score: finalScore,
         total: quizQuestions.length
       });
+    }
+  };
+
+  const prevQuestion = () => {
+    if (currentQuestionIndex > 0) {
+      const prevIdx = currentQuestionIndex - 1;
+      setCurrentQuestionIndex(prevIdx);
+      setSelectedOption(userQuizAnswers[prevIdx] !== undefined ? userQuizAnswers[prevIdx] : null);
     }
   };
 
@@ -3190,6 +3316,17 @@ export default function App() {
           {/* HOME TAB */}
           {activeTab === 'home' && (
             <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
+              {!isOnline && (
+                <div className="bg-[#DC2626]/10 border border-[#DC2626]/20 p-3 rounded-2xl flex items-center gap-3 mx-2">
+                  <div className="w-8 h-8 bg-[#DC2626] rounded-full flex items-center justify-center text-white">
+                    <AlertCircle size={16} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-white uppercase tracking-tight">Offline Mode Active</p>
+                    <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">You can still record lectures. They will sync when online.</p>
+                  </div>
+                </div>
+              )}
               {/* Home Header with Bell and Premium */}
               <div className="flex items-center justify-between px-2 mb-4">
                 <div className="flex items-center gap-3">
@@ -3197,37 +3334,37 @@ export default function App() {
                   <h2 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Home</h2>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   {!isPremium && (
                     <button 
                       onClick={() => setShowPremiumModal(true)}
-                      className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-3 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 flex items-center gap-1 hover:scale-105 transition-all"
+                      className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[7px] sm:text-[8px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 flex items-center gap-1 hover:scale-105 transition-all"
                     >
-                      <Sparkles size={12} /> PREMIUM
+                      <Sparkles size={10} className="sm:size-[12px]" /> <span className="hidden xs:inline">PREMIUM</span>
                     </button>
                   )}
                   <button 
                     onClick={() => setActiveTab('notifications')}
-                    className={`p-2 rounded-xl border transition-all relative ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
+                    className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all relative ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
                   >
-                    <Bell size={18} />
+                    <Bell size={16} className="sm:size-[18px]" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-[#0A0F1C]">
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#DC2626] text-white text-[7px] font-black rounded-full flex items-center justify-center border-2 border-[#0A0F1C]">
                         {unreadCount}
                       </span>
                     )}
                   </button>
-                  <div className="flex items-center gap-2 ml-2">
-                    <div className="text-right hidden xs:block">
+                  <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
+                    <div className="text-right hidden sm:block">
                       <p className={`text-[9px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentUserData?.displayName?.split(' ')[0] || 'Student'}</p>
                       <p className={`text-[7px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
                     </div>
-                    <button onClick={() => setActiveTab('profile')} className="w-9 h-9 rounded-full border-2 border-[#DC2626] overflow-hidden bg-white/5 shadow-lg">
+                    <button onClick={() => setActiveTab('profile')} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-[#DC2626] overflow-hidden bg-white/5 shadow-lg flex-shrink-0">
                       {currentUserData?.photoURL ? (
                         <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-white/20">
-                          <User size={18} />
+                          <User size={16} />
                         </div>
                       )}
                     </button>
@@ -3255,6 +3392,17 @@ export default function App() {
                           if (item.type === 'quiz') {
                             setActiveTab('tools');
                             setToolsSubTab('quiz');
+                            if (item.score !== undefined) {
+                              setQuizState('finished');
+                              setQuizScore(item.score);
+                            }
+                          } else if (item.type === 'exam') {
+                            setActiveTab('tools');
+                            setToolsSubTab('exam');
+                            if (item.score !== undefined) {
+                              setExamLobbyState('result');
+                              setExamScore(item.score);
+                            }
                           } else if (item.type === 'recording') {
                             setActiveTab('tools');
                             setToolsSubTab('record');
@@ -3273,19 +3421,19 @@ export default function App() {
                         <div className="p-4 pl-6 flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'}`}>
-                              {item.type === 'quiz' ? <Zap size={20} className="text-yellow-500" /> : <Mic size={20} className="text-red-500" />}
+                              {item.type === 'quiz' ? <Zap size={20} className="text-yellow-500" /> : item.type === 'exam' ? <FileText size={20} className="text-[#DC2626]" /> : <Mic size={20} className="text-red-500" />}
                             </div>
                             <div>
                               <p className={`text-xs font-black uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title}</p>
                               <div className="flex flex-col gap-1 mt-1">
                                 <p className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} uppercase`}>
-                                  {item.type === 'quiz' 
+                                  {item.type === 'quiz' || item.type === 'exam'
                                     ? (item.score !== undefined 
                                         ? `Score: ${item.score}/${item.total} \u{2022} ${item.date}` 
                                         : `Unfinished \u{2022} ${item.progress ?? 0}% Complete`)
                                     : `Unanalyzed Recording \u{2022} ${item.date || 'No Date'}`}
                                 </p>
-                                {item.type === 'quiz' && item.progress !== undefined && (
+                                {(item.type === 'quiz' || item.type === 'exam') && item.progress !== undefined && (
                                   <div className="h-1 w-32 bg-white/5 rounded-full overflow-hidden">
                                     <motion.div 
                                       initial={{ width: 0 }} 
@@ -3632,6 +3780,29 @@ export default function App() {
                     <div className="text-center"><p className="text-[10px] font-black text-white/30 uppercase">Progress</p><p className="text-sm font-black text-[#DC2626]">{currentQuestionIndex + 1} / {quizQuestions.length}</p></div>
                     <div className="text-right"><p className="text-[10px] font-black text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
                   </div>
+
+                  {/* Quiz Question Navigation */}
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    {quizQuestions.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setCurrentQuestionIndex(idx);
+                          setSelectedOption(userQuizAnswers[idx] !== undefined ? userQuizAnswers[idx] : null);
+                          setIsAnswered(userQuizAnswers[idx] !== undefined);
+                        }}
+                        className={`flex-shrink-0 w-8 h-8 rounded-lg text-[10px] font-black border transition-all ${
+                          currentQuestionIndex === idx 
+                            ? 'bg-[#DC2626] border-[#DC2626] text-white' 
+                            : userQuizAnswers[idx] !== undefined 
+                              ? 'bg-green-500/20 border-green-500/30 text-green-500' 
+                              : 'bg-white/5 border-white/10 text-white/40'
+                        }`}
+                      >
+                        {idx + 1}
+                      </button>
+                    ))}
+                  </div>
                   <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-8 shadow-sm`}>
                     <MarkdownRenderer 
                       content={quizQuestions[currentQuestionIndex].question}
@@ -3659,42 +3830,41 @@ export default function App() {
                       ))}
                     </div>
 
-                    <div className="pt-4">
-                      {!isAnswered ? (
+                    <div className="pt-4 flex gap-3">
+                      {currentQuestionIndex > 0 && (
                         <button 
-                          onClick={submitAnswer}
-                          disabled={selectedOption === null}
-                          className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest"
+                          onClick={prevQuestion}
+                          className={`flex-1 ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100 border-slate-200 text-slate-700'} font-black py-4 rounded-2xl text-sm border transition-all flex items-center justify-center gap-2 uppercase tracking-widest`}
                         >
-                          Submit Answer
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={nextQuestion}
-                          className="w-full bg-green-600 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-green-600/20 transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
-                        >
-                          {currentQuestionIndex < quizQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'} <ChevronRight size={18} />
+                          <ChevronRight size={18} className="rotate-180" /> Back
                         </button>
                       )}
+                      <button 
+                        onClick={nextQuestion}
+                        disabled={selectedOption === null}
+                        className="flex-[2] bg-[#DC2626] text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2 uppercase tracking-widest disabled:opacity-50"
+                      >
+                        {currentQuestionIndex < quizQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'} <ChevronRight size={18} />
+                      </button>
                     </div>
                   </div>
                 </div>
               )}
 
               {quizState === 'finished' && (
-                <div className="bg-white dark:bg-[#0a0a0a] p-10 rounded-3xl border border-slate-200 dark:border-white/10 text-center space-y-8 shadow-sm">
-                  <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto relative">
-                    <Trophy size={48} className="text-red-500" />
-                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-red-500/5 rounded-full" />
+                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-10 rounded-3xl border text-center space-y-8 shadow-sm`}>
+                  <div className="w-24 h-24 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto relative">
+                    <Trophy size={48} className="text-[#DC2626]" />
+                    <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626]/5 rounded-full" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Assessment Complete</h3>
-                    <p className="text-slate-500 dark:text-white/40 text-sm mt-1">You've successfully finished the quiz.</p>
+                    <h3 className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'} uppercase tracking-tighter`}>Assessment Complete</h3>
+                    <p className={`${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} text-sm mt-1`}>You've successfully finished the quiz.</p>
                   </div>
-                  <div className="py-8 border-y border-slate-100 dark:border-white/5">
-                    <p className="text-[10px] font-black text-slate-400 dark:text-white/30 uppercase tracking-widest mb-1">Your Score</p>
-                    <p className="text-6xl font-black text-red-500">{quizScore} / {quizQuestions.length || 1}</p>
-                    <p className="text-xs font-bold text-slate-400 dark:text-white/30 mt-2 uppercase tracking-widest">{Math.round((quizScore / (quizQuestions.length || 1)) * 100)}% Proficiency</p>
+                  <div className={`py-8 border-y ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+                    <p className={`text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-widest mb-1`}>Your Score</p>
+                    <p className="text-6xl font-black text-[#DC2626]">{quizScore} / {quizQuestions.length || 1}</p>
+                    <p className={`text-xs font-bold ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} mt-2 uppercase tracking-widest`}>{Math.round((quizScore / (quizQuestions.length || 1)) * 100)}% Proficiency</p>
                   </div>
                   <div className="flex flex-col gap-3">
                     <button onClick={shareQuiz} className="w-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white/60 font-bold py-4 rounded-2xl text-sm hover:bg-slate-200 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2">
@@ -3917,6 +4087,25 @@ export default function App() {
                     </div>
                     <div className="text-center"><p className={`text-[8px] sm:text-[10px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase`}>Question</p><p className={`text-xs sm:text-sm font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentExamIndex + 1} / {examQuestions.length}</p></div>
                     <button onClick={submitExam} disabled={Object.keys(examAnswers).length < (examQuestions.length * 0.5)} className="bg-[#DC2626] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[8px] sm:text-[10px] font-black uppercase tracking-widest disabled:opacity-30">Submit</button>
+                  </div>
+
+                  {/* Exam Question Navigation */}
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    {examQuestions.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentExamIndex(idx)}
+                        className={`flex-shrink-0 w-8 h-8 rounded-lg text-[10px] font-black border transition-all ${
+                          currentExamIndex === idx 
+                            ? 'bg-[#DC2626] border-[#DC2626] text-white' 
+                            : examAnswers[idx] !== undefined 
+                              ? 'bg-green-500/20 border-green-500/30 text-green-500' 
+                              : 'bg-white/5 border-white/10 text-white/40'
+                        }`}
+                      >
+                        {idx + 1}
+                      </button>
+                    ))}
                   </div>
 
                   <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-5 sm:p-8 rounded-3xl border space-y-6 sm:space-y-8 shadow-sm`}>
@@ -4200,13 +4389,13 @@ export default function App() {
                           animate={{ opacity: 1, y: 0 }}
                           className="space-y-4"
                         >
-                          <div className="w-20 h-20 bg-[#DC2626]/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                            <Brain size={40} className="text-[#DC2626]" />
+                          <div className="w-16 h-16 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <Brain size={32} className="text-[#DC2626]" />
                           </div>
-                          <h2 className="text-4xl sm:text-6xl font-black text-white tracking-tighter leading-none">
+                          <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter leading-none">
                             Hi {currentUserData?.displayName?.split(' ')[0] || 'there'},
                           </h2>
-                          <h3 className="text-2xl sm:text-3xl font-black text-white/30 tracking-tighter uppercase">
+                          <h3 className="text-base sm:text-lg font-black text-white/30 tracking-tighter uppercase">
                             Where should we start?
                           </h3>
                         </motion.div>
@@ -4991,7 +5180,7 @@ export default function App() {
           )}
         </AnimatePresence>
         {/* FOOTER */}
-        <footer className="w-full px-4 py-8 pb-32 border-t border-white/10 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest text-white/20">
+        <footer className={`w-full px-4 py-8 pb-8 border-t ${theme === 'dark' ? 'border-white/5 bg-black/20' : 'border-slate-100 bg-slate-50/50'} flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'}`}>
           {user?.email === "nuellkelechi@gmail.com" && (
             <button onClick={() => setShowGodMode(true)} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-colors flex items-center gap-1">
               <ShieldCheck size={12} /> GOD MODE
