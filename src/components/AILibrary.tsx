@@ -67,6 +67,8 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
   });
 
   // AI Helpers
+  const MODEL_NAME = "gemini-3.1-flash-lite-preview";
+  
   const getAiInstance = () => {
     const key = import.meta.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
     if (!key) throw new Error("Gemini API Key is missing.");
@@ -216,13 +218,29 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     );
   };
 
-  const MarkdownRenderer = ({ content }: { content: string }) => (
-    <div className="prose prose-invert prose-xs max-w-none markdown-body">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
+  const MarkdownRenderer = ({ content }: { content: string }) => {
+    // Pre-process content to ensure LaTeX is correctly formatted for remark-math
+    const processedContent = (content || "")
+      .replace(/\\\\\(/g, '$')
+      .replace(/\\\\\)/g, '$')
+      .replace(/\\\\\[/g, '$$')
+      .replace(/\\\\\]/g, '$$')
+      .replace(/\\\( /g, '$ ')
+      .replace(/ \\\)/g, ' $')
+      .replace(/\\\[ /g, '$$ ')
+      .replace(/ \\\]/g, ' $$');
+
+    return (
+      <div className="prose prose-invert prose-xs max-w-none markdown-body">
+        <ReactMarkdown 
+          remarkPlugins={[remarkGfm, remarkMath]} 
+          rehypePlugins={[rehypeKatex]}
+        >
+          {processedContent}
+        </ReactMarkdown>
+      </div>
+    );
+  };
 
   // --- STEM ACTIONS ---
   const generateFormulas = async () => {
@@ -230,16 +248,22 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
-      const prompt = `Generate a list of 5 important formulas for the topic: ${stemTopic}. Return ONLY a JSON array of objects with keys: name, formula, desc. Use valid LaTeX for formulas. Return the raw LaTeX string for the 'formula' field WITHOUT any delimiters like $ or $$. Ensure backslashes are escaped for JSON (e.g. \\\\frac).`;
+      const prompt = `Generate a list of 5 important formulas for the topic: ${stemTopic}. 
+      Return ONLY a JSON array of objects with keys: name, formula, desc. 
+      Use valid LaTeX for formulas. Return the raw LaTeX string for the 'formula' field WITHOUT any delimiters like $ or $$. 
+      Ensure backslashes are properly escaped for JSON (e.g. use "\\\\frac" for \frac). 
+      DO NOT use any other formatting.`;
       const result = await (ai as any).models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [{ text: prompt }] }]
+        model: MODEL_NAME,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { responseMimeType: "application/json" }
       });
       const text = result.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setStemFormulas(JSON.parse(cleanedText));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to generate formulas"}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -252,12 +276,22 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const ai = getAiInstance();
       const parts = await Promise.all(stemFiles.map(fileToGenerativePart));
       const result = await (ai as any).models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [...parts, { text: "Analyze these files/images. Provide pinpoint direct errors and corrections in a modern, structured style. Use Markdown for formatting (bold, headings, lists). Use LaTeX for all mathematical notations (e.g., use $x^2$ for inline and $$E=mc^2$$ for blocks). Avoid conversational filler. Focus on math/science logic and accuracy." }] }]
+        model: MODEL_NAME,
+        contents: [{ parts: [...parts, { text: `
+          Analyze these files/images. Provide pinpoint direct errors and corrections in a modern, structured style. 
+          Use Markdown for formatting (bold, headings, lists). 
+          IMPORTANT: For ALL mathematical formulas or scientific notations, ALWAYS use LaTeX. 
+          Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
+          NEVER use other delimiters like \\( \\) or \\[ \\].
+          NEVER wrap LaTeX in code blocks.
+          Ensure all backslashes are preserved.
+          Focus on math/science logic and accuracy.
+        ` }] }]
       });
       setStemSolution(result.text || "");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to analyze problem"}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -271,14 +305,16 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const ai = getAiInstance();
       const prompt = `Find the meaning and legal context of the Latin word/phrase: ${lawLatinQuery}. Return ONLY a JSON array of objects with keys: word, meaning, context.`;
       const result = await (ai as any).models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [{ text: prompt }] }]
+        model: MODEL_NAME,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: { responseMimeType: "application/json" }
       });
       const text = result.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setLatinWords(JSON.parse(cleanedText));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to find meaning"}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -291,12 +327,13 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const ai = getAiInstance();
       const prompt = `Identify the relevant sections in the Nigerian Constitution for the following idea/issue: ${constitutionQuery}. Provide pinpoint direct references and summaries in a modern style using Markdown.`;
       const result = await (ai as any).models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: MODEL_NAME,
         contents: [{ parts: [{ text: prompt }] }]
       });
       setConstitutionResult(result.text || "");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to find sections"}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -310,12 +347,21 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const ai = getAiInstance();
       const parts = await Promise.all(bizFiles.map(fileToGenerativePart));
       const result = await (ai as any).models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [...parts, { text: "Analyze these financial documents/images. Provide pinpoint direct errors, discrepancies, and corrections in a modern business style. Use Markdown for formatting. Identify exactly where money left or issues occurred. ALWAYS use LaTeX for any mathematical formulas or calculations. Use $ ... $ for inline and $$ ... $$ for blocks." }] }]
+        model: MODEL_NAME,
+        contents: [{ parts: [...parts, { text: `
+          Analyze these financial documents/images. Provide pinpoint direct errors, discrepancies, and corrections in a modern business style. 
+          Use Markdown for formatting. Identify exactly where money left or issues occurred. 
+          IMPORTANT: For ALL mathematical formulas or calculations, ALWAYS use LaTeX. 
+          Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
+          NEVER use other delimiters like \\( \\) or \\[ \\].
+          NEVER wrap LaTeX in code blocks.
+          Ensure all backslashes are preserved.
+        ` }] }]
       });
       setBizAnalysis(result.text || "");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to analyze data"}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -329,14 +375,23 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       const ai = getAiInstance();
       const parts = await Promise.all(socFiles.map(fileToGenerativePart));
       const result = await (ai as any).models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [{ parts: [...parts, { text: "Analyze these news drafts/images. Provide pinpoint direct journalistic errors and corrections in a modern style. Use Markdown. Return ONLY a JSON object with keys: heading, correction (the correction should be the full corrected text with markdown for emphasis). ALWAYS use LaTeX for any mathematical data or statistics mentioned. Use $ ... $ for inline and $$ ... $$ for blocks." }] }]
+        model: MODEL_NAME,
+        contents: [{ parts: [...parts, { text: `
+          Analyze these news drafts/images. Provide pinpoint direct journalistic errors and corrections in a modern style. 
+          Use Markdown. Return ONLY a JSON object with keys: heading, correction (the correction should be the full corrected text with markdown for emphasis). 
+          IMPORTANT: For ALL mathematical data or statistics mentioned, ALWAYS use LaTeX. 
+          Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
+          NEVER use other delimiters like \\( \\) or \\[ \\].
+          NEVER wrap LaTeX in code blocks.
+          Ensure all backslashes are preserved.
+        ` }] }]
       });
       const text = result.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setSocNewsResult(JSON.parse(cleanedText));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to process news"}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -505,12 +560,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
                       </button>
                       <h4 className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest">{f.name}</h4>
                       <div className="text-xs text-white font-bold overflow-x-auto no-scrollbar py-2">
-                        <ReactMarkdown 
-                          remarkPlugins={[remarkMath]} 
-                          rehypePlugins={[rehypeKatex]}
-                        >
-                          {`$$${f.formula}$$`}
-                        </ReactMarkdown>
+                        <MarkdownRenderer content={`$$${f.formula}$$`} />
                       </div>
                       <p className="text-[7px] text-white/40 uppercase leading-tight">{f.desc}</p>
                     </motion.div>
@@ -1024,8 +1074,9 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
                         const ai = getAiInstance();
                         const prompt = `Analyze this text for grammar mistakes. Provide pinpoint direct corrections in a modern style. Use Markdown for formatting. Return ONLY a JSON object with keys: original, corrected, errors (array of strings). Text: ${langInput}`;
                         const result = await (ai as any).models.generateContent({
-                          model: "gemini-3.1-flash-lite-preview",
-                          contents: [{ parts: [{ text: prompt }] }]
+                          model: MODEL_NAME,
+                          contents: [{ parts: [{ text: prompt }] }],
+                          config: { responseMimeType: "application/json" }
                         });
                         const text = result.text || "";
                         const cleanedText = text.replace(/```json|```/g, '').trim();
