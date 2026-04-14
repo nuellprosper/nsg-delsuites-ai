@@ -79,7 +79,7 @@ const formatAiError = (error: any) => {
 };
 
 const HF_MODELS = {
-  TEXT: "Qwen/Qwen2.5-72B-Instruct",
+  TEXT: "meta-llama/Llama-3.1-8B-Instruct",
   VISION: "meta-llama/Llama-3.2-11B-Vision-Instruct",
   IMAGE: "black-forest-labs/FLUX.1-schnell"
 };
@@ -2511,14 +2511,27 @@ export default function App() {
     try {
       const prompt = `Based on this chat history, generate a very short (max 5 words) title for this conversation. Return ONLY the title text. Do not include quotes or any other text.\n\nHistory:\n${history.map(m => `${m.role}: ${m.text}`).join('\n')}`;
       const hfInstance = getHfInstance();
-      const response = await hfInstance.chatCompletion({
-        model: HF_MODELS.TEXT,
-        messages: [
-          { role: "user", content: prompt }
-        ],
-        max_tokens: 20
-      });
-      return response.choices[0].message.content?.trim() || "New Chat Session";
+      
+      let retryCount = 0;
+      const maxRetries = 1;
+      
+      while (retryCount <= maxRetries) {
+        try {
+          const response = await hfInstance.chatCompletion({
+            model: HF_MODELS.TEXT,
+            messages: [
+              { role: "user", content: prompt }
+            ],
+            max_tokens: 20
+          });
+          return response.choices[0].message.content?.trim() || "New Chat Session";
+        } catch (err) {
+          retryCount++;
+          if (retryCount > maxRetries) throw err;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      return "New Chat Session";
     } catch (e) {
       return "New Chat Session";
     }
@@ -2779,15 +2792,45 @@ export default function App() {
           messages.push({ role: 'user', content: textToSend || "Hello" });
         }
 
-        const response = await hfInstance.chatCompletion({
-          model: hfModel,
-          messages: [
-            { role: "system", content: "You are Omni AI, a professional academic assistant. Provide clear, concise, and accurate information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. NEVER use other delimiters like \\( \\) or [ ]. NEVER wrap LaTeX in code blocks. Ensure all backslashes are preserved." },
-            ...messages
-          ],
-          max_tokens: 1000
-        });
-        responseText = response.choices[0].message.content || "I'm sorry, I couldn't generate a response.";
+        try {
+          // Simple retry logic for HF
+          let retryCount = 0;
+          const maxRetries = 2;
+          let lastError = null;
+
+          while (retryCount <= maxRetries) {
+            try {
+              const response = await hfInstance.chatCompletion({
+                model: hfModel,
+                messages: [
+                  { role: "system", content: "You are Omni AI, a professional academic assistant. Provide clear, concise, and academic information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. Ensure all backslashes are preserved." },
+                  ...messages
+                ],
+                max_tokens: 1000
+              });
+              responseText = response.choices[0].message.content || "I'm sorry, I couldn't generate a response.";
+              break;
+            } catch (err: any) {
+              lastError = err;
+              if (err.message?.includes("provider") || err.message?.includes("HTTP") || err.message?.includes("503")) {
+                retryCount++;
+                if (retryCount <= maxRetries) {
+                  console.warn(`HF retry ${retryCount}/${maxRetries} due to: ${err.message}`);
+                  await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential-ish backoff
+                  continue;
+                }
+              }
+              throw err;
+            }
+          }
+        } catch (hfError: any) {
+          console.error("HF Chat Error:", hfError);
+          if (hfError.message?.includes("provider") || hfError.message?.includes("HTTP") || hfError.message?.includes("503")) {
+            responseText = "The AI provider is currently overloaded or the model is unavailable. This is common with free-tier Hugging Face models. Please try again in a few moments.";
+          } else {
+            responseText = `AI Error: ${hfError.message || "Failed to generate response"}`;
+          }
+        }
       }
 
       const updatedHistory: ChatMessage[] = [...newHistory, { 
