@@ -67,35 +67,37 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        ((request.auth.token.email == "nuellkelechi@gmail.com" && request.auth.token.email_verified == true) ||
+        (request.auth.token.email == "nuellkelechi@gmail.com" ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
     function hasPremium() {
-      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       return isAuthenticated() && 
-        (userData.bypassAllPayments == true || 
-         (userData.premiumUntil != null && userData.premiumUntil > request.time) ||
-         isAdmin());
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.bypassAllPayments == true || 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.premiumUntil != null && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.premiumUntil > request.time) ||
+          isAdmin()));
     }
 
     function isValidUser(data) {
       return data.uid is string && 
              data.email is string && 
-             data.role in ['admin', 'student'] &&
-             data.status in ['active', 'deleted'] &&
+             (!('role' in data) || data.role in ['admin', 'student']) &&
+             (!('status' in data) || data.status in ['active', 'deleted']) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 2000)) &&
              (!('fullName' in data) || (data.fullName is string && data.fullName.size() < 100)) &&
-             (!('matricNumber' in data) || (data.matricNumber is string && data.matricNumber.size() < 50)) &&
-             (!('dob' in data) || (data.dob is string && data.dob.size() < 20));
+             (!('matricNumber' in data) || (data.matricNumber is string && data.matricNumber.size() < 100)) &&
+             (!('matric' in data) || (data.matric is string && data.matric.size() < 100)) &&
+             (!('dob' in data) || (data.dob is string && data.dob.size() < 50));
     }
 
     function isValidBlogPost(data) {
-      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
-             data.content is string && data.content.size() > 0 && data.content.size() < 50000 &&
-             (data.timestamp is timestamp || data.lastUpdated is timestamp);
+      return data.title is string && data.title.size() > 0 && data.title.size() < 500 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 100000 &&
+             (data.timestamp is timestamp || data.lastUpdated is timestamp || data.timestamp is string);
     }
 
     // ===============================================================
@@ -117,35 +119,32 @@ service cloud.firestore {
 
     match /users/{uid} {
       // Users can only read their own profile unless they are admin
-      // We also check for email verification if required by the user
       allow read: if isAuthenticated() && (isOwner(uid) || isAdmin());
       
-      // Only the user can create their own profile
-      allow create: if isAuthenticated() && isOwner(uid) && isValidUser(request.resource.data);
+      // Only the user or admin can create/update the profile
+      allow create: if isAuthenticated() && (isOwner(uid) || isAdmin()) && isValidUser(request.resource.data);
       
-      // Only the user or admin can update the profile
-      // But only admin can update privileged fields like 'role' or 'bypassAllPayments'
       allow update: if isAuthenticated() && (isOwner(uid) || isAdmin()) && 
                     isValidUser(request.resource.data) &&
                     (isAdmin() || (
-                      request.resource.data.role == resource.data.role &&
-                      request.resource.data.bypassAllPayments == resource.data.bypassAllPayments &&
-                      request.resource.data.bypassTakingPayment == resource.data.bypassTakingPayment &&
-                      request.resource.data.bypassHostingPayment == resource.data.bypassHostingPayment
+                      (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
+                      (!('bypassAllPayments' in request.resource.data) || request.resource.data.bypassAllPayments == resource.data.bypassAllPayments) &&
+                      (!('bypassTakingPayment' in request.resource.data) || request.resource.data.bypassTakingPayment == resource.data.bypassTakingPayment) &&
+                      (!('bypassHostingPayment' in request.resource.data) || request.resource.data.bypassHostingPayment == resource.data.bypassHostingPayment)
                     ));
       
       match /chatSessions/{sessionId} {
-        allow read, write: if isAuthenticated() && isOwner(uid);
+        allow read, write: if isAuthenticated() && (isOwner(uid) || isAdmin());
       }
       
       match /lectureSessions/{sessionId} {
-        allow read, write: if isAuthenticated() && isOwner(uid);
+        allow read, write: if isAuthenticated() && (isOwner(uid) || isAdmin());
       }
     }
 
     match /exams/{examId} {
-      // Students can read exams if they are authenticated
-      allow read: if isAuthenticated();
+      // Shared exams are readable by anyone with the link
+      allow read: if true;
       
       // Only authenticated users can create exams
       allow create: if isAuthenticated();
@@ -155,35 +154,48 @@ service cloud.firestore {
         (resource.data.hostUid == request.auth.uid || isAdmin());
       
       match /results/{resultId} {
-        // Only the host or admin can read, update, or delete results
-        // We use get() to check the parent exam's hostUid
+        // Only the host or admin can read, list, update, or delete results
         allow read, list, update, delete: if isAuthenticated() && 
           (get(/databases/$(database)/documents/exams/$(examId)).data.hostUid == request.auth.uid || isAdmin());
         
-        // Anyone authenticated can submit results
-        allow create: if isAuthenticated();
+        // Anyone can submit results
+        allow create: if true;
       }
     }
 
+    match /notifications/{notifId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /quizzes/{quizId} {
-      // Quizzes are readable by authenticated users
-      allow read: if isAuthenticated();
-      
-      // Anyone authenticated can create a quiz (e.g. sharing)
+      allow read: if true;
       allow create: if isAuthenticated();
     }
 
     match /config/{configId} {
-      // Config is readable by authenticated users
-      allow read: if isAuthenticated();
-      
-      // Only admin can write config
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /examQuestions/{questionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /scoreSheet/{resultId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    match /registeredStudents/{matric} {
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /test/{docId} {
-      // Allow anyone to read for connection testing
-      allow read: if true;
+      allow read, get: if true;
     }
   }
 }
