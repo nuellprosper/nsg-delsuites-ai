@@ -27,11 +27,11 @@
   }
   
   .markdown-body strong {
-    @apply font-black text-red-600 dark:text-red-500;
+    @apply font-black text-red-500 dark:text-red-400;
   }
   
   .markdown-body code {
-    @apply bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 rounded font-mono text-[11px] text-red-600 dark:text-red-400;
+    @apply bg-white dark:bg-black border border-slate-200 dark:border-white/10 px-1.5 py-0.5 rounded font-mono text-[11px] text-red-500 dark:text-red-400;
   }
   
   .markdown-body pre {
@@ -43,7 +43,7 @@
   }
 
   .markdown-body blockquote {
-    @apply border-l-4 border-red-600/30 pl-4 italic my-4 text-slate-500 dark:text-slate-400;
+    @apply border-l-4 border-red-500/30 pl-4 italic my-4 text-slate-500 dark:text-slate-400;
   }
 
   .markdown-body table {
@@ -52,12 +52,18 @@
   .markdown-body th, .markdown-body td {
     @apply border border-slate-200 dark:border-white/10 p-2 text-left;
   }
-  .markdown-body th {
-    @apply bg-slate-50 dark:bg-white/5 font-black uppercase tracking-widest;
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
   }
-
-  /* Math styling */
-  .katex-display {
-    @apply my-4 overflow-x-auto overflow-y-hidden py-2;
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(220, 38, 38, 0.2);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(220, 38, 38, 0.4);
   }
 }
