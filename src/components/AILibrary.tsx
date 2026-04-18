@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -22,7 +22,7 @@ import {
   AlertCircle,
   FileText,
   Zap,
-  Book,
+  BookOpen,
   FileSearch,
   TrendingDown,
   Newspaper,
@@ -56,7 +56,7 @@ interface LatinWord {
   context: string;
 }
 
-export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?: (msg: string) => void }> = ({ theme, setUserNotification }) => {
+export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: string) => void }> = ({ theme, setUserNotification }) => {
   const [activeFaculty, setActiveFaculty] = useState<Faculty>('STEM');
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -70,13 +70,13 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
   const MODEL_NAME = "gemini-3.1-flash-lite-preview";
   
   const getAiInstance = () => {
-    const key = import.meta.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
-    if (!key) throw new Error("Gemini API Key is missing.");
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) throw new Error("Gemini API Key is missing. Please set GEMINI_API_KEY in your environment.");
     return new GoogleGenAI({ apiKey: key });
   };
 
   const fileToGenerativePart = async (file: File) => {
-    const base64EncodedDataPromise = new Promise((resolve) => {
+    const base64EncodedDataPromise = new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
       reader.readAsDataURL(file);
@@ -253,12 +253,12 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
       Use valid LaTeX for formulas. Return the raw LaTeX string for the 'formula' field WITHOUT any delimiters like $ or $$. 
       Ensure backslashes are properly escaped for JSON (e.g. use "\\\\frac" for \frac). 
       DO NOT use any other formatting.`;
-      const result = await (ai as any).models.generateContent({
+      const result = await ai.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: { parts: [{ text: prompt }] },
         config: { responseMimeType: "application/json" }
       });
-      const text = result.text || "";
+      const text = result?.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setStemFormulas(JSON.parse(cleanedText));
     } catch (err: any) {
@@ -275,9 +275,9 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     try {
       const ai = getAiInstance();
       const parts = await Promise.all(stemFiles.map(fileToGenerativePart));
-      const result = await (ai as any).models.generateContent({
+      const result = await ai.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [...parts, { text: `
+        contents: { parts: [...parts, { text: `
           Analyze these files/images. Provide pinpoint direct errors and corrections in a modern, structured style. 
           Use Markdown for formatting (bold, headings, lists). 
           IMPORTANT: For ALL mathematical formulas or scientific notations, ALWAYS use LaTeX. 
@@ -286,9 +286,9 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
           NEVER wrap LaTeX in code blocks.
           Ensure all backslashes are preserved.
           Focus on math/science logic and accuracy.
-        ` }] }]
+        ` }] }
       });
-      setStemSolution(result.text || "");
+      setStemSolution(result?.text || "");
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to analyze problem"}`);
@@ -304,12 +304,12 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     try {
       const ai = getAiInstance();
       const prompt = `Find the meaning and legal context of the Latin word/phrase: ${lawLatinQuery}. Return ONLY a JSON array of objects with keys: word, meaning, context.`;
-      const result = await (ai as any).models.generateContent({
+      const result = await ai.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: { parts: [{ text: prompt }] },
         config: { responseMimeType: "application/json" }
       });
-      const text = result.text || "";
+      const text = result?.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setLatinWords(JSON.parse(cleanedText));
     } catch (err: any) {
@@ -326,11 +326,11 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     try {
       const ai = getAiInstance();
       const prompt = `Identify the relevant sections in the Nigerian Constitution for the following idea/issue: ${constitutionQuery}. Provide pinpoint direct references and summaries in a modern style using Markdown.`;
-      const result = await (ai as any).models.generateContent({
+      const result = await ai.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [{ text: prompt }] }]
+        contents: { parts: [{ text: prompt }] }
       });
-      setConstitutionResult(result.text || "");
+      setConstitutionResult(result?.text || "");
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to find sections"}`);
@@ -346,9 +346,9 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     try {
       const ai = getAiInstance();
       const parts = await Promise.all(bizFiles.map(fileToGenerativePart));
-      const result = await (ai as any).models.generateContent({
+      const result = await ai.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [...parts, { text: `
+        contents: { parts: [...parts, { text: `
           Analyze these financial documents/images. Provide pinpoint direct errors, discrepancies, and corrections in a modern business style. 
           Use Markdown for formatting. Identify exactly where money left or issues occurred. 
           IMPORTANT: For ALL mathematical formulas or calculations, ALWAYS use LaTeX. 
@@ -356,9 +356,9 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
           NEVER use other delimiters like \\( \\) or \\[ \\].
           NEVER wrap LaTeX in code blocks.
           Ensure all backslashes are preserved.
-        ` }] }]
+        ` }] }
       });
-      setBizAnalysis(result.text || "");
+      setBizAnalysis(result?.text || "");
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to analyze data"}`);
@@ -374,9 +374,9 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
     try {
       const ai = getAiInstance();
       const parts = await Promise.all(socFiles.map(fileToGenerativePart));
-      const result = await (ai as any).models.generateContent({
+      const result = await ai.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [...parts, { text: `
+        contents: { parts: [...parts, { text: `
           Analyze these news drafts/images. Provide pinpoint direct journalistic errors and corrections in a modern style. 
           Use Markdown. Return ONLY a JSON object with keys: heading, correction (the correction should be the full corrected text with markdown for emphasis). 
           IMPORTANT: For ALL mathematical data or statistics mentioned, ALWAYS use LaTeX. 
@@ -384,9 +384,9 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
           NEVER use other delimiters like \\( \\) or \\[ \\].
           NEVER wrap LaTeX in code blocks.
           Ensure all backslashes are preserved.
-        ` }] }]
+        ` }] }
       });
-      const text = result.text || "";
+      const text = result?.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setSocNewsResult(JSON.parse(cleanedText));
     } catch (err: any) {
@@ -510,7 +510,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
               <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
-                    <Book size={20} />
+                    <BookOpen size={20} />
                   </div>
                   <div>
                     <h2 className="text-sm font-black uppercase tracking-tight">Formula Library</h2>
@@ -709,7 +709,7 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
               <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-500">
-                    <Book size={20} />
+                    <BookOpen size={20} />
                   </div>
                   <div>
                     <h2 className="text-sm font-black uppercase tracking-tight">Latin Library</h2>
@@ -1073,12 +1073,12 @@ export const AILibrary: React.FC<{ theme: 'dark' | 'light'; setUserNotification?
                       try {
                         const ai = getAiInstance();
                         const prompt = `Analyze this text for grammar mistakes. Provide pinpoint direct corrections in a modern style. Use Markdown for formatting. Return ONLY a JSON object with keys: original, corrected, errors (array of strings). Text: ${langInput}`;
-                        const result = await (ai as any).models.generateContent({
+                        const result = await ai.models.generateContent({
                           model: MODEL_NAME,
-                          contents: [{ parts: [{ text: prompt }] }],
+                          contents: { parts: [{ text: prompt }] },
                           config: { responseMimeType: "application/json" }
                         });
-                        const text = result.text || "";
+                        const text = result?.text || "";
                         const cleanedText = text.replace(/```json|```/g, '').trim();
                         setLangOutput(JSON.parse(cleanedText));
                       } catch (err) {
