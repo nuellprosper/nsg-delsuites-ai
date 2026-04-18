@@ -6,10 +6,10 @@ import {
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save,
-  Search, Check, Info
+  Search, Check, Info, Volume2, Square
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleGenAI, Type, Modality, LiveServerMessage } from "@google/genai";
+import { motion, AnimatePresence } from 'motion/react';
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { HfInference } from "@huggingface/inference";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -19,7 +19,7 @@ import { usePaystackPayment } from 'react-paystack';
 import { toPng } from 'html-to-image';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy, limit,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   FirestoreOperation, handleFirestoreError
 } from './firebase';
@@ -36,8 +36,7 @@ import { AILibrary } from './components/AILibrary';
  */
 
 const getApiKey = () => {
-  // Only use Vite env (for Render/Production)
-  const key = import.meta.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   const finalKey = (key || "").trim();
   if (!finalKey) {
     console.warn("Gemini API Key is missing. Ensure GEMINI_API_KEY is set in your environment.");
@@ -58,7 +57,7 @@ const getHfKey = () => {
 // Lazy initialization helpers with validation
 const getAiInstance = () => {
   const key = getApiKey();
-  if (!key) throw new Error("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
+  if (!key) throw new Error("Gemini API Key is missing. Please set GEMINI_API_KEY in your environment.");
   return new GoogleGenAI({ apiKey: key });
 };
 
@@ -68,7 +67,7 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3.1-flash-lite-preview"; // Updated to Gemini 3.1 as requested
+const MODEL_NAME = "gemini-3.1-flash-lite-preview";
 
 const formatAiError = (error: any) => {
   const message = error.message || "Unknown error";
@@ -255,7 +254,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
           },
           callbacks: {
             onopen: () => setIsConnecting(false),
-            onmessage: async (msg: LiveServerMessage) => {
+            onmessage: async (msg: any) => {
               const serverContent = (msg as any).serverContent;
               if (serverContent?.modelTurn?.parts?.[0]?.inlineData) {
                 const audioData = serverContent.modelTurn.parts[0].inlineData.data;
@@ -456,18 +455,24 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
 
 const MarkdownRenderer = ({ content, className = "" }: { content: string, className?: string }) => {
   // Pre-process content to ensure LaTeX is correctly formatted for remark-math
+  // Handle both escaped \( \) and \[ \] as well as raw strings that AI might send
   const processedContent = (content || "")
-    .replace(/\\\\\(/g, '$')
-    .replace(/\\\\\)/g, '$')
-    .replace(/\\\\\[/g, '$$')
-    .replace(/\\\\\]/g, '$$')
-    .replace(/\\\( /g, '$ ')
-    .replace(/ \\\)/g, ' $')
-    .replace(/\\\[ /g, '$$ ')
-    .replace(/ \\\]/g, ' $$');
+    .replace(/\\\\\((.*?)\\\\\)/g, '$$$1$')
+    .replace(/\\\\\[(.*?)\\\\\]/g, '$$$$$1$$$$')
+    .replace(/\\\((.*?)\\\)/g, '$$$1$')
+    .replace(/\\\[(.*?)\\\]/g, '$$$$$1$$$$')
+    // Improvement: Catch naked math strings that starts with common math symbols or contain LaTeX commands
+    .split('\n').map(line => {
+      const trimmed = line.trim();
+      // If line contains common LaTeX commands but no $ delimiters, wrap it
+      if ((trimmed.includes('\\frac') || trimmed.includes('\\times') || trimmed.includes('\\sqrt') || (trimmed.includes('^') && trimmed.includes('='))) && !trimmed.includes('$')) {
+        return `$$${trimmed}$$`;
+      }
+      return line;
+    }).join('\n');
 
   return (
-    <div className={`markdown-body ${className}`}>
+    <div className={`markdown-body overflow-x-auto custom-scrollbar ${className}`}>
       <ReactMarkdown 
         remarkPlugins={[remarkGfm, remarkMath]} 
         rehypePlugins={[rehypeKatex]}
@@ -478,14 +483,918 @@ const MarkdownRenderer = ({ content, className = "" }: { content: string, classN
   );
 };
 
+
+interface Course {
+  code: string;
+  name: string;
+  description: string;
+}
+
+const COMMON_COURSES: Course[] = [
+  { code: 'MTH 101', name: 'Elementary Mathematics I', description: 'Comprehensive coverage of limits, continuity, differentiation of algebraic functions, and integration basics. Includes algebraic structures and trigonometry.' },
+  { code: 'PHY 101', name: 'General Physics I', description: 'Study of mechanics, properties of matter, and thermal physics. Covers motion, force, energy, and thermodynamics.' },
+  { code: 'CHM 101', name: 'General Chemistry I', description: 'Fundamental principles of chemistry, atomic and molecular structure, chemical bonding, and stoichiometry.' },
+  { code: 'CSC 101', name: 'Introduction to Computer Science', description: 'Foundations of computing, data representation, hardware components, and introduction to algorithms/programming logic.' },
+  { code: 'GST 101', name: 'Use of English I', description: 'Focuses on communication skills, study techniques, library usage, and basic English grammar for academic excellence.' },
+  { code: 'BIO 101', name: 'General Biology I', description: 'Cell biology, heredity, biodiversity, and ecosystem dynamics. Foundations of life sciences.' },
+  { code: 'ECO 101', name: 'Principles of Economics I', description: 'Introduction to microeconomic analysis, including supply and demand, market structures, and consumer behavior.' },
+  { code: 'BUS 101', name: 'Introduction to Business', description: 'The nature of business, entrepreneurship, organizational structures, and the functional areas of modern business.' }
+];
+
+const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotification, setQuizTopic, setQuizQuestionCount, setQuizDifficulty, generateQuiz, setToolsSubTab, setQuizState }: any) => {
+  const [courseSearch, setCourseSearch] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [suggestedCourses, setSuggestedCourses] = useState<Course[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
+  const [activeCourseDesc, setActiveCourseDesc] = useState('');
+
+  const handleSearch = async () => {
+    if (!courseSearch.trim()) return;
+    setIsSearching(true);
+    setSuggestedCourses([]);
+    
+    try {
+      const ai = getAiInstance();
+      const prompt = `
+        Search context: "${courseSearch}".
+        Generate exactly 3 relevant academic courses based on this topic or course code.
+        Return ONLY a JSON array of objects with fields: "code", "name", "description".
+        Example: [{"code": "MTH101", "name": "Linear Algebra", "description": "Introduction to vectors and matrices"}]
+        
+        CRITICAL: For any math symbols or codes in 'name' or 'description', use LaTeX $...$.
+      `;
+      
+      const aiInstance = getAiInstance();
+      const response = await aiInstance.models.generateContent({
+        model: MODEL_NAME,
+        contents: { parts: [{ text: prompt }] },
+        config: { responseMimeType: "application/json" }
+      });
+      
+      const text = response?.text || "";
+      const courses = JSON.parse(text);
+      setSuggestedCourses(Array.isArray(courses) ? courses : []);
+    } catch (err) {
+      console.error("Course Search Error:", err);
+      setUserNotification("Failed to search courses. Please try a different term.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const openCourse = async (course: Course) => {
+    setSelectedCourse(course);
+    setIsGeneratingDesc(true);
+    setActiveCourseDesc(course.description); // Start with default or existing
+
+    try {
+      // Use Hugging Face for a "deeper" AI generated description as requested
+      const hf = getHfInstance();
+      const prompt = `Provide a detailed academic description (approx 100 words) for the university course ${course.code}: ${course.name}. Explain what students will learn.`;
+      
+      const response = await hf.chatCompletion({
+        model: HF_MODELS.TEXT,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 250,
+        temperature: 0.7
+      });
+
+      if (response.choices && response.choices[0].message.content) {
+        setActiveCourseDesc(response.choices[0].message.content.trim());
+      }
+    } catch (err) {
+      console.error("HF Description Generator Error:", err);
+      // Fallback to default description already in state
+    } finally {
+      setIsGeneratingDesc(false);
+    }
+  };
+
+  const startCourseTool = (type: 'quiz' | 'exam', qCount: number, difficulty: string) => {
+    if (!selectedCourse) return;
+    
+    setQuizTopic(`${selectedCourse.code}: ${selectedCourse.name} - ${activeCourseDesc}`);
+    setQuizQuestionCount(qCount);
+    setQuizDifficulty(difficulty);
+    
+    // Switch tab and trigger generation
+    setToolsSubTab(type === 'quiz' ? 'quiz' : 'exam');
+    setQuizState('idle'); // Ensure clean state
+    
+    // We need to trigger the generation after a brief delay to allow state updates to settle, 
+    // or better, if the toolsSubTab is switched, the tool itself should pick up the topic.
+    setUserNotification(`Preparing ${type.toUpperCase()} for ${selectedCourse.code}...`);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Search Bar */}
+      <div className={`p-4 rounded-3xl border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} shadow-sm flex items-center gap-3`}>
+        <div className="bg-[#DC2626]/10 p-2 rounded-xl text-[#DC2626]">
+          <Search size={20} />
+        </div>
+        <input 
+          type="text" 
+          value={courseSearch}
+          onChange={(e) => setCourseSearch(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          placeholder="Search course code or topic (e.g. MTH 101)" 
+          className={`flex-1 bg-transparent border-none outline-none text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}
+        />
+        <button 
+          onClick={handleSearch}
+          disabled={isSearching}
+          className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#DC2626]/90 transition-all disabled:opacity-50"
+        >
+          {isSearching ? <RefreshCcw size={14} className="animate-spin" /> : 'Search'}
+        </button>
+      </div>
+
+      {suggestedCourses.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest ml-2">Suggestions</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {suggestedCourses.map((c, i) => (
+              <button 
+                key={i} 
+                onClick={() => openCourse(c)}
+                className={`p-4 rounded-2xl border text-left transition-all hover:scale-[1.02] ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:border-[#DC2626]/30' : 'bg-white border-slate-100 hover:border-[#DC2626]/30 shadow-sm'}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[#DC2626] font-mono text-[10px] font-black">{c.code}</span>
+                  <Sparkles size={12} className="text-yellow-500" />
+                </div>
+                <h4 className={`text-xs font-black truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{c.name}</h4>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedCourse ? (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className={`p-6 sm:p-8 rounded-[2.5rem] border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} shadow-xl relative overflow-hidden`}
+        >
+          <button 
+            onClick={() => setSelectedCourse(null)} 
+            className="absolute top-6 right-6 p-2 rounded-full hover:bg-white/5 transition-all"
+          >
+            <X size={20} className="text-white/20" />
+          </button>
+
+          <div className="space-y-6">
+            <div className="space-y-1">
+              <span className="text-[#DC2626] font-mono text-sm font-black tracking-widest">{selectedCourse.code}</span>
+              <h3 className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{selectedCourse.name}</h3>
+            </div>
+
+            <div className={`p-6 rounded-3xl border italic ${theme === 'dark' ? 'bg-white/5 border-white/5 text-white/70' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
+              {isGeneratingDesc ? (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <RefreshCcw size={24} className="animate-spin text-[#DC2626]" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#DC2626]">Expanding Curriculum...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <MarkdownRenderer content={activeCourseDesc} className="text-sm leading-relaxed" />
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span className="text-[8px] font-black uppercase tracking-tighter opacity-50 uppercase">Verified Curriculum Description</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-4">
+              <button 
+                onClick={() => startCourseTool('quiz', 20, 'Medium')}
+                className="flex flex-col items-center gap-3 p-5 rounded-3xl bg-gradient-to-br from-yellow-500 to-amber-600 text-white shadow-lg shadow-yellow-500/20 hover:scale-105 transition-all"
+              >
+                <Zap size={24} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Take Smart Quiz</span>
+              </button>
+              <button 
+                onClick={() => startCourseTool('exam', 50, 'Professional')}
+                className="flex flex-col items-center gap-3 p-5 rounded-3xl bg-gradient-to-br from-[#DC2626] to-red-800 text-white shadow-lg shadow-[#DC2626]/20 hover:scale-105 transition-all"
+              >
+                <ShieldCheck size={24} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Take CBT Exam</span>
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-2">Common Courses</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {COMMON_COURSES.map((c, i) => (
+              <button 
+                key={i} 
+                onClick={() => openCourse(c)}
+                className={`flex items-center gap-5 p-5 rounded-[2rem] border transition-all hover:border-[#DC2626]/50 group ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}
+              >
+                <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-white/5 to-white/10 flex flex-col items-center justify-center border border-white/5 group-hover:scale-110 transition-transform`}>
+                   <BookOpen size={20} className="text-[#DC2626]" />
+                   <span className="text-[8px] font-bold mt-1 text-white/30">{c.code}</span>
+                </div>
+                <div className="flex-1 text-left overflow-hidden">
+                  <h4 className={`font-black text-xs uppercase tracking-tight truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{c.name}</h4>
+                  <p className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} truncate uppercase`}>{c.description}</p>
+                </div>
+                <ChevronRight size={16} className="text-white/10 group-hover:text-[#DC2626] transition-all" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+interface AssignmentStep {
+  step: string;
+  explanation: string;
+}
+
+interface AssignmentSolution {
+  title: string;
+  steps: AssignmentStep[];
+  summary: string;
+}
+
+const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerativePart, setUserNotification, setChatHistory, setActiveTab, setActiveChatSessionId, addToFinishedHistory, finishedHistory }: any) => {
+  const [images, setImages] = useState<MediaFile[]>([]);
+  const [isSolving, setIsSolving] = useState(false);
+  const [solution, setSolution] = useState<AssignmentSolution | null>(null);
+  const [userWorkings, setUserWorkings] = useState<{
+    [stepIdx: number]: {
+      imagePreview?: string;
+      imageFile?: File;
+      analysis?: string;
+      isAnalyzing?: boolean;
+      transcript?: string;
+    }
+  }>({});
+  const [expandedReplies, setExpandedReplies] = useState<{[key: number]: boolean}>({});
+  const [isListening, setIsListening] = useState<number | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to results when they appear
+  useEffect(() => {
+    if (solution && resultsRef.current) {
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [solution]);
+
+  // Cleanup blob URLs
+  useEffect(() => {
+    return () => {
+      images.forEach(img => {
+        if (img.preview) URL.revokeObjectURL(img.preview);
+      });
+    };
+  }, []);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (images.length + files.length > 5) {
+      setUserNotification("You can only upload up to 5 images.");
+      return;
+    }
+
+    const mapped = files.map(f => ({
+      id: Math.random().toString(36).substr(2, 11),
+      file: f,
+      preview: URL.createObjectURL(f),
+      type: 'image' as const
+    }));
+    
+    setImages(prev => [...prev, ...mapped]);
+  };
+
+  const removeImage = (id: string) => {
+    setImages(prev => {
+      const img = prev.find(i => i.id === id);
+      if (img?.preview) URL.revokeObjectURL(img.preview);
+      return prev.filter(i => i.id !== id);
+    });
+  };
+
+  const handleWorkingUpload = (stepIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const preview = URL.createObjectURL(file);
+    setUserWorkings(prev => ({
+      ...prev,
+      [stepIdx]: {
+        ...prev[stepIdx],
+        imagePreview: preview,
+        imageFile: file,
+        analysis: undefined
+      }
+    }));
+
+    // Auto-trigger analysis
+    setTimeout(() => {
+      checkWorking(stepIdx, file);
+    }, 100);
+  };
+
+  const removeWorkingImage = (stepIdx: number) => {
+    setUserWorkings(prev => {
+      const working = prev[stepIdx];
+      if (working?.imagePreview) URL.revokeObjectURL(working.imagePreview);
+      const newState = { ...prev };
+      delete newState[stepIdx];
+      return newState;
+    });
+  };
+
+  const startListening = (stepIdx: number) => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setUserNotification("Speech recognition not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    
+    setIsListening(stepIdx);
+    
+    recognition.onresult = async (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setIsListening(null);
+      analyzeTextWorking(stepIdx, transcript);
+    };
+
+    recognition.onerror = (e: any) => {
+      console.error("Speech Error:", e);
+      setIsListening(null);
+      setUserNotification("Speech recognition failed.");
+    };
+
+    recognition.start();
+  };
+
+  const analyzeTextWorking = async (stepIdx: number, text: string) => {
+    setUserWorkings(prev => ({
+      ...prev,
+      [stepIdx]: { ...prev[stepIdx], isAnalyzing: true, transcript: text }
+    }));
+
+    try {
+      const ai = getAiInstance();
+      const stepData = solution?.steps[stepIdx];
+
+      const prompt = `
+        You are an expert tutor. A student is describing how they solved a specific step of an assignment.
+        The correct step solution is: "${stepData?.step}"
+        The logical explanation is: "${stepData?.explanation}"
+        
+        The student said: "${text}"
+        
+        Analyze their oral explanation:
+        1. Identify if their logic is correct.
+        2. Be encouraging.
+        3. Explain any conceptual errors.
+        4. Use LaTeX for math.
+        
+        CRITICAL: Keep your reply very short, straight to the point, and under 4 lines if possible.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: { parts: [{ text: prompt }] }
+      });
+
+      setUserWorkings(prev => ({
+        ...prev,
+        [stepIdx]: { ...prev[stepIdx], isAnalyzing: false, analysis: response?.text || "" }
+      }));
+      setUserNotification("Working analyzed!");
+    } catch (err: any) {
+      console.error("Text Analysis Error:", err);
+      setUserWorkings(prev => ({
+        ...prev,
+        [stepIdx]: { ...prev[stepIdx], isAnalyzing: false }
+      }));
+    }
+  };
+
+  const checkWorking = async (stepIdx: number, providedFile?: File) => {
+    const working = userWorkings[stepIdx];
+    const fileToUse = providedFile || working?.imageFile;
+    
+    if (!fileToUse) {
+      setUserNotification("Please upload an image of your workings first.");
+      return;
+    }
+
+    setUserWorkings(prev => ({
+      ...prev,
+      [stepIdx]: { ...prev[stepIdx], isAnalyzing: true }
+    }));
+
+    try {
+      const ai = getAiInstance();
+      const imagePart = await fileToGenerativePart(fileToUse);
+      const stepData = solution?.steps[stepIdx];
+
+      const prompt = `
+        You are an expert tutor. A student is trying to solve a specific step of an assignment.
+        The correct step solution is: "${stepData?.step}"
+        The logical explanation is: "${stepData?.explanation}"
+        
+        Analyze the student's uploaded image of their working.
+        1. Identify if they are correct or where they made a mistake.
+        2. Be encouraging like a teacher.
+        3. If there is a mistake, explain exactly where it happened and how to fix it.
+        4. Use LaTeX for math.
+        
+        CRITICAL: Keep your reply very short, straight to the point, and under 4 lines if possible.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: { parts: [{ text: prompt }, { inlineData: imagePart.inlineData }] }
+      });
+
+      setUserWorkings(prev => ({
+        ...prev,
+        [stepIdx]: { ...prev[stepIdx], isAnalyzing: false, analysis: response?.text || "" }
+      }));
+      setUserNotification("Working analyzed!");
+    } catch (err: any) {
+      console.error("Check Working Error:", err);
+      setUserWorkings(prev => ({
+        ...prev,
+        [stepIdx]: { ...prev[stepIdx], isAnalyzing: false }
+      }));
+      setUserNotification("Analysis failed. Try again.");
+    }
+  };
+
+  const deleteAnalysis = (stepIdx: number) => {
+    setUserWorkings(prev => ({
+      ...prev,
+      [stepIdx]: {
+        ...prev[stepIdx],
+        analysis: undefined
+      }
+    }));
+  };
+
+  const clearAll = () => {
+    images.forEach(img => {
+      if (img.preview) URL.revokeObjectURL(img.preview);
+    });
+    setImages([]);
+    setSolution(null);
+  };
+
+  const solveAssignment = async () => {
+    if (images.length === 0) {
+      setUserNotification("Please upload images of your assignment first.");
+      return;
+    }
+
+    setIsSolving(true);
+    setSolution(null);
+
+    try {
+      const ai = getAiInstance();
+      const imageParts = await Promise.all(images.map(img => fileToGenerativePart(img.file)));
+
+      const prompt = `
+        You are an expert academic tutor. Analyze these assignment images.
+        Solve the problems step-by-step with clear, educational explanations.
+        
+        CRITICAL: Use LaTeX for ALL mathematical expressions, variables, and formulas.
+        - Use $ ... $ for inline math (e.g., $x^2 + y = 10$).
+        - Use $$ ... $$ for large multi-line equations or important formulas.
+        - Never leave raw symbols like ^ or _ outside of LaTeX delimiters.
+        
+        Return ONLY a JSON object:
+        {
+          "title": "Unified Problem Title",
+          "steps": [
+            { "step": "Clear calculation/step using LaTeX", "explanation": "Why this was done using LaTeX" }
+          ],
+          "summary": "Final concise answer using LaTeX"
+        }
+      `;
+
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: { parts: [{ text: prompt }, ...imageParts.map(p => ({ inlineData: p.inlineData }))] },
+        config: { responseMimeType: "application/json" }
+      });
+      
+      const responseText = response?.text || "";
+      
+      try {
+        // Clean markdown backticks before parsing if they exist
+        let cleanedText = responseText.trim();
+        if (cleanedText.startsWith('```')) {
+          cleanedText = cleanedText.replace(/^```(?:json)?\n?|```$/g, '').trim();
+        }
+        
+        const data = JSON.parse(cleanedText);
+        
+        // Robustness: ensure steps exists
+        if (!data.steps || !Array.isArray(data.steps)) {
+          console.warn("AI returned missing or invalid steps array, attempting to recover...");
+          data.steps = [{ 
+            step: data.solution || data.answer || "Calculation complete", 
+            explanation: data.reasoning || data.logic || "Derived from assignment image analysis." 
+          }];
+        }
+        
+        setSolution(data);
+        addToFinishedHistory({
+          id: `assignment-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          title: data.title || "Assignment Solution",
+          type: 'assignment',
+          date: new Date().toLocaleDateString(),
+          data: data
+        });
+        setUserNotification("Step-by-step solution generated!");
+      } catch (parseError) {
+        console.error("Primary JSON parse failed, trying regex match:", parseError);
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const data = JSON.parse(jsonMatch[0]);
+            if (!data.steps || !Array.isArray(data.steps)) {
+              data.steps = [{ 
+                step: data.solution || data.answer || "Calculation complete", 
+                explanation: data.reasoning || data.logic || "Derived from assignment image analysis." 
+              }];
+            }
+            setSolution(data);
+            addToFinishedHistory({
+              id: `assignment-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              title: data.title || "Assignment Solution",
+              type: 'assignment',
+              date: new Date().toLocaleDateString(),
+              data: data
+            });
+            setUserNotification("Step-by-step solution generated!");
+          } catch (e) {
+            console.error("Secondary JSON parse failed:", e);
+            throw new Error(`Invalid AI response structure. Please try again with a clearer image.`);
+          }
+        } else {
+          throw new Error("Could not extract a valid JSON solution from the AI response.");
+        }
+      }
+    } catch (err: any) {
+      console.error("Assignment Solve Error:", err);
+      setUserNotification(err.message || "Failed to solve assignment. Please try again.");
+    } finally {
+      setIsSolving(false);
+    }
+  };
+
+  const speakSolution = () => {
+    if (!solution) return;
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const text = `Solution for ${solution.title}. ` + 
+      solution.steps.map((s, i) => `Step ${i + 1}: ${s.step}. ${s.explanation}`).join('. ') + 
+      `. Summary: ${solution.summary}`;
+
+    const utterance = new SpeechSynthesisUtterance(text.replace(/\$/g, ''));
+    utterance.onend = () => setIsSpeaking(false);
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const sendToOmni = () => {
+    if (!solution) return;
+    const formatted = `### ${solution.title}\n\n` + 
+      solution.steps.map((s, i) => `**Step ${i + 1}**: ${s.step}\n*${s.explanation}*`).join('\n\n') +
+      `\n\n**Final Result**: ${solution.summary}`;
+
+    setChatHistory((prev: any) => [...prev, 
+      { role: 'user', text: "Deep dive into this solution.", timestamp: new Date().toLocaleTimeString() },
+      { role: 'model', text: formatted, timestamp: new Date().toLocaleTimeString() }
+    ]);
+    setActiveTab('ai');
+    setActiveChatSessionId(null);
+    setUserNotification("Exported to Omni Chat!");
+  };
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto px-4 pb-20">
+      <div className={`p-10 rounded-[2.5rem] border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} shadow-sm text-center relative overflow-hidden`}>
+        <div className="absolute top-0 right-0 p-4">
+          {images.length > 0 && (
+            <button onClick={clearAll} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+
+        <div className="w-16 h-16 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <BookOpen size={32} className="text-[#DC2626]" />
+        </div>
+        <h2 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Assignment Solver</h2>
+        
+        {/* RECENT ASSIGNMENTS HISTORY - COMPACT */}
+        {finishedHistory.filter(i => i.type === 'assignment').length > 0 && (
+          <div className="mb-6 -mx-2">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#DC2626] mb-3 px-2">Recently Solved</p>
+            <div className="flex gap-3 overflow-x-auto pb-2 px-2 no-scrollbar">
+              {finishedHistory.filter(i => i.type === 'assignment').slice(0, 10).map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setSolution(item.data)}
+                  className="flex-shrink-0 w-32 p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-[#DC2626]/40 transition-all text-left group"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <History size={10} className="text-[#DC2626]" />
+                    <span className="text-[8px] font-black uppercase text-white/40 truncate">{item.date}</span>
+                  </div>
+                  <p className="text-[10px] font-bold text-white/80 line-clamp-1 group-hover:text-white transition-colors">{item.title}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className={`text-xs ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} mt-1 mb-8`}>Upload up to 5 images for detailed academic solutions.</p>
+
+        <div className="space-y-6">
+          <div className="flex flex-wrap gap-4 justify-center">
+            <AnimatePresence>
+              {images.map(img => (
+                <motion.div key={img.id} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} className="relative group">
+                  <img src={img.preview} className={`w-24 h-24 object-cover rounded-2xl border-2 ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'} shadow-xl`} />
+                  <button onClick={() => removeImage(img.id)} className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                    <X size={12} />
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            
+            {images.length < 5 && (
+              <label className={`w-24 h-24 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${theme === 'dark' ? 'border-white/10 text-white/20 hover:border-[#DC2626]/40 hover:text-[#DC2626]' : 'border-slate-200 text-slate-300 hover:border-[#DC2626]/40 hover:text-[#DC2626]'}`}>
+                <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
+                <Plus size={28} />
+                <span className="text-[9px] font-black uppercase mt-1">Upload</span>
+              </label>
+            )}
+          </div>
+
+          <button
+            onClick={solveAssignment}
+            disabled={isSolving || images.length === 0}
+            className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-5 rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
+          >
+            {isSolving ? <><RefreshCcw size={18} className="animate-spin" /> Analyzing...</> : <><Sparkles size={18} /> Solve Assignment</>}
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {solution && (
+          <motion.div 
+            ref={resultsRef}
+            initial={{ opacity: 0, y: 30 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, scale: 0.95 }} 
+            className="space-y-6 pt-10"
+          >
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-3">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-lg shadow-green-500/50 animate-pulse" />
+                <h3 className={`text-sm font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                  {solution.title || "Calculated Solution"}
+                </h3>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={speakSolution} 
+                  title={isSpeaking ? "Stop Voice" : "Listen to solution"}
+                  className={`p-3 rounded-2xl border transition-all ${isSpeaking ? 'bg-[#DC2626] border-[#DC2626] text-white shadow-lg shadow-[#DC2626]/20' : `${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 text-white/40' : 'bg-white border-slate-200 text-slate-400'} hover:border-[#DC2626] hover:text-[#DC2626]`}`}
+                >
+                  {isSpeaking ? <Square size={20} fill="currentColor" /> : <Volume2 size={20} />}
+                </button>
+                <button 
+                  onClick={sendToOmni} 
+                  title="Send to Omni Chat"
+                  className={`p-3 rounded-2xl border transition-all ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 text-white/40' : 'bg-white border-slate-200 text-slate-400'} hover:border-[#DC2626] hover:text-[#DC2626]`}
+                >
+                  <Send size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {solution.steps?.map((step, idx) => (
+                <motion.div 
+                  key={idx} 
+                  initial={{ opacity: 0, x: -20 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  transition={{ delay: idx * 0.1 }}
+                  className={`p-5 sm:p-6 rounded-[2rem] border relative overflow-hidden group transition-all duration-300 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/30' : 'bg-white border-slate-100 hover:border-[#DC2626]/30 shadow-md shadow-black/5'}`}
+                >
+                  <div className={`absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                    <span className="text-9xl font-black italic">{idx + 1}</span>
+                  </div>
+                  <div className="flex gap-5 relative z-10">
+                    <div className="w-12 h-12 rounded-2xl bg-[#DC2626] text-white flex items-center justify-center font-black text-lg shrink-0 shadow-lg shadow-[#DC2626]/20">
+                      {idx + 1}
+                    </div>
+                    <div className="space-y-4 pt-1 flex-1 min-w-0">
+                      <div>
+                        <p className="text-[10px] font-black text-[#DC2626] uppercase tracking-[0.3em] mb-2 opacity-80">Step Solution</p>
+                        <MarkdownRenderer content={step.step} className={`text-lg font-black leading-snug ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`} />
+                      </div>
+                      <div className={`pt-4 border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+                        <p className={`text-[9px] font-black uppercase tracking-[0.2em] mb-2 ${theme === 'dark' ? 'text-[#DC2626]' : 'text-[#DC2626]'}`}>The Logical Why</p>
+                        <MarkdownRenderer content={step.explanation} className={`text-[13px] leading-relaxed font-medium ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'}`} />
+                      </div>
+
+                      {/* STUDENT INTERACTION - COMPACT */}
+                      <div className="mt-4 pt-4 border-t border-white/5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-500/80">Student Workings</p>
+                          <div className="flex gap-2">
+                             <label className="p-1.5 cursor-pointer bg-blue-500/10 text-blue-500 rounded-lg hover:bg-blue-500/20 transition-all border border-blue-500/20 shadow-sm shadow-blue-500/10">
+                               <input type="file" accept="image/*" onChange={(e) => handleWorkingUpload(idx, e)} className="hidden" />
+                               <ImageIcon size={12} />
+                             </label>
+                             <button 
+                               onClick={() => startListening(idx)}
+                               className={`p-1.5 rounded-lg border transition-all ${isListening === idx ? 'bg-red-500/10 text-red-500 border-red-500/20 animate-pulse' : 'bg-purple-500/10 text-purple-500 border-purple-500/20 shadow-sm shadow-purple-500/10'}`}
+                             >
+                                <Mic size={12} />
+                             </button>
+                             <button 
+                               onClick={() => checkWorking(idx)}
+                               disabled={!userWorkings[idx]?.imageFile || userWorkings[idx]?.isAnalyzing}
+                               className={`p-1.5 rounded-lg border transition-all ${userWorkings[idx]?.imageFile ? 'bg-green-500/10 text-green-500 border-green-500/20 shadow-sm shadow-green-500/10' : 'bg-white/5 text-white/20 border-white/5'}`}
+                             >
+                                <Brain size={12} />
+                             </button>
+                          </div>
+                        </div>
+
+                        {userWorkings[idx]?.imagePreview && (
+                          <div className="flex items-start gap-3">
+                             <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/10 shrink-0 group/working-img">
+                                <img src={userWorkings[idx].imagePreview} className="w-full h-full object-cover" />
+                                {userWorkings[idx].isAnalyzing && (
+                                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                     <RefreshCcw size={14} className="text-white animate-spin" />
+                                  </div>
+                                )}
+                                <button 
+                                  onClick={() => removeWorkingImage(idx)}
+                                  className="absolute top-1 right-1 p-1 bg-black/60 text-white rounded-md opacity-0 group-hover/working-img:opacity-100 transition-opacity z-10"
+                                  title="Remove image"
+                                >
+                                  <X size={10} />
+                                </button>
+                             </div>
+                             {(userWorkings[idx]?.analysis || userWorkings[idx]?.transcript) && (
+                               <div className="flex-1 p-3 bg-white/5 rounded-xl border border-white/10 space-y-2 relative group min-w-0">
+                                 {userWorkings[idx]?.analysis && (
+                                   <button 
+                                     onClick={() => deleteAnalysis(idx)}
+                                     className="absolute top-2 right-2 p-1 text-white/40 hover:text-red-500 transition-colors opacity-30 group-hover:opacity-100 z-20"
+                                     title="Delete feedback"
+                                   >
+                                     <Trash2 size={12} />
+                                   </button>
+                                 )}
+                                 {userWorkings[idx]?.transcript && (
+                                   <div className="flex items-center gap-2 mb-1 opacity-50 shrink-0">
+                                      <Mic size={10} />
+                                      <p className="text-[8px] font-bold italic truncate">"{userWorkings[idx].transcript}"</p>
+                                   </div>
+                                 )}
+                                 {userWorkings[idx].analysis && (
+                                   <>
+                                     <div className={`${!expandedReplies[idx] ? 'max-h-[100px] overflow-y-auto' : ''} transition-all duration-300 relative custom-scrollbar`}>
+                                       <MarkdownRenderer content={userWorkings[idx].analysis} className="text-[11px] leading-relaxed text-white/70" />
+                                       {!expandedReplies[idx] && userWorkings[idx].analysis.length > 150 && (
+                                         <div className="sticky bottom-0 left-0 w-full h-8 bg-gradient-to-t from-[#0A0F1C] to-transparent pointer-events-none" />
+                                       )}
+                                     </div>
+                                     {userWorkings[idx].analysis.length > 150 && (
+                                       <button 
+                                         onClick={() => setExpandedReplies(prev => ({...prev, [idx]: !prev[idx]}))}
+                                         className="text-[9px] font-black uppercase text-blue-500 mt-2 hover:underline inline-block shrink-0"
+                                       >
+                                         {expandedReplies[idx] ? 'See Part' : 'See All'}
+                                       </button>
+                                     )}
+                                   </>
+                                 )}
+                               </div>
+                             )}
+                          </div>
+                        )}
+                        {userWorkings[idx]?.transcript && !userWorkings[idx]?.imagePreview && (
+                           <div className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-2 relative group">
+                              {userWorkings[idx]?.analysis && (
+                                <button 
+                                  onClick={() => deleteAnalysis(idx)}
+                                  className="absolute top-2 right-2 p-1 text-white/40 hover:text-red-500 transition-colors opacity-30 group-hover:opacity-100 z-20"
+                                  title="Delete feedback"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                              <div className="flex items-center gap-2 mb-1 opacity-50 shrink-0">
+                                 <Mic size={10} />
+                                 <p className="text-[8px] font-bold italic truncate">"{userWorkings[idx].transcript}"</p>
+                              </div>
+                              {userWorkings[idx].analysis && (
+                                <>
+                                  <div className={`${!expandedReplies[idx] ? 'max-h-[100px] overflow-y-auto' : ''} transition-all duration-300 relative custom-scrollbar`}>
+                                    <MarkdownRenderer content={userWorkings[idx].analysis} className="text-[11px] leading-relaxed text-white/70" />
+                                    {!expandedReplies[idx] && userWorkings[idx].analysis.length > 150 && (
+                                      <div className="sticky bottom-0 left-0 w-full h-8 bg-gradient-to-t from-[#0A0F1C] to-transparent pointer-events-none" />
+                                    )}
+                                  </div>
+                                  {userWorkings[idx].analysis.length > 150 && (
+                                    <button 
+                                      onClick={() => setExpandedReplies(prev => ({...prev, [idx]: !prev[idx]}))}
+                                      className="text-[9px] font-black uppercase text-blue-500 mt-2 hover:underline inline-block shrink-0"
+                                    >
+                                      {expandedReplies[idx] ? 'See Part' : 'See All'}
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                           </div>
+                        )}
+                        {!userWorkings[idx]?.imagePreview && !userWorkings[idx]?.transcript && (
+                          <p className="text-[8px] text-white/20 italic">"Ok Student, let me see your solvings for this step..."</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                className={`p-6 sm:p-8 rounded-[2.5rem] border text-center shadow-2xl relative overflow-hidden ${theme === 'dark' ? 'bg-gradient-to-br from-[#DC2626]/20 via-[#0A0F1C] to-transparent border-[#DC2626]/30 shadow-[#DC2626]/10' : 'bg-gradient-to-br from-[#DC2626]/5 via-white to-transparent border-[#DC2626]/20'}`}
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#DC2626] to-transparent opacity-30" />
+                <p className="text-[10px] font-black text-[#DC2626] uppercase tracking-[0.5em] mb-4">Final Concensus</p>
+                <div className="relative inline-block">
+                  <MarkdownRenderer content={solution.summary} className={`text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`} />
+                  <div className="absolute -bottom-2 left-0 w-full h-1 bg-[#DC2626]/20 rounded-full blur-sm" />
+                </div>
+              </motion.div>
+            </div>
+            
+            <div className="flex justify-center pb-10">
+              <button 
+                onClick={clearAll} 
+                className={`flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/40 hover:text-red-500' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-red-500'}`}
+              >
+                <Trash2 size={16} /> Clear Results & Start Over
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 interface HomeHistoryItem {
   id: string;
   title: string;
-  type: 'quiz' | 'recording' | 'exam';
+  type: 'quiz' | 'recording' | 'exam' | 'assignment';
   progress?: number;
   date?: string;
   score?: number;
   total?: number;
+  data?: any; // To store solution or other relevant metadata
 }
 
 export default function App() {
@@ -528,7 +1437,11 @@ export default function App() {
     displayName: '',
     fullName: '',
     matricNumber: '',
-    dob: ''
+    dob: '',
+    university: '',
+    level: '',
+    department: '',
+    faculty: ''
   });
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [examIdInput, setExamIdInput] = useState('');
@@ -541,7 +1454,7 @@ export default function App() {
 
   // --- \u{1F4F1} APP STATE ---
   const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications' | 'exam'>('home');
-  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'quiz' | 'exam' | 'faculty'>('menu');
+  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses'>('menu');
   const [readArticles, setReadArticles] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
@@ -553,8 +1466,12 @@ export default function App() {
 
   // Load read articles from local storage
   useEffect(() => {
-    const saved = localStorage.getItem('nsg_read_articles');
-    if (saved) setReadArticles(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem('nsg_read_articles');
+      if (saved) setReadArticles(JSON.parse(saved));
+    } catch (e) {
+      console.warn("Failed to parse read articles from storage:", e);
+    }
   }, []);
 
   const markArticleAsRead = (id: string) => {
@@ -595,7 +1512,7 @@ export default function App() {
   const [godModeNotification, setGodModeNotification] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | 'privacy' | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark'>('dark');
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
@@ -603,14 +1520,46 @@ export default function App() {
 
   // Load finished history from local storage
   useEffect(() => {
-    const saved = localStorage.getItem('nsg_finished_history');
-    if (saved) setFinishedHistory(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem('nsg_finished_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const unique = parsed.filter((item: any, index: number) => 
+            parsed.findIndex((i: any) => i.id === item.id) === index
+          );
+          setFinishedHistory(unique);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse history from storage:", e);
+    }
   }, []);
 
   const addToFinishedHistory = (item: HomeHistoryItem) => {
-    const newHistory = [item, ...finishedHistory].slice(0, 20); // Keep last 20
-    setFinishedHistory(newHistory);
-    localStorage.setItem('nsg_finished_history', JSON.stringify(newHistory));
+    setFinishedHistory(prev => {
+      const newHistory = [item, ...prev].slice(0, 50); // Keep last 50
+      localStorage.setItem('nsg_finished_history', JSON.stringify(newHistory));
+      return newHistory;
+    });
+  };
+
+  const removeFromHistory = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    showConfirm(
+      "Delete from History",
+      "Are you sure you want to remove this from your study history? This action cannot be undone.",
+      () => {
+        setFinishedHistory(prev => {
+          const newHistory = prev.filter(item => item.id !== id);
+          localStorage.setItem('nsg_finished_history', JSON.stringify(newHistory));
+          return newHistory;
+        });
+        setUserNotification("Item removed from history.");
+      },
+      "Remove",
+      true
+    );
   };
 
   // --- \u{1F4E6} PWA STATE ---
@@ -727,7 +1676,7 @@ export default function App() {
       const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
         const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setAllUsers(usersList);
-      });
+      }, (err) => console.error("God Mode User Sync Error:", err));
       return () => unsubscribe();
     }
   }, [showGodMode, user]);
@@ -736,7 +1685,40 @@ export default function App() {
     const unsubscribe = onSnapshot(query(collection(db, 'blogPosts'), orderBy('timestamp', 'desc')), (snapshot) => {
       const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBlogPosts(posts);
-    });
+    }, (err) => console.error("Blog Posts Sync Error:", err));
+    return () => unsubscribe();
+  }, []);
+
+  // --- NOTIFICATION PERMISSIONS ---
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // --- LISTEN FOR GLOBAL NOTIFICATIONS ---
+  useEffect(() => {
+    const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'), limit(1));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          // Avoid notifying old ones (simple check with timestamp)
+          if (data.timestamp && (Date.now() - data.timestamp.toMillis() < 10000)) {
+            if (Notification.permission === 'granted') {
+              try {
+                new Notification(data.title, {
+                  body: data.message,
+                  icon: '/icon.svg'
+                });
+              } catch (e) {
+                console.error("Notification error:", e);
+              }
+            }
+          }
+        }
+      });
+    }, (err) => console.error("Notifications Listener Error:", err));
     return () => unsubscribe();
   }, []);
 
@@ -762,6 +1744,14 @@ export default function App() {
       const docRef = await addDoc(collection(db, 'blogPosts'), postData);
       console.log("\u{2705} Blog post published with ID:", docRef.id);
       
+      // Also send a global notification
+      await addDoc(collection(db, 'notifications'), {
+        title: "News Update Published!",
+        message: newPost.title.trim(),
+        timestamp: serverTimestamp(),
+        type: 'blog'
+      });
+
       setNewPost({ title: '', content: '' });
       setIsAddingPost(false);
       setGodModeNotification("Blog post published successfully!");
@@ -862,7 +1852,11 @@ export default function App() {
         fullName: editingUser.fullName || editingUser.displayName || '',
         matric: editingUser.matric || '',
         email: editingUser.email || '',
-        dob: editingUser.dob || ''
+        dob: editingUser.dob || '',
+        university: editingUser.university || '',
+        level: editingUser.level || '',
+        department: editingUser.department || '',
+        faculty: editingUser.faculty || ''
       });
       setEditingUser(null);
       setGodModeNotification("User information updated successfully");
@@ -877,8 +1871,12 @@ export default function App() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [transcriptionNotes, setTranscriptionNotes] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const chunkTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const transcriptionChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- \u{1F4C2} MEDIA & UPLOAD ---
@@ -955,9 +1953,11 @@ export default function App() {
   // Helper to get unfinished items
   const unfinishedQuizzes: HomeHistoryItem[] = quizQuestions.length > 0 && quizState === 'active' ? [{ id: 'current-quiz', title: quizTopic || 'Ongoing Quiz', type: 'quiz', progress: Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100) }] : [];
   const unanalyzedRecordings: HomeHistoryItem[] = sessions.filter(s => !s.fullAnalysis).map(s => ({ id: s.id, title: s.title, type: 'recording', date: s.date }));
-  const homeHistory = [...unfinishedQuizzes, ...finishedHistory, ...unanalyzedRecordings];
+  const homeHistoryFull = [...unfinishedQuizzes, ...finishedHistory, ...unanalyzedRecordings];
+  const homeHistory = homeHistoryFull.filter((item, index) => 
+    homeHistoryFull.findIndex(i => i.id === item.id) === index
+  );
 
-  // --- \u{1F393} CBT EXAM STATE ---
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
   const [examLobbyState, setExamLobbyState] = useState<'login' | 'briefing' | 'exam' | 'result' | 'review'>('login');
@@ -1125,7 +2125,11 @@ export default function App() {
               displayName: data.displayName || prev.displayName || '',
               fullName: data.fullName || prev.fullName || '',
               matricNumber: data.matricNumber || prev.matricNumber || '',
-              dob: data.dob || prev.dob || ''
+              dob: data.dob || prev.dob || '',
+              university: data.university || prev.university || '',
+              level: data.level || prev.level || '',
+              department: data.department || prev.department || '',
+              faculty: data.faculty || prev.faculty || ''
             }));
             
             if (data.status === 'deleted') {
@@ -1182,8 +2186,8 @@ export default function App() {
     }
 
     // Local UI persistence
-    const savedTheme = localStorage.getItem('nsg_theme');
-    if (savedTheme) setTheme(savedTheme as 'dark' | 'light');
+    // Theme persists to dark
+    setTheme('dark');
 
     const savedAdminMode = localStorage.getItem('nsg_admin_mode');
     if (savedAdminMode === 'true') setAdminMode(true);
@@ -1324,14 +2328,14 @@ export default function App() {
     const unsubChats = onSnapshot(collection(db, 'users', user.uid, 'chatSessions'), (snapshot) => {
       const sessions = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ChatSession));
       setChatSessions(sessions);
-    });
+    }, (err) => console.error("Chat Sessions Sync Error:", err));
 
     // For simplicity, we'll keep lecture sessions local or add them to Firestore too
     // Let's add them to Firestore for full persistence
     const unsubLectures = onSnapshot(collection(db, 'users', user.uid, 'lectureSessions'), (snapshot) => {
       const lectureData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as LectureSession));
       setSessions(lectureData.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)));
-    });
+    }, (err) => console.error("Lecture Sessions Sync Error:", err));
 
     return () => {
       unsubChats();
@@ -1495,7 +2499,11 @@ export default function App() {
         displayName: profileFormData.displayName,
         fullName: profileFormData.fullName,
         matricNumber: profileFormData.matricNumber,
-        dob: profileFormData.dob
+        dob: profileFormData.dob,
+        university: profileFormData.university,
+        level: profileFormData.level,
+        department: profileFormData.department,
+        faculty: profileFormData.faculty
       });
       setIsEditingProfile(false);
       setUserNotification("Profile updated successfully!");
@@ -1573,9 +2581,8 @@ export default function App() {
   }, [chatHistory]);
 
   const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
-    localStorage.setItem('nsg_theme', newTheme);
+    // Light mode is trashed
+    setTheme('dark');
   };
 
   const handleChatScroll = () => {
@@ -1644,12 +2651,12 @@ export default function App() {
         Raw Text: ${adminQuestionsRaw}
       `;
       const aiInstance = getAiInstance();
-      const response = await (aiInstance as any).models.generateContent({
+      const response = await aiInstance.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        contents: { role: "user", parts: [{ text: prompt }] },
         config: { responseMimeType: "application/json" }
       });
-      const data = JSON.parse(response.text || "{}");
+      const data = JSON.parse(response?.text || "{}");
       if (data.questions) {
         const formatted = data.questions.map((q: any) => ({ ...q, id: Math.random().toString(36).substr(2, 9) }));
         
@@ -2220,10 +3227,9 @@ export default function App() {
     if (isRecording) {
       setIsStopping(true);
       try {
-        console.log("\u{1F6D1} Stopping recording...");
+        console.log("ðŸ›‘ Stopping recording...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
-          // Stop all tracks to release the microphone
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
         }
       } catch (err) {
@@ -2232,15 +3238,21 @@ export default function App() {
         setIsRecording(false);
         setIsStopping(false);
         if (timerRef.current) clearInterval(timerRef.current);
+        if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
       }
     } else {
       audioChunksRef.current = [];
+      transcriptionChunksRef.current = [];
+      setTranscriptionNotes('');
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const recorder = new MediaRecorder(stream);
         
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          if (e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+            transcriptionChunksRef.current.push(e.data);
+          }
         };
 
         recorder.onstop = () => {
@@ -2250,13 +3262,48 @@ export default function App() {
         };
 
         mediaRecorderRef.current = recorder;
-        recorder.start(1000);
+        recorder.start(1000); // Record in 1s chunks
         setIsRecording(true);
         setRecordingTime(0);
         timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
+
+        // Start 10-second transcription interval
+        chunkTimerRef.current = setInterval(async () => {
+          if (transcriptionChunksRef.current.length > 0) {
+            const chunkBlob = new Blob(transcriptionChunksRef.current, { type: 'audio/webm' });
+            transcriptionChunksRef.current = []; // Clear for next interval
+            processTranscriptionChunk(chunkBlob);
+          }
+        }, 10000);
+
       } catch (err) {
         setUserNotification("Microphone access denied. Please check permissions.");
       }
+    }
+  };
+
+  const processTranscriptionChunk = async (blob: Blob) => {
+    try {
+      if (blob.size === 0) return;
+      setIsTranscribing(true);
+      const aiInstance = getAiInstance();
+      const audioPart = await fileToGenerativePart(blob);
+      
+      const prompt = "Transcribe this audio clip accurately. Format it as smooth notes. CRITICAL: Remove all filler words like 'um', 'uh', 'so', 'you know', 'basically', 'like', etc. If the audio is silent or unintelligible, return an empty string. Only return the cleaned text.";
+
+      const result = await aiInstance.models.generateContent({
+        model: MODEL_NAME,
+        contents: { parts: [audioPart, { text: prompt }] }
+      });
+
+      const newText = result?.text || "";
+      if (newText.trim()) {
+        setTranscriptionNotes(prev => prev + (prev ? " " : "") + newText.trim());
+      }
+    } catch (err) {
+      console.error("Transcription chunk failed:", err);
+    } finally {
+      setIsTranscribing(false);
     }
   };
 
@@ -2465,12 +3512,12 @@ export default function App() {
       ` });
 
       const aiInstance = getAiInstance();
-      const response = await (aiInstance as any).models.generateContent({
+      const response = await aiInstance.models.generateContent({
         model: MODEL_NAME,
         contents: [{ parts }]
       });
 
-      const text = response.text || "Analysis failed to generate text.";
+      const text = response?.text || "Analysis failed to generate text.";
       
       const base64Images = await Promise.all(uploadedImages.map(async (img) => {
         const part = await fileToGenerativePart(img.file);
@@ -2478,7 +3525,7 @@ export default function App() {
       }));
 
       const newSession: LectureSession = { 
-        id: Date.now().toString(), 
+        id: `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, 
         title: `Lecture ${new Date().toLocaleTimeString()}`, 
         date: new Date().toLocaleDateString(), 
         duration: formatTime(recordingTime), 
@@ -2643,7 +3690,7 @@ export default function App() {
           console.log("Starting voice transcription with model:", MODEL_NAME);
           const part = await fileToGenerativePart(blob);
           const aiInstance = getAiInstance();
-          const response = await (aiInstance as any).models.generateContent({
+          const response = await aiInstance.models.generateContent({
             model: MODEL_NAME,
             contents: [{ 
               parts: [
@@ -2653,7 +3700,7 @@ export default function App() {
             }]
           });
           
-          const transcription = response.text;
+          const transcription = response?.text;
           console.log("Transcription result:", transcription);
           
           if (transcription && transcription.trim()) {
@@ -2907,7 +3954,7 @@ export default function App() {
       return;
     }
     try {
-      const quizId = Date.now().toString();
+      const quizId = `quiz-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       await setDoc(doc(db, 'quizzes', quizId), {
         questions: quizQuestions,
         topic: quizTopic,
@@ -2947,6 +3994,12 @@ export default function App() {
       const prompt = `
         Generate a ${quizQuestionCount}-question multiple choice quiz about "${quizTopic}".
         Difficulty Level: ${quizDifficulty}.
+        
+        CRITICAL: For ALL mathematical expressions, formulas, and scientific notation (like 2^2, powers, roots, scientific notation, etc.), 
+        ALWAYS wrap them in LaTeX notation using $ ... $ for inline and $$ ... $$ for blocks.
+        Example: $2^2 = 4$, $\pi r^2$, $6.02 \times 10^{23}$.
+        NEVER leave raw symbols like ^ or _ or / (for fractions) outside of LaTeX delimiters.
+        
         Return ONLY a JSON object with this structure:
         {
           "questions": [
@@ -2954,16 +4007,16 @@ export default function App() {
               "question": "string",
               "options": ["string", "string", "string", "string"],
               "correctAnswer": number (0-3),
-              "explanation": "A comprehensive breakdown. 1. Why the correct answer is right. 2. Why the other options are incorrect or common pitfalls. Ensure this is detailed enough for a thorough review."
+              "explanation": "Detailed breakdown using LaTeX where needed. CRITICAL: You MUST explain why the correct answer is correct and also briefly explain why the other options (wrong answers) are incorrect to help the student learn."
             }
           ]
         }
       `;
 
       const aiInstance = getAiInstance();
-      const response = await (aiInstance as any).models.generateContent({
+      const response = await aiInstance.models.generateContent({
         model: MODEL_NAME,
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: { parts: [{ text: prompt }] },
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -2988,7 +4041,7 @@ export default function App() {
         }
       });
 
-      const data = JSON.parse(response.text || "{}");
+      const data = JSON.parse(response?.text || "{}");
       if (data.questions) {
         setQuizQuestions(data.questions);
         setCurrentQuestionIndex(0);
@@ -3005,6 +4058,80 @@ export default function App() {
       setIsGeneratingQuiz(false);
     }
   };
+
+  const generateDynamicExam = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (!quizTopic.trim()) {
+      setUserNotification("Please enter a topic first.");
+      return;
+    }
+
+    setIsGeneratingQuiz(true);
+    
+    try {
+      const prompt = `
+        Generate a ${quizQuestionCount > 25 ? quizQuestionCount : 50}-question professional multiple choice examination about "${quizTopic}".
+        Difficulty Level: ${quizDifficulty}.
+        
+        CRITICAL: For ALL mathematical expressions, formulas, and scientific notation, 
+        ALWAYS wrap them in LaTeX notation using $ ... $ for inline and $$ ... $$ for blocks.
+        Example: $2^2 = 4$, $\pi r^2$, $H_2O$.
+        NEVER leave raw symbols like ^ or _ outside of LaTeX delimiters.
+        
+        Return ONLY a JSON object with this structure:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "options": ["string", "string", "string", "string"],
+              "correctAnswer": number (0-3),
+              "explanation": "Detailed breakdown using LaTeX. CRITICAL: Provide a comprehensive explanation that covers why the correct answer is right and also why the incorrect options are wrong."
+            }
+          ]
+        }
+      `;
+
+      const aiInstance = getAiInstance();
+      const response = await aiInstance.models.generateContent({
+        model: MODEL_NAME,
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      const data = JSON.parse(response?.text || "{}");
+      if (data.questions) {
+        const examQs = data.questions.map((q: any, i: number) => ({
+          ...q,
+          id: `dyn-q-${Date.now()}-${i}`
+        }));
+        setExamQuestions(examQs);
+        setExamLobbyState('exam');
+        setUserNotification("Dynamic Course Exam Generated!");
+      }
+    } catch (err) {
+      console.error("Exam Gen Error:", err);
+      setUserNotification("Failed to generate dynamic exam.");
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  useEffect(() => {
+    // Auto-trigger Quiz/Exam if coming from Courses Tool with a prompt set
+    const isFromCourses = quizTopic && quizTopic.includes(': ') && quizTopic.includes(' - ');
+    if (isFromCourses) {
+      if (toolsSubTab === 'quiz' && quizState === 'idle') {
+        generateQuiz();
+      } else if (toolsSubTab === 'exam' && (examLobbyState === 'login' || examLobbyState === 'result') && examQuestions.length === 0) {
+        generateDynamicExam();
+      }
+    }
+  }, [toolsSubTab, quizTopic]);
 
   const sendQuizReportToAI = () => {
     const report = `
@@ -3045,7 +4172,7 @@ export default function App() {
       setQuizScore(finalScore);
       setQuizState('finished');
       addToFinishedHistory({
-        id: `quiz-${Date.now()}`,
+        id: `quiz-fin-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         title: quizTopic || 'Quiz Result',
         type: 'quiz',
         progress: 100,
@@ -3321,9 +4448,6 @@ export default function App() {
               <User size={16} /> LOGIN
             </button>
           )}
-          <button onClick={toggleTheme} className={`p-2 rounded-xl ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70' : 'bg-slate-100 border-slate-200 text-slate-600'} hover:text-[#DC2626] transition-all`}>
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
           <div className={`hidden sm:flex items-center gap-2 px-3 py-1 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-100 border-slate-200'} rounded-full border`}>
             <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
             <span className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'} uppercase`}>SYSTEM READY</span>
@@ -3454,6 +4578,16 @@ export default function App() {
                               setSelectedSession(session);
                               setShowRecordSidebar(true);
                             }
+                          } else if (item.type === 'assignment') {
+                            setActiveTab('tools');
+                            setToolsSubTab('assignment');
+                            if (item.data) {
+                              // We need a way to set the solution in AssignmentSolver
+                              // For now, it will load but we should probably store it locally in AssignmentSolver state if we want to re-show it immediately
+                              // Let's assume the user just wants to go there for now, or we can use a global state for active solution
+                              setActiveTab('tools');
+                              setToolsSubTab('assignment');
+                            }
                           }
                         }}
                         className={`group relative overflow-hidden rounded-2xl border transition-all cursor-pointer ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white border-slate-200 hover:bg-slate-50 shadow-sm'}`}
@@ -3464,7 +4598,10 @@ export default function App() {
                         <div className="p-4 pl-6 flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'}`}>
-                              {item.type === 'quiz' ? <Zap size={20} className="text-yellow-500" /> : item.type === 'exam' ? <FileText size={20} className="text-[#DC2626]" /> : <Mic size={20} className="text-red-500" />}
+                              {item.type === 'quiz' ? <Zap size={20} className="text-yellow-500" /> : 
+                               item.type === 'exam' ? <FileText size={20} className="text-[#DC2626]" /> : 
+                               item.type === 'assignment' ? <BookOpen size={20} className="text-purple-500" /> :
+                               <Mic size={20} className="text-red-500" />}
                             </div>
                             <div>
                               <p className={`text-xs font-black uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title}</p>
@@ -3474,6 +4611,8 @@ export default function App() {
                                     ? (item.score !== undefined 
                                         ? `Score: ${item.score}/${item.total} \u{2022} ${item.date}` 
                                         : `Unfinished \u{2022} ${item.progress ?? 0}% Complete`)
+                                    : item.type === 'assignment'
+                                    ? `Assignment Solution \u{2022} ${item.date}`
                                     : `Unanalyzed Recording \u{2022} ${item.date || 'No Date'}`}
                                 </p>
                                 {(item.type === 'quiz' || item.type === 'exam') && item.progress !== undefined && (
@@ -3488,7 +4627,15 @@ export default function App() {
                               </div>
                             </div>
                           </div>
-                          <ChevronRight size={18} className="text-white/20 group-hover:text-[#DC2626] transition-all" />
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={(e) => removeFromHistory(item.id, e)}
+                              className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'text-white/20 hover:text-red-500 hover:bg-red-500/10' : 'text-slate-300 hover:text-red-500 hover:bg-red-500/10'}`}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                            <ChevronRight size={18} className={`${theme === 'dark' ? 'text-white/20' : 'text-slate-300'}`} />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -3513,7 +4660,9 @@ export default function App() {
                       { id: 'record', title: 'Record Lecture', icon: Mic, color: 'from-red-600 to-red-400', desc: 'AI-Powered Recording' },
                       { id: 'quiz', title: 'Smart Quiz', icon: Zap, color: 'from-yellow-500 to-amber-400', desc: 'Test Your Knowledge' },
                       { id: 'exam', title: 'CBT Exam', icon: ShieldCheck, color: 'from-orange-600 to-orange-400', desc: 'Professional Testing' },
-                      { id: 'faculty', title: 'Faculty Specials', icon: GraduationCap, color: 'from-blue-600 to-indigo-400', desc: 'Department Specific' }
+                      { id: 'faculty', title: 'Faculty Specials', icon: GraduationCap, color: 'from-blue-600 to-indigo-400', desc: 'Department Specific' },
+                      { id: 'assignment', title: 'Assignment Solver', icon: BookOpen, color: 'from-purple-600 to-pink-400', desc: 'Step-by-Step AI Solutions' },
+                      { id: 'courses', title: 'Courses Tool', icon: BookOpen, color: 'from-emerald-600 to-teal-400', desc: 'Course-Specific Learning' }
                     ].map((tool) => (
                       <button 
                         key={tool.id}
@@ -3546,6 +4695,8 @@ export default function App() {
                         {toolsSubTab === 'quiz' && 'Quiz Engine'}
                         {toolsSubTab === 'exam' && 'CBT Examination'}
                         {toolsSubTab === 'faculty' && 'Faculty Specials'}
+                        {toolsSubTab === 'assignment' && 'Assignment Solver'}
+                        {toolsSubTab === 'courses' && 'Course-Specific Tools'}
                        </span>
                     </div>
                   </div>
@@ -3668,6 +4819,36 @@ export default function App() {
                                     <Sparkles size={16} /> Analyze
                                   </button>
                                 </div>
+
+                                {/* Real-time Transcription/Note Area */}
+                                {(transcriptionNotes || isRecording) && (
+                                  <motion.div 
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="w-full mt-8 bg-white/5 border border-white/10 rounded-3xl p-6 text-left"
+                                  >
+                                    <div className="flex items-center justify-between mb-4">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Live Transcription Notes</p>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {isTranscribing && <RefreshCcw size={12} className="text-[#DC2626] animate-spin" />}
+                                        <button 
+                                          onClick={() => copyToClipboard(transcriptionNotes)}
+                                          className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"
+                                          title="Copy Notes"
+                                        >
+                                          <Copy size={14} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div className={`max-h-60 overflow-y-auto pr-2 custom-scrollbar ${theme === 'dark' ? 'text-white/80' : 'text-slate-700'} text-xs leading-relaxed`}>
+                                      {transcriptionNotes || (isRecording ? "Listening for content..." : "No notes captured yet.")}
+                                      {isTranscribing && <span className="inline-block w-1.5 h-3 ml-1 bg-[#DC2626]/50 animate-pulse" />}
+                                    </div>
+                                  </motion.div>
+                                )}
                               </div>
                             </div>
                             <AdUnit slot="7536999840" />
@@ -3821,7 +5002,7 @@ export default function App() {
                   <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
                     <button onClick={() => setQuizState('idle')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back</button>
                     <div className="text-center"><p className="text-[10px] font-black text-white/30 uppercase">Progress</p><p className="text-sm font-black text-[#DC2626]">{currentQuestionIndex + 1} / {quizQuestions.length}</p></div>
-                    <div className="text-right"><p className="text-[10px] font-black text-white/30 uppercase">Score</p><p className="text-sm font-black text-green-500">{quizScore}</p></div>
+                    <div className="w-10"></div>
                   </div>
 
                   {/* Quiz Question Navigation */}
@@ -3867,8 +5048,6 @@ export default function App() {
                               className="text-sm font-medium"
                             />
                           </div>
-                          {isAnswered && idx === quizQuestions[currentQuestionIndex].correctAnswer && <Check size={16} className="text-green-500" />}
-                          {isAnswered && selectedOption === idx && idx !== quizQuestions[currentQuestionIndex].correctAnswer && <X size={16} className="text-[#DC2626]" />}
                         </button>
                       ))}
                     </div>
@@ -4289,6 +5468,44 @@ export default function App() {
               )}
             </motion.div>
           )}
+                  {toolsSubTab === 'assignment' && (
+                    <motion.div key="assignment" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                      <AssignmentSolver 
+                        theme={theme} 
+                        user={user} 
+                        isPremium={isPremium} 
+                        getAiInstance={getAiInstance} 
+                        fileToGenerativePart={fileToGenerativePart}
+                        setUserNotification={setUserNotification}
+                        setChatHistory={setChatHistory}
+                        setActiveTab={setActiveTab}
+                        setActiveChatSessionId={setActiveChatSessionId}
+                        addToFinishedHistory={addToFinishedHistory}
+                        finishedHistory={finishedHistory}
+                      />
+                    </motion.div>
+                  )}
+                  {toolsSubTab === 'courses' && (
+                    <motion.div key="courses" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                      <CoursesTool 
+                        theme={theme}
+                        user={user}
+                        getAiInstance={getAiInstance}
+                        getHfInstance={getHfInstance}
+                        setUserNotification={setUserNotification}
+                        quizTopic={quizTopic}
+                        setQuizTopic={setQuizTopic}
+                        quizQuestionCount={quizQuestionCount}
+                        setQuizQuestionCount={setQuizQuestionCount}
+                        quizDifficulty={quizDifficulty}
+                        setQuizDifficulty={setQuizDifficulty}
+                        generateQuiz={generateQuiz}
+                        setToolsSubTab={setToolsSubTab}
+                        quizState={quizState}
+                        setQuizState={setQuizState}
+                      />
+                    </motion.div>
+                  )}
                   {toolsSubTab === 'faculty' && (
                     <div className="h-full">
                       <AILibrary theme={theme} setUserNotification={setUserNotification} />
@@ -4848,8 +6065,12 @@ export default function App() {
                           currentUserData?.fullName,
                           currentUserData?.matricNumber,
                           currentUserData?.dob,
+                          currentUserData?.university,
+                          currentUserData?.level,
+                          currentUserData?.department,
+                          currentUserData?.faculty,
                           currentUserData?.photoURL
-                        ].filter(Boolean).length / 5) * 100)}%
+                        ].filter(Boolean).length / 9) * 100)}%
                       </span>
                     </div>
                     <div className="w-24 h-1 bg-white/5 rounded-full overflow-hidden border border-white/10">
@@ -4860,8 +6081,12 @@ export default function App() {
                           currentUserData?.fullName,
                           currentUserData?.matricNumber,
                           currentUserData?.dob,
+                          currentUserData?.university,
+                          currentUserData?.level,
+                          currentUserData?.department,
+                          currentUserData?.faculty,
                           currentUserData?.photoURL
-                        ].filter(Boolean).length / 5) * 100}%` }}
+                        ].filter(Boolean).length / 9) * 100}%` }}
                         className="h-full bg-[#DC2626]"
                       />
                     </div>
@@ -4873,7 +6098,11 @@ export default function App() {
                     { label: 'Display Name', key: 'displayName', icon: User, placeholder: 'How should we call you?' },
                     { label: 'Full Official Name', key: 'fullName', icon: FileText, placeholder: 'Legal name' },
                     { label: 'Matric Number', key: 'matricNumber', icon: ShieldCheck, placeholder: 'e.g. DEL/2024/001' },
-                    { label: 'Date of Birth', key: 'dob', icon: Calendar, placeholder: 'YYYY-MM-DD', type: 'date' }
+                    { label: 'Date of Birth', key: 'dob', icon: Calendar, placeholder: 'YYYY-MM-DD', type: 'date' },
+                    { label: 'University', key: 'university', icon: GraduationCap, placeholder: 'e.g. University of Lagos' },
+                    { label: 'Level', key: 'level', icon: Activity, placeholder: 'e.g. 400 Level' },
+                    { label: 'Department', key: 'department', icon: Database, placeholder: 'e.g. Computer Science' },
+                    { label: 'Faculty', key: 'faculty', icon: LayoutGrid, placeholder: 'e.g. Science' }
                   ].map((field) => (
                     <div key={field.key} className="space-y-2">
                       <label className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1 flex items-center gap-1.5">
@@ -4937,15 +6166,7 @@ export default function App() {
                   </div>
                   <div className="flex flex-col sm:flex-row items-center gap-3">
                     <button 
-                      onClick={() => {
-                        showConfirm(
-                          "Sign Out",
-                          "Are you sure you want to log out?",
-                          () => signOut(auth),
-                          "Log Out",
-                          false
-                        );
-                      }}
+                      onClick={handleLogout}
                       className="w-full sm:w-auto px-6 py-3 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/10 flex items-center justify-center gap-2"
                     >
                       <LogOut size={14} /> Sign Out
@@ -4976,6 +6197,45 @@ export default function App() {
                     >
                       <Trash2 size={14} /> Delete Account
                     </button>
+                  </div>
+                </div>
+                
+                <div className="pt-8 border-t border-white/5 space-y-6">
+                  <div className="space-y-2">
+                    <h4 className="text-[9px] font-black text-[#DC2626] uppercase tracking-[0.3em] text-center">About & Policies</h4>
+                    <p className="text-[7px] text-white/30 text-center uppercase tracking-widest">Everything you need to know about our lecture OS</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => setLegalPage('about')} className="bg-white/5 hover:bg-white/10 p-4 rounded-2xl transition-all border border-white/10 flex flex-col items-center gap-2 group">
+                      <div className="w-8 h-8 rounded-full bg-[#DC2626]/10 flex items-center justify-center text-[#DC2626] group-hover:bg-[#DC2626] group-hover:text-white transition-all">
+                        <User size={14} />
+                      </div>
+                      <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">About Us</span>
+                    </button>
+                    <button onClick={() => setLegalPage('terms')} className="bg-white/5 hover:bg-white/10 p-4 rounded-2xl transition-all border border-white/10 flex flex-col items-center gap-2 group">
+                      <div className="w-8 h-8 rounded-full bg-[#DC2626]/10 flex items-center justify-center text-[#DC2626] group-hover:bg-[#DC2626] group-hover:text-white transition-all">
+                        <ShieldCheck size={14} />
+                      </div>
+                      <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">Terms</span>
+                    </button>
+                    <button onClick={() => setLegalPage('privacy')} className="bg-white/5 hover:bg-white/10 p-4 rounded-2xl transition-all border border-white/10 flex flex-col items-center gap-2 group">
+                      <div className="w-8 h-8 rounded-full bg-[#DC2626]/10 flex items-center justify-center text-[#DC2626] group-hover:bg-[#DC2626] group-hover:text-white transition-all">
+                        <Lock size={14} />
+                      </div>
+                      <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">Privacy</span>
+                    </button>
+                    <button onClick={() => setLegalPage('contact')} className="bg-white/5 hover:bg-white/10 p-4 rounded-2xl transition-all border border-white/10 flex flex-col items-center gap-2 group">
+                      <div className="w-8 h-8 rounded-full bg-[#DC2626]/10 flex items-center justify-center text-[#DC2626] group-hover:bg-[#DC2626] group-hover:text-white transition-all">
+                        <Zap size={14} />
+                      </div>
+                      <span className="text-[9px] font-black text-white/60 uppercase tracking-widest">Contact</span>
+                    </button>
+                  </div>
+                  
+                  <div className="flex flex-col items-center gap-1 pt-2 opacity-20">
+                    <p className="text-[8px] font-black uppercase tracking-[0.4em]">Lecture OS v4.0</p>
+                    <p className="text-[7px] font-bold uppercase tracking-widest">Â© 2026 NSG Studio</p>
                   </div>
                 </div>
               </div>
@@ -5223,17 +6483,12 @@ export default function App() {
           )}
         </AnimatePresence>
         {/* FOOTER */}
-        <footer className={`w-full px-4 py-8 pb-8 border-t ${theme === 'dark' ? 'border-white/5 bg-black/20' : 'border-slate-100 bg-slate-50/50'} flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'}`}>
+        <footer className={`w-full px-4 py-8 pb-8 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'}`}>
           {user?.email === "nuellkelechi@gmail.com" && (
             <button onClick={() => setShowGodMode(true)} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-colors flex items-center gap-1">
               <ShieldCheck size={12} /> GOD MODE
             </button>
           )}
-          <button onClick={() => setLegalPage('about')} className="hover:text-[#DC2626] transition-colors">About Us</button>
-          <button onClick={() => setLegalPage('terms')} className="hover:text-[#DC2626] transition-colors">Terms & Conditions</button>
-          <button onClick={() => setLegalPage('privacy')} className="hover:text-[#DC2626] transition-colors">Privacy Policy</button>
-          <button onClick={() => setLegalPage('contact')} className="hover:text-[#DC2626] transition-colors">Contact Us</button>
-          <span>{"\u{00A9} 2026 Nuell Graphics"}</span>
         </footer>
       </main>
 
@@ -5362,6 +6617,7 @@ export default function App() {
                     <thead>
                       <tr className="uppercase tracking-widest border-b text-white/30 border-white/5">
                         <th className="py-3 px-2">User Info</th>
+                        <th className="py-3 px-2">Academic Info</th>
                         <th className="py-3 px-2">Status</th>
                         <th className="py-3 px-2">Hosting Payment</th>
                         <th className="py-3 px-2">Taking Payment</th>
@@ -5383,6 +6639,13 @@ export default function App() {
                                 <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} \u{2022} {u.dob || 'No DOB'}</p>
                               </div>
                             </div>
+                          </td>
+                          <td className="py-4 px-2">
+                             <div className="space-y-1">
+                                <p className="text-[8px] text-white/60 font-black uppercase truncate max-w-[120px]">{u.university || 'No University'}</p>
+                                <p className="text-[8px] text-[#DC2626] font-bold uppercase">{u.level || 'No Level'} \u{2022} {u.department || 'No Dept'}</p>
+                                <p className="text-[7px] text-white/30 uppercase font-mono">{u.faculty || 'No Faculty'}</p>
+                             </div>
                           </td>
                           <td className="py-4 px-2">
                             <button onClick={() => toggleUserStatus(u.id, u.status)} className={`px-2 py-1 rounded-md font-black uppercase tracking-tighter ${u.status === 'deleted' ? 'bg-[#DC2626]/20 text-[#DC2626]' : 'bg-green-600/20 text-green-500'}`}>
@@ -5538,6 +6801,26 @@ export default function App() {
                 <div className="space-y-1">
                   <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Date of Birth</p>
                   <input type="text" value={editingUser.dob || ''} onChange={(e) => setEditingUser({...editingUser, dob: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">University</p>
+                    <input type="text" value={editingUser.university || ''} onChange={(e) => setEditingUser({...editingUser, university: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Level</p>
+                    <input type="text" value={editingUser.level || ''} onChange={(e) => setEditingUser({...editingUser, level: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Department</p>
+                    <input type="text" value={editingUser.department || ''} onChange={(e) => setEditingUser({...editingUser, department: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Faculty</p>
+                    <input type="text" value={editingUser.faculty || ''} onChange={(e) => setEditingUser({...editingUser, faculty: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                  </div>
                 </div>
 
                 <div className="flex gap-2 pt-4">
