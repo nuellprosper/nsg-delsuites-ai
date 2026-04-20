@@ -4590,7 +4590,7 @@ ${session.fullAnalysis}
                   {authMode === 'login' ? 'Access' : 'Genesis'} <span className="text-[#DC2626]">NSG</span>
                 </h2>
                 <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mt-1.5">
-                  {authMode === 'login' ? 'Loging in to NSG' : 'Initialize Evolution'}
+                  {authMode === 'login' ? 'Logging in to NSG' : 'Initialize Evolution'}
                 </p>
               </div>
 
