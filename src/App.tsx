@@ -1925,8 +1925,11 @@ export default function App() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const chunkTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const processorQueue = useRef<Promise<void>>(Promise.resolve());
+  const isStopRequested = useRef(false);
   // We'll use audioChunksRef directly for full accumulated transcription
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentRecordingSessionIdRef = useRef<string | null>(null);
 
   // --- \u{1F4C2} MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
@@ -2201,7 +2204,7 @@ export default function App() {
 
   const PremiumOnboarding = () => (
     <AnimatePresence>
-      {showPremiumTrial && (
+      {showPremiumTrial && user && (
         <motion.div 
           initial={{ opacity: 0 }} 
           animate={{ opacity: 1 }} 
@@ -2273,7 +2276,7 @@ export default function App() {
 
   const PremiumModal = () => (
     <AnimatePresence>
-      {showPremiumModal && (
+      {showPremiumModal && user && (
         <motion.div 
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
@@ -2370,25 +2373,32 @@ export default function App() {
     verifyPendingPayment();
   }, [user]);
 
+  const userUnsubscribeRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     console.log("App Initialized. Checking API Keys...");
     console.log("Gemini Key Found:", !!getApiKey());
     console.log("HF Key Found:", !!getHfKey());
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      // Clear any existing snapshot listener
+      if (userUnsubscribeRef.current) {
+        userUnsubscribeRef.current();
+        userUnsubscribeRef.current = null;
+      }
+
       setUser(currentUser);
-      setIsAuthLoading(false);
+      
       if (currentUser) {
         const userDocRef = doc(db, 'users', currentUser.uid);
         
-        // Real-time sync for current user data
-        const unsubscribeUser = onSnapshot(userDocRef, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            const userData = { id: doc.id, ...data };
+        userUnsubscribeRef.current = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            const userData = { id: docSnap.id, ...data };
             setCurrentUserData(userData);
             setIsAdminUser(data.role === 'admin' || currentUser.email === "nuellkelechi@gmail.com");
             
-            // Trigger Premium Trial Modal if not premium and not shown this session
             const premiumUntilDate = data.premiumUntil ? new Date(data.premiumUntil) : null;
             const isCurrentlySubscribed = premiumUntilDate ? premiumUntilDate > new Date() : false;
             const userIsPremium = data.isPremium || data.bypassAllPayments || data.role === 'admin' || isCurrentlySubscribed || data.subscribed === true;
@@ -2399,7 +2409,6 @@ export default function App() {
               setHasShownTrialThisSession(true);
             }
             
-            // Only update form data if not currently editing to avoid overwriting user input
             setProfileFormData(prev => ({
               displayName: data.displayName || prev.displayName || '',
               fullName: data.fullName || prev.fullName || '',
@@ -2414,10 +2423,10 @@ export default function App() {
             if (data.status === 'deleted') {
               if (currentUser.email === "nuellkelechi@gmail.com") {
                 updateDoc(userDocRef, { status: 'active' });
-                return;
+              } else {
+                signOut(auth);
+                setUserNotification("Your account has been deactivated.");
               }
-              signOut(auth);
-              setUserNotification("Your account has been deactivated.");
             }
           } else {
             const isDefaultAdmin = currentUser.email === "nuellkelechi@gmail.com";
@@ -2440,11 +2449,12 @@ export default function App() {
           console.error("Auth Snapshot Error:", error);
           setIsAuthLoading(false);
         });
-
-        return () => unsubscribeUser();
       } else {
         setIsAdminUser(false);
         setCurrentUserData(null);
+        setShowPremiumTrial(false);
+        setShowPremiumModal(false);
+        setIsAuthLoading(false);
       }
     });
 
@@ -2669,6 +2679,7 @@ export default function App() {
   };
 
   const handleGoogleLogin = async () => {
+    setIsAuthLoading(true);
     try {
       // NOTE: For Google Sign-in to work on your custom domain (nuellstudyguide.name.ng),
       // you MUST add it to the "Authorized domains" list in your Firebase Console:
@@ -2719,6 +2730,7 @@ export default function App() {
       } else {
         setUserNotification(`Failed to login with Google: ${errorMessage} (${errorCode})`);
       }
+      setIsAuthLoading(false);
     }
   };
 
@@ -2757,14 +2769,31 @@ export default function App() {
       } else {
         let loginEmail = authEmail;
         
-        // If they provided a matric number but no email, try to find the email
-        if (authMatric && !authEmail) {
-          const q = query(collection(db, 'users'), where('matric', '==', authMatric));
-          const snapshot = await getDocs(q);
-          if (!snapshot.empty) {
-            loginEmail = snapshot.docs[0].data().email;
-          } else {
-            setUserNotification("Account not registered. Please sign up.");
+        // Better logic to differentiate between email and matric number login
+        const isLikelyEmail = authEmail.includes('@');
+        
+        if (!isLikelyEmail) {
+          try {
+            // Treat as matric login
+            const q = query(collection(db, 'users'), where('matric', '==', authEmail.trim()));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              loginEmail = snapshot.docs[0].data().email;
+            } else {
+              // Also try 'matricNumber' field as it might vary
+              const qAlt = query(collection(db, 'users'), where('matricNumber', '==', authEmail.trim()));
+              const snapAlt = await getDocs(qAlt);
+              if (!snapAlt.empty) {
+                loginEmail = snapAlt.docs[0].data().email;
+              } else {
+                setUserNotification("Matric number not found. Please use your registered email.");
+                setIsAuthLoading(false);
+                return;
+              }
+            }
+          } catch (err: any) {
+            console.error(err);
+            setUserNotification("Error verifying matric number.");
             setIsAuthLoading(false);
             return;
           }
@@ -2795,8 +2824,7 @@ export default function App() {
     } catch (error: any) {
       console.error("Auth Error:", error);
       setUserNotification(error.message);
-    } finally {
-      setIsAuthLoading(false);
+      setIsAuthLoading(false); // Only set loading false on error
     }
   };
 
@@ -2813,6 +2841,8 @@ export default function App() {
           setIsHostPaid(false);
           setIsTakingPaid(false);
           setHasShownTrialThisSession(false);
+          setShowPremiumTrial(false);
+          setShowPremiumModal(false);
           setUserNotification("Logged out successfully.");
         } catch (error) {
           console.error("Logout Error:", error);
@@ -3575,12 +3605,22 @@ ${session.fullAnalysis}
     if (isStopping) return;
     if (isRecording) {
       setIsStopping(true);
+      isStopRequested.current = true;
       try {
         console.log("ðŸ›‘ Stopping recording...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
         }
+        
+        // Final process of accumulated audio
+        if (audioChunksRef.current.length > 0) {
+          const finalBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          processorQueue.current = processorQueue.current.then(() => processTranscriptionChunk(finalBlob));
+        }
+
+        // Wait for all transcription processing to finish before concluding
+        await processorQueue.current;
       } catch (err) {
         console.error("Error stopping recording:", err);
       } finally {
@@ -3592,7 +3632,9 @@ ${session.fullAnalysis}
     } else {
       audioChunksRef.current = [];
       setTranscriptionNotes('');
-      setCurrentRecordingSessionId(null);
+      const newSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      setCurrentRecordingSessionId(newSessionId);
+      currentRecordingSessionIdRef.current = newSessionId;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const recorder = new MediaRecorder(stream);
@@ -3612,8 +3654,7 @@ ${session.fullAnalysis}
           // AUTO SAVE RECORDING
           if (user) {
             try {
-              const sessionId = currentRecordingSessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-              setCurrentRecordingSessionId(sessionId);
+              const sessionId = currentRecordingSessionIdRef.current || `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
               
               const audioPart = await fileToGenerativePart(blob);
               
@@ -3632,14 +3673,15 @@ ${session.fullAnalysis}
                 status: 'pending'
               };
               
-              // Only save if it's not too big for Firestore (1MB limit)
-              // Base64 is ~4/3 size of binary. 800KB blob -> ~1.06MB base64.
+              // Force auto-save to ensure notes and everything are on server
               if (audioPart.inlineData.data.length < 1000000) {
                 await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), pendingSession);
-                console.log("Recording auto-saved to Firestore.");
+                setUserNotification("Audio saved successfully to History!");
               } else {
-                console.warn("Recording too large for Firestore auto-save, keeping local.");
-                // We could use local storage as fallback but it also has 5MB limit
+                // Still save metadata even if audio is too large
+                const metadataOnly = { ...pendingSession, audioBase64: undefined };
+                await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), metadataOnly);
+                setUserNotification("Audio too long for cloud sync. Use Download to save it permanently.");
               }
               setSelectedSession(pendingSession);
             } catch (err) {
@@ -3654,13 +3696,15 @@ ${session.fullAnalysis}
         setRecordingTime(0);
         timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
 
-        // Start 15-second transcription interval sending full accumulated audio
+        // Start 5-second transcription interval sending full accumulated audio
+        isStopRequested.current = false;
         chunkTimerRef.current = setInterval(async () => {
-          if (audioChunksRef.current.length > 0) {
+          if (audioChunksRef.current.length > 0 && !isStopRequested.current) {
             const fullBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            processTranscriptionChunk(fullBlob);
+            // Queue the processing to ensure sequential updates and that we don't skip the last bit
+            processorQueue.current = processorQueue.current.then(() => processTranscriptionChunk(fullBlob));
           }
-        }, 15000);
+        }, 5000);
 
       } catch (err) {
         setUserNotification("Microphone access denied. Please check permissions.");
@@ -3692,16 +3736,34 @@ ${session.fullAnalysis}
         - For ANY mathematical or scientific notation, use LaTeX: $ ... $ for inline and $$ ... $$ for blocks.
       `;
 
-      const result = await aiInstance.models.generateContent({
+      const response = await aiInstance.models.generateContentStream({
         model: "gemini-3.1-flash-lite-preview",
         contents: { parts: [audioPart, { text: prompt }] }
       });
 
-      const newText = result?.text || "";
-      if (newText.trim() && newText.trim() !== " ...") {
-        // Replace instead of append because we are sending the full audio
-        setTranscriptionNotes(newText.trim());
-      } else if (newText.trim() === " ...") {
+      let streamedText = "";
+      for await (const chunk of response) {
+        streamedText += chunk.text || "";
+        if (streamedText.trim()) {
+           setTranscriptionNotes(streamedText.trim());
+        }
+      }
+
+      // Final check/cleanup
+      const finalText = streamedText.trim();
+      const sessionId = currentRecordingSessionIdRef.current;
+      if (finalText && finalText !== " ...") {
+        setTranscriptionNotes(finalText);
+        // Auto-save to Firestore if we have a session ID
+        if (user && sessionId) {
+           updateDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), { 
+             notes: finalText,
+             updatedAt: serverTimestamp()
+           }).catch(err => {
+             console.warn("Live transcription sync failed:", err);
+           });
+        }
+      } else if (finalText === " ...") {
         setTranscriptionNotes("_....");
       }
     } catch (err) {
@@ -3948,6 +4010,11 @@ ${session.fullAnalysis}
       };
 
       if (user) {
+        // If image count is high or audio is large, we might skip full base64 save to avoid 1MB limit
+        // but for now we try to save.
+        if (newSession.audioBase64 && newSession.audioBase64.length > 1000000) {
+           newSession.audioBase64 = undefined;
+        }
         await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), newSession);
         setCurrentRecordingSessionId(null); // Reset after full analysis
       }
@@ -4663,11 +4730,13 @@ ${session.fullAnalysis}
                   <Brain size={24} className="text-white" />
                 </div>
                 <h2 className="text-xl font-black text-white tracking-tighter uppercase italic leading-none">
-                  {authMode === 'login' ? 'Access' : 'Genesis'} <span className="text-[#DC2626]">NSG</span>
+                  {authMode === 'login' ? 'LOGIN' : 'Genesis'} <span className="text-[#DC2626]">NSG</span>
                 </h2>
-                <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mt-1.5">
-                  {authMode === 'login' ? 'Syncing' : 'Initialize Evolution'}
-                </p>
+                {authMode === 'signup' && (
+                  <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mt-1.5">
+                    Initialize Evolution
+                  </p>
+                )}
               </div>
 
               <form onSubmit={handleAuth} className="space-y-3">
@@ -5177,17 +5246,59 @@ ${session.fullAnalysis}
                                       {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
                                       <div className="flex flex-col overflow-hidden">
                                         <div className="flex items-center gap-1">
-                                          <span className="text-[10px] font-bold truncate">{session.title}</span>
-                                          {session.status === 'pending' && <span className="text-[7px] bg-[#DC2626]/20 text-[#DC2626] px-1 rounded font-black uppercase tracking-tighter">Pending</span>}
+                                          <span className="text-[10px] font-black truncate group-hover:text-red-500 transition-colors uppercase tracking-tight">{session.title}</span>
+                                          {session.status === 'pending' && <span className="text-[7px] bg-[#DC2626]/20 text-[#DC2626] px-1 rounded font-black uppercase tracking-tighter">Live</span>}
                                         </div>
                                         <span className="text-[8px] opacity-60">{session.date} \u{2022} {session.duration}</span>
                                       </div>
                                     </div>
-                                    <div className="flex items-center gap-1 transition-opacity">
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                      <button 
+                                        onClick={(e) => { 
+                                          e.stopPropagation(); 
+                                          const newName = prompt("Enter a name for this recording:", session.title);
+                                          if (newName && user) {
+                                            updateDoc(doc(db, 'users', user.uid, 'lectureSessions', session.id), { title: newName });
+                                            setUserNotification("Recording renamed successfully.");
+                                          }
+                                        }} 
+                                        className="p-1.5 hover:bg-blue-500 hover:text-white bg-slate-100 dark:bg-white/5 rounded-lg transition-all" 
+                                        title="Rename / Save Audio"
+                                      >
+                                        <Save size={12} />
+                                      </button>
+                                      {session.audioBase64 && (
+                                        <button 
+                                          onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            const link = document.createElement('a');
+                                            link.href = `data:audio/webm;base64,${session.audioBase64}`;
+                                            link.download = `${session.title || 'recording'}.webm`;
+                                            link.click();
+                                          }} 
+                                          className="p-1.5 hover:text-green-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" 
+                                          title="Download Audio"
+                                        >
+                                          <Download size={12} className="text-slate-400" />
+                                        </button>
+                                      )}
                                       <button onClick={(e) => { e.stopPropagation(); togglePinLectureSession(session.id); }} className="p-1.5 hover:text-red-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" title="Pin Lecture">
                                         <Pin size={12} className={session.isPinned ? 'fill-red-500 text-red-500' : 'text-slate-400'} />
                                       </button>
-                                      <button onClick={(e) => { e.stopPropagation(); deleteLectureSession(session.id); }} className="p-1.5 hover:text-red-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" title="Delete Lecture">
+                                      <button 
+                                        onClick={(e) => { 
+                                          e.stopPropagation(); 
+                                          showConfirm(
+                                            "Delete Recording",
+                                            `Are you sure you want to delete "${session.title}"? This cannot be undone.`,
+                                            () => deleteLectureSession(session.id),
+                                            "Delete Permanently",
+                                            true
+                                          );
+                                        }} 
+                                        className="p-1.5 hover:text-red-500 bg-slate-100 dark:bg-white/5 rounded-lg transition-all" 
+                                        title="Delete Lecture"
+                                      >
                                         <Trash2 size={12} className="text-slate-400" />
                                       </button>
                                     </div>
