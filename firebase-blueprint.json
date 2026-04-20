@@ -2,7 +2,7 @@
   "entities": {
     "User": {
       "title": "User Profile",
-      "description": "Stores user profile information and roles.",
+      "description": "Stores user profile information, roles, and premium status.",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
@@ -13,7 +13,18 @@
         "photoURL": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "student"] },
         "matric": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "matricNumber": { "type": "string" },
+        "university": { "type": "string" },
+        "level": { "type": "string" },
+        "department": { "type": "string" },
+        "faculty": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "deleted"] },
+        "bypassAllPayments": { "type": "boolean" },
+        "bypassTakingPayment": { "type": "boolean" },
+        "bypassHostingPayment": { "type": "boolean" },
+        "premiumUntil": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "role"]
     },
@@ -78,12 +89,28 @@
         "isPinned": { "type": "boolean" },
         "uid": { "type": "string" }
       }
+    },
+    "BlogPost": {
+      "title": "Blog Post",
+      "description": "An article published on the blog.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "author": { "type": "string" }
+      },
+      "required": ["title", "content", "timestamp"]
     }
   },
   "firestore": {
     "/users/{uid}": {
       "schema": "User",
       "description": "User profiles."
+    },
+    "/blogPosts/{postId}": {
+      "schema": "BlogPost",
+      "description": "Public blog articles."
     },
     "/examQuestions/{questionId}": {
       "schema": "ExamQuestion",
