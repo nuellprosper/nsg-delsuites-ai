@@ -4590,7 +4590,7 @@ ${session.fullAnalysis}
                   {authMode === 'login' ? 'Access' : 'Genesis'} <span className="text-[#DC2626]">NSG</span>
                 </h2>
                 <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mt-1.5">
-                  {authMode === 'login' ? 'Syncing to Nexus' : 'Initialize Evolution'}
+                  {authMode === 'login' ? 'Loging in to NSG' : 'Initialize Evolution'}
                 </p>
               </div>
 
@@ -4612,7 +4612,7 @@ ${session.fullAnalysis}
                 <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Access Password" required className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 text-xs text-white focus:border-[#DC2626]/50 transition-all outline-none" />
                 
                 <button type="submit" disabled={isAuthLoading} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-3.5 rounded-xl text-[10px] transition-all shadow-lg shadow-[#DC2626]/20 uppercase tracking-[0.2em] flex items-center justify-center gap-2 mt-4">
-                  {isAuthLoading ? <RefreshCcw className="animate-spin" size={14} /> : (authMode === 'login' ? 'Nexus Entry' : 'Create Account')}
+                  {isAuthLoading ? <RefreshCcw className="animate-spin" size={14} /> : (authMode === 'login' ? 'LOGIN' : 'Create Account')}
                 </button>
               </form>
 
