@@ -120,7 +120,9 @@ interface LectureSession {
   notes?: string;
   images: string[]; 
   audioUrl?: string;
+  audioBase64?: string;
   isPinned?: boolean;
+  status?: 'pending' | 'analyzed';
 }
 
 interface QuizQuestion {
@@ -2161,7 +2163,7 @@ export default function App() {
     </motion.div>
   );
 
-  // --- 🌟 PREMIUM ONBOARDING (MODAL STYLE) ---
+  // --- ðŸŒŸ PREMIUM ONBOARDING (MODAL STYLE) ---
   const AnalysisLoadingOverlay = () => (
     <AnimatePresence>
       {isAnalyzing && (
@@ -2637,6 +2639,34 @@ export default function App() {
       unsubHistory();
     };
   }, [user]);
+
+  const loadRecordingSession = async (session: LectureSession) => {
+    setSelectedSession(session);
+    setAnalysisResult(session.fullAnalysis);
+    setTranscriptionNotes(session.notes || "");
+    setCurrentRecordingSessionId(session.id);
+    
+    if (session.audioBase64) {
+      try {
+        const response = await fetch(`data:audio/webm;base64,${session.audioBase64}`);
+        const blob = await response.blob();
+        setRecordedBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+      } catch (err) {
+        console.error("Error loading audio from base64:", err);
+      }
+    } else if (session.audioUrl) {
+      setAudioUrl(session.audioUrl);
+    }
+    
+    if (session.status === 'analyzed') {
+      setShowAnalysisInRecord(true);
+    } else {
+      setShowAnalysisInRecord(false);
+    }
+    setShowRecordSidebar(false);
+  };
 
   const handleGoogleLogin = async () => {
     try {
@@ -3539,12 +3569,14 @@ ${session.fullAnalysis}
 
   // --- \u{1F3A4} RECORDING LOGIC ---
   const [isStopping, setIsStopping] = useState(false);
+  const [currentRecordingSessionId, setCurrentRecordingSessionId] = useState<string | null>(null);
+
   const handleToggleRecording = async () => {
     if (isStopping) return;
     if (isRecording) {
       setIsStopping(true);
       try {
-        console.log("🛑 Stopping recording...");
+        console.log("ðŸ›‘ Stopping recording...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -3560,6 +3592,7 @@ ${session.fullAnalysis}
     } else {
       audioChunksRef.current = [];
       setTranscriptionNotes('');
+      setCurrentRecordingSessionId(null);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const recorder = new MediaRecorder(stream);
@@ -3570,10 +3603,49 @@ ${session.fullAnalysis}
           }
         };
 
-        recorder.onstop = () => {
+        recorder.onstop = async () => {
           const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
           setRecordedBlob(blob);
-          setAudioUrl(URL.createObjectURL(blob));
+          const localUrl = URL.createObjectURL(blob);
+          setAudioUrl(localUrl);
+
+          // AUTO SAVE RECORDING
+          if (user) {
+            try {
+              const sessionId = currentRecordingSessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+              setCurrentRecordingSessionId(sessionId);
+              
+              const audioPart = await fileToGenerativePart(blob);
+              
+              const pendingSession: LectureSession = {
+                id: sessionId,
+                title: `Recording: ${new Date().toLocaleTimeString()}`,
+                date: new Date().toLocaleDateString(),
+                duration: formatTime(recordingTime),
+                imageCount: uploadedImages.length,
+                summary: "Recording captured. Analysis pending...",
+                fullAnalysis: "",
+                notes: transcriptionNotes || "",
+                images: [],
+                audioUrl: localUrl,
+                audioBase64: audioPart.inlineData.data,
+                status: 'pending'
+              };
+              
+              // Only save if it's not too big for Firestore (1MB limit)
+              // Base64 is ~4/3 size of binary. 800KB blob -> ~1.06MB base64.
+              if (audioPart.inlineData.data.length < 1000000) {
+                await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), pendingSession);
+                console.log("Recording auto-saved to Firestore.");
+              } else {
+                console.warn("Recording too large for Firestore auto-save, keeping local.");
+                // We could use local storage as fallback but it also has 5MB limit
+              }
+              setSelectedSession(pendingSession);
+            } catch (err) {
+              console.error("Auto-save error:", err);
+            }
+          }
         };
 
         mediaRecorderRef.current = recorder;
@@ -3859,8 +3931,9 @@ ${session.fullAnalysis}
         return `data:${img.file.type};base64,${part.inlineData.data}`;
       }));
 
+      const sessionId = currentRecordingSessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       const newSession: LectureSession = { 
-        id: `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, 
+        id: sessionId, 
         title: `Lecture ${new Date().toLocaleTimeString()}`, 
         date: new Date().toLocaleDateString(), 
         duration: formatTime(recordingTime), 
@@ -3869,11 +3942,14 @@ ${session.fullAnalysis}
         fullAnalysis: text,
         notes: transcriptionNotes || undefined,
         images: base64Images,
-        audioUrl: audioUrl || undefined
+        audioUrl: audioUrl || undefined,
+        audioBase64: recordedBlob ? (await fileToGenerativePart(recordedBlob)).inlineData.data : undefined,
+        status: 'analyzed'
       };
 
       if (user) {
-        await setDoc(doc(db, 'users', user.uid, 'lectureSessions', newSession.id), newSession);
+        await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), newSession);
+        setCurrentRecordingSessionId(null); // Reset after full analysis
       }
       
       setAnalysisResult(text);
@@ -4590,7 +4666,7 @@ ${session.fullAnalysis}
                   {authMode === 'login' ? 'Access' : 'Genesis'} <span className="text-[#DC2626]">NSG</span>
                 </h2>
                 <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.3em] mt-1.5">
-                  {authMode === 'login' ? 'Logging in to NSG' : 'Initialize Evolution'}
+                  {authMode === 'login' ? 'Syncing' : 'Initialize Evolution'}
                 </p>
               </div>
 
@@ -4927,12 +5003,9 @@ ${session.fullAnalysis}
                           } else if (item.type === 'recording') {
                             const session = sessions.find(s => s.id === item.id);
                             if (session) {
-                              setSelectedSession(session);
-                              setAnalysisResult(session.fullAnalysis);
-                              setShowAnalysisInRecord(true);
+                              loadRecordingSession(session);
                               setActiveTab('tools');
                               setToolsSubTab('record');
-                              setShowRecordSidebar(false);
                             }
                           } else if (item.type === 'assignment') {
                             setActiveTab('tools');
@@ -5098,17 +5171,15 @@ ${session.fullAnalysis}
                                 {sessions.map(session => (
                                   <div key={session.id} className={`p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ${selectedSession?.id === session.id ? 'bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626]' : `hover:bg-white/5 ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}`}>
                                     <div 
-                                      onClick={() => {
-                                        setSelectedSession(session);
-                                        setAnalysisResult(session.fullAnalysis);
-                                        setShowAnalysisInRecord(true);
-                                        setShowRecordSidebar(false);
-                                      }} 
+                                      onClick={() => loadRecordingSession(session)} 
                                       className="flex items-center gap-2 overflow-hidden flex-1"
                                     >
                                       {session.isPinned ? <Pin size={12} className="text-red-500" /> : <FileAudio size={14} className="flex-shrink-0" />}
                                       <div className="flex flex-col overflow-hidden">
-                                        <span className="text-[10px] font-bold truncate">{session.title}</span>
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-[10px] font-bold truncate">{session.title}</span>
+                                          {session.status === 'pending' && <span className="text-[7px] bg-[#DC2626]/20 text-[#DC2626] px-1 rounded font-black uppercase tracking-tighter">Pending</span>}
+                                        </div>
                                         <span className="text-[8px] opacity-60">{session.date} \u{2022} {session.duration}</span>
                                       </div>
                                     </div>
@@ -6616,7 +6687,7 @@ ${session.fullAnalysis}
                   
                   <div className="flex flex-col items-center gap-1 pt-2 opacity-20">
                     <p className="text-[8px] font-black uppercase tracking-[0.4em]">Lecture OS v4.0</p>
-                    <p className="text-[7px] font-bold uppercase tracking-widest">© 2026 NSG Studio</p>
+                    <p className="text-[7px] font-bold uppercase tracking-widest">Â© 2026 NSG Studio</p>
                   </div>
                 </div>
               </div>
