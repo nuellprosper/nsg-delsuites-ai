@@ -1,0 +1,117 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives & Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isVerified() {
+      return isSignedIn();
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "nuellkelechi@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') == 'admin')
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidExam(data) {
+      // Data integrity check. We allow admins to bypass the UID match if needed,
+      // but standard users must match their hostUid
+      return (data.get('id', '') is string) &&
+             (data.get('hostUid', '') is string) &&
+             (!('status' in data) || data.status in ['active', 'ended', 'none']) &&
+             (!('questions' in data) || data.questions is list) &&
+             (!('registeredStudents' in data) || data.registeredStudents is list);
+    }
+
+    // Phase 4: Collection Rules
+    match /blogPosts/{postId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /users/{uid} {
+      allow get: if isSignedIn() && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow write: if (isAdmin() || (isVerified() && isOwner(uid)));
+
+      match /chatSessions/{sessionId} {
+        allow read, write: if isSignedIn() && (isOwner(uid) || isAdmin());
+      }
+      match /lectureSessions/{sessionId} {
+        allow read, write: if isSignedIn() && (isOwner(uid) || isAdmin());
+      }
+      match /studyHistory/{historyId} {
+        allow read, write: if isSignedIn() && (isOwner(uid) || isAdmin());
+      }
+    }
+
+    match /exams/{examId} {
+      allow read: if true;
+      allow create: if (isAdmin() || (isVerified() && incoming().hostUid == request.auth.uid)) && isValidExam(incoming());
+      allow update: if (isAdmin() || (isVerified() && existing().hostUid == request.auth.uid)) && isValidExam(incoming());
+      allow delete: if (isAdmin() || (isVerified() && existing().hostUid == request.auth.uid));
+      
+      match /results/{resultId} {
+        allow read: if isSignedIn() && (
+          resource.data.uid == request.auth.uid ||
+          resource.data.hostUid == request.auth.uid ||
+          isAdmin()
+        );
+        allow create: if isSignedIn(); 
+      }
+    }
+
+    match /quizzes/{quizId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+    }
+
+    match /notifications/{notifId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /registeredStudents/{matric} {
+      allow get: if true;
+      allow write: if isAdmin();
+    }
+
+    match /scoreSheet/{resultId} {
+      allow get: if isAdmin();
+      allow create: if true;
+    }
+    
+    match /test/{docId} {
+      allow get: if true;
+    }
+  }
+}
