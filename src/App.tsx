@@ -3599,15 +3599,23 @@ ${session.fullAnalysis}
 
   // --- \u{1F3A4} RECORDING LOGIC ---
   const [isStopping, setIsStopping] = useState(false);
+  const [isProcessingFinal, setIsProcessingFinal] = useState(false);
+  const [saveModal, setSaveModal] = useState({ isOpen: false, name: '', onConfirm: (name: string) => {} });
   const [currentRecordingSessionId, setCurrentRecordingSessionId] = useState<string | null>(null);
 
   const handleToggleRecording = async () => {
     if (isStopping) return;
     if (isRecording) {
+      // 1. Immediately visually stop the recording
+      setIsRecording(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
+      
       setIsStopping(true);
+      setIsProcessingFinal(true);
       isStopRequested.current = true;
       try {
-        console.log("ðŸ›‘ Stopping recording...");
+        console.log("ðŸ›‘ Stopping audio capture...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -3619,15 +3627,14 @@ ${session.fullAnalysis}
           processorQueue.current = processorQueue.current.then(() => processTranscriptionChunk(finalBlob));
         }
 
-        // Wait for all transcription processing to finish before concluding
+        // Wait for all transcription processing to finish in background
         await processorQueue.current;
+        console.log("âœ… Background processing complete.");
       } catch (err) {
         console.error("Error stopping recording:", err);
       } finally {
-        setIsRecording(false);
+        setIsProcessingFinal(false);
         setIsStopping(false);
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
       }
     } else {
       audioChunksRef.current = [];
@@ -3710,6 +3717,52 @@ ${session.fullAnalysis}
         setUserNotification("Microphone access denied. Please check permissions.");
       }
     }
+  };
+
+  const handleManualSave = async () => {
+    if (!recordedBlob || !user) return;
+    
+    setSaveModal({
+      isOpen: true,
+      name: `Recording: ${new Date().toLocaleTimeString()}`,
+      onConfirm: async (customName) => {
+        try {
+          const sessionId = currentRecordingSessionIdRef.current || `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+          const audioPart = await fileToGenerativePart(recordedBlob);
+          
+          const sessionData: LectureSession = {
+            id: sessionId,
+            title: customName,
+            date: new Date().toLocaleDateString(),
+            duration: formatTime(recordingTime),
+            imageCount: uploadedImages.length,
+            summary: "Manual save triggered. Analysis pending...",
+            fullAnalysis: "",
+            notes: transcriptionNotes || "",
+            images: [],
+            audioUrl: audioUrl || "",
+            audioBase64: audioPart.inlineData.data,
+            status: 'pending'
+          };
+
+          if (audioPart.inlineData.data.length < 1000000) {
+            await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), sessionData);
+            setUserNotification("Session saved successfully!");
+          } else {
+            const metadataOnly = { ...sessionData, audioBase64: undefined };
+            await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), metadataOnly);
+            setUserNotification("Session metadata saved. Audio is over cloud limit.");
+          }
+          setSelectedSession(sessionData);
+          // Clean up local recording states to allow new one
+          setRecordedBlob(null);
+          setRecordingTime(0);
+        } catch (err) {
+          console.error("Manual save failed:", err);
+          setUserNotification("Save failed. Please try again.");
+        }
+      }
+    });
   };
 
   const processTranscriptionChunk = async (blob: Blob) => {
@@ -5332,55 +5385,74 @@ ${session.fullAnalysis}
                                     {isRecording ? <StopCircle size={32} /> : <Mic size={32} />}
                                   </button>
                                 </div>
+                                  <h2 className="text-xl font-black tracking-tighter mb-1 uppercase text-white">
+                                    {isRecording ? "Capture Active" : (isProcessingFinal ? "Finalizing Notes..." : "Engine Idle")}
+                                  </h2>
+                                  <p className="font-mono text-4xl text-[#DC2626] font-bold mb-6 tracking-tight">
+                                    {formatTime(recordingTime)}
+                                  </p>
 
-                                <h2 className="text-xl font-black tracking-tighter mb-1 uppercase text-white">{isRecording ? "Capture Active" : "Engine Idle"}</h2>
-                                <p className="font-mono text-4xl text-[#DC2626] font-bold mb-6 tracking-tight">{formatTime(recordingTime)}</p>
-
-                                {audioUrl && (
-                                  <div className="w-full max-w-sm bg-white/5 p-4 rounded-2xl border border-white/10 mb-6">
-                                    <p className="text-[10px] font-black text-white/30 uppercase mb-2">Recording Preview</p>
-                                    <audio src={audioUrl} controls className="w-full h-8" />
-                                  </div>
-                                )}
-
-                                <div className="flex gap-2 w-full max-w-xs">
-                                  {audioUrl && (
-                                    <a 
-                                      href={audioUrl} 
-                                      download="NSG_Lecture.mp3" 
-                                      className={`flex-1 flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/10 text-white border-white/10' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} px-4 py-3 rounded-2xl text-xs font-bold transition-all border`}
-                                    >
-                                      <Download size={16} /> Download
-                                    </a>
+                                  {isProcessingFinal && (
+                                    <div className="flex items-center gap-2 mb-4">
+                                      <RefreshCcw size={14} className="animate-spin text-[#DC2626]" />
+                                      <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Transcription finalizing...</span>
+                                    </div>
                                   )}
-                                  <button onClick={triggerFullAnalysis} disabled={isAnalyzing || !recordedBlob} className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white px-4 py-3 rounded-2xl text-xs font-bold border border-[#DC2626]/30 transition-all disabled:opacity-50">
-                                    <Sparkles size={16} /> Analyze
-                                  </button>
-                                </div>
 
-                                {/* Real-time Transcription/Note Area */}
-                                {(transcriptionNotes || isRecording) && (
-                                  <motion.div 
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="w-full mt-8 bg-white/5 border border-white/10 rounded-3xl p-6 text-left"
-                                  >
-                                    <div className="flex items-center justify-between mb-4">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                                        <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Live Transcription Notes</p>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        {isTranscribing && <RefreshCcw size={12} className="text-[#DC2626] animate-spin" />}
-                                        <button 
-                                          onClick={() => copyToClipboard(transcriptionNotes)}
-                                          className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"
-                                          title="Copy Notes"
-                                        >
-                                          <Copy size={14} />
+                                  {audioUrl && !isRecording && !isProcessingFinal && (
+                                    <div className="w-full max-w-sm bg-white/5 p-4 rounded-2xl border border-white/10 mb-6">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <p className="text-[10px] font-black text-white/30 uppercase">Recording Preview</p>
+                                        <button onClick={handleManualSave} className="flex items-center gap-1.5 bg-[#DC2626] text-white px-3 py-1 rounded-full text-[9px] font-black hover:bg-[#DC2626]/90 transition-all">
+                                          <Save size={10} /> SAVE AS...
                                         </button>
                                       </div>
+                                      <audio key={audioUrl} src={audioUrl} controls className="w-full h-8" />
                                     </div>
+                                  )}
+
+                                  <div className="flex gap-2 w-full max-w-xs">
+                                    {audioUrl && !isRecording && !isProcessingFinal && (
+                                      <a 
+                                        href={audioUrl} 
+                                        download="NSG_Lecture.mp3" 
+                                        className={`flex-1 flex items-center justify-center gap-2 ${theme === 'dark' ? 'bg-white/10 text-white border-white/10' : 'bg-zinc-100 text-zinc-900 border-zinc-200'} px-4 py-3 rounded-2xl text-xs font-bold transition-all border`}
+                                      >
+                                        <Download size={16} /> Download
+                                      </a>
+                                    )}
+                                    {!isRecording && !isProcessingFinal && (
+                                      <button onClick={triggerFullAnalysis} disabled={isAnalyzing || !recordedBlob} className="flex-1 flex items-center justify-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white px-4 py-3 rounded-2xl text-xs font-bold border border-[#DC2626]/30 transition-all disabled:opacity-50">
+                                        <Sparkles size={16} /> Analyze
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Real-time Transcription/Note Area */}
+                                  {(transcriptionNotes || isRecording || isProcessingFinal) && (
+                                    <motion.div 
+                                      initial={{ opacity: 0, y: 10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      className="w-full mt-8 bg-white/5 border border-white/10 rounded-3xl p-6 text-left"
+                                    >
+                                      <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                          <div className={`w-2 h-2 ${isRecording || isProcessingFinal ? 'bg-[#DC2626] animate-pulse' : 'bg-green-500'} rounded-full`} />
+                                          <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">
+                                            {(isRecording || isProcessingFinal) ? "Capturing Lecture..." : "Transcribed Lecture Notes"}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          {(isTranscribing || isProcessingFinal) && <RefreshCcw size={12} className="text-[#DC2626] animate-spin" />}
+                                          <button 
+                                            onClick={() => copyToClipboard(transcriptionNotes)}
+                                            className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"
+                                            title="Copy Notes"
+                                          >
+                                            <Copy size={14} />
+                                          </button>
+                                        </div>
+                                      </div>
                                     <div className={`max-h-60 overflow-y-auto pr-2 custom-scrollbar ${theme === 'dark' ? 'text-white/80' : 'text-slate-700'} text-xs leading-relaxed`}>
                                       <MarkdownRenderer content={transcriptionNotes || (isRecording ? "Listening for content..." : "No notes captured yet.")} />
                                       {isTranscribing && <span className="inline-block w-1.5 h-3 ml-1 bg-[#DC2626]/50 animate-pulse" />}
@@ -5441,6 +5513,14 @@ ${session.fullAnalysis}
                               </div>
 
                               <div className="bg-white/5 rounded-2xl p-6 overflow-y-auto max-h-[60vh] shadow-inner space-y-6">
+                                {audioUrl && (
+                                  <div className="space-y-2">
+                                    <h3 className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest flex items-center gap-2">
+                                      <FileAudio size={12} /> Recording Playback
+                                    </h3>
+                                    <audio key={audioUrl} src={audioUrl} controls className="w-full h-8" />
+                                  </div>
+                                )}
                                 {selectedSession?.notes && (
                                   <div className="space-y-2">
                                     <h3 className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest flex items-center gap-2">
@@ -7405,6 +7485,46 @@ ${session.fullAnalysis}
 
       {/* SHARE MODAL */}
       <AnimatePresence>
+        {saveModal.isOpen && (
+          <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-[2.5rem] p-8 max-w-sm w-full space-y-6 shadow-2xl`}>
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-4 font-black">
+                  <Save size={32} className="text-[#DC2626]" />
+                </div>
+                <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Save Recording</h3>
+                <p className="text-xs text-white/40">Give your lecture a custom name for easy tracking.</p>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em] ml-2">Lecture Title</p>
+                <input 
+                  autoFocus
+                  type="text" 
+                  value={saveModal.name} 
+                  onChange={(e) => setSaveModal(prev => ({ ...prev, name: e.target.value }))} 
+                  placeholder="e.g. Physics 101 - Newton's Laws" 
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-sm outline-none text-white focus:border-[#DC2626]/50 shadow-inner transition-all" 
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setSaveModal(prev => ({ ...prev, isOpen: false }))} className="flex-1 bg-white/5 hover:bg-white/10 text-white/60 font-black py-4 rounded-2xl text-[10px] uppercase tracking-widest transition-all">CANCEL</button>
+                <button 
+                  onClick={() => {
+                    saveModal.onConfirm(saveModal.name);
+                    setSaveModal(prev => ({ ...prev, isOpen: false }));
+                  }} 
+                  disabled={!saveModal.name.trim()}
+                  className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-[#DC2626]/20 transition-all disabled:opacity-50"
+                >
+                  Confirm Save
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showShareModal && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-sm w-full space-y-6`}>
