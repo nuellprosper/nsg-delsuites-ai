@@ -231,7 +231,9 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   const [isConnecting, setIsConnecting] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [videoSource, setVideoSource] = useState<'camera' | 'screen' | 'none'>('none');
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const videoSourceRef = useRef<'camera' | 'screen' | 'none'>('none');
+  const facingModeRef = useRef<'user' | 'environment'>('user');
   const [transcript, setTranscript] = useState<{role: 'ai' | 'user', text: string}[]>([]);
   const [liveTranscription, setLiveTranscription] = useState<string>('');
   const liveTranscriptionRef = useRef<string>('');
@@ -413,8 +415,25 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   };
 
   const toggleVideo = async (type: 'camera' | 'screen') => {
-    if (videoSourceRef.current === type) {
+    if (type === 'screen' && (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia)) {
+      setUserNotification("Screen sharing is not supported on this device or browser (common on mobile).");
+      return;
+    }
+
+    if (videoSourceRef.current === type && type === 'screen') {
       if (currentStreamRef.current) {
+        currentStreamRef.current.getTracks().forEach(track => track.stop());
+        currentStreamRef.current = null;
+      }
+      setVideoSource('none');
+      videoSourceRef.current = 'none';
+      return;
+    }
+
+    // Special case for camera: if already on, toggle facing mode?
+    // Actually, let's keep toggle simple and add a separate rotate button
+    if (videoSourceRef.current === type && type === 'camera') {
+       if (currentStreamRef.current) {
         currentStreamRef.current.getTracks().forEach(track => track.stop());
         currentStreamRef.current = null;
       }
@@ -431,7 +450,13 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
     try {
       let stream: MediaStream;
       if (type === 'camera') {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 640 }, 
+            height: { ideal: 480 },
+            facingMode: facingModeRef.current
+          } 
+        });
       } else {
         stream = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1280, height: 720 } });
       }
@@ -455,6 +480,16 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
     } catch (err: any) {
       console.error("Video error:", err);
       setUserNotification(`Video error: ${err.message || String(err)}`);
+    }
+  };
+
+  const switchCamera = async () => {
+    const newMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newMode);
+    facingModeRef.current = newMode;
+    if (videoSource === 'camera') {
+      await toggleVideo('camera'); // Stop
+      await toggleVideo('camera'); // Start with new mode
     }
   };
 
@@ -498,27 +533,32 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   return (
     <div className={`fixed inset-0 z-[200] flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} overflow-hidden`}>
       {/* Header */}
-      <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between bg-black/20 backdrop-blur-xl`}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.3)]">
-            <Activity size={24} className="text-white animate-pulse" />
+      <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between bg-black/20 backdrop-blur-xl shrink-0`}>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#DC2626] rounded-xl sm:rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.3)]">
+            <Activity size={20} className="text-white animate-pulse" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-white italic tracking-tighter uppercase leading-none">LIVE TUTOR <span className="text-[#DC2626]">SESSION</span></h2>
-            <p className="text-[9px] font-black text-white/40 uppercase tracking-[0.3em]">Vision Enabled Study Assist</p>
+            <h2 className="text-sm sm:text-xl font-black text-white italic tracking-tighter uppercase leading-none">LIVE TUTOR <span className="text-[#DC2626]">SESSION</span></h2>
+            <p className="text-[7px] sm:text-[9px] font-black text-white/40 uppercase tracking-[0.2em] sm:tracking-[0.3em]">Vision Enabled Study Assist</p>
           </div>
         </div>
-        <button onClick={onClose} className="p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-2xl transition-all border border-white/10">
-          <X size={20} />
+        <button onClick={onClose} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl sm:rounded-2xl transition-all border border-white/10">
+          <X size={18} />
         </button>
       </div>
 
       {/* Main Viewport */}
-      <div className="flex-1 relative flex flex-col sm:flex-row p-4 gap-4 overflow-hidden">
-        <div className={`flex-[2] ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-[3rem] border relative overflow-hidden shadow-2xl`}>
-          <div className="absolute top-6 left-6 z-20 flex gap-2">
-            <div className="bg-[#DC2626] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase shadow-lg animate-pulse">Session Active</div>
-            {videoSource !== 'none' && <div className="bg-black/60 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase border border-white/10">{videoSource} Feed</div>}
+      <div className="flex-1 relative flex flex-col md:flex-row p-2 sm:p-4 gap-2 sm:gap-4 overflow-hidden">
+        <div className={`flex-[2] h-[40vh] md:h-auto ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-[2rem] sm:rounded-[3rem] border relative overflow-hidden shadow-2xl`}>
+          <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 flex flex-wrap gap-2">
+            <div className="bg-[#DC2626] text-white px-2 py-1 sm:px-4 sm:py-1.5 rounded-full text-[8px] sm:text-[10px] font-black uppercase shadow-lg animate-pulse">Session Active</div>
+            {videoSource !== 'none' && <div className="bg-black/60 backdrop-blur-md text-white px-2 py-1 sm:px-4 sm:py-1.5 rounded-full text-[8px] sm:text-[10px] font-black uppercase border border-white/10">{videoSource} Feed</div>}
+            {videoSource === 'camera' && (
+              <button onClick={switchCamera} className="bg-white/10 backdrop-blur-md text-white px-3 py-1 rounded-full text-[8px] font-black uppercase border border-white/20 flex items-center gap-2 hover:bg-white/20 transition-all">
+                <RefreshCcw size={10} /> Switch Camera
+              </button>
+            )}
           </div>
 
           <div className="w-full h-full flex items-center justify-center bg-black/40 relative">
@@ -564,25 +604,32 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
         </div>
 
         {/* History / Transcript Sidebar */}
-        <div className={`flex-1 min-w-[320px] rounded-[3rem] border ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'} flex flex-col overflow-hidden`}>
-          <div className="p-6 border-b border-white/5">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+        <div className={`flex-1 min-w-0 md:min-w-[320px] rounded-[2rem] sm:rounded-[3rem] border ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'} flex flex-col overflow-hidden`}>
+          <div className="p-4 sm:p-6 border-b border-white/5">
+            <h3 className="text-[10px] sm:text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
               <MessageSquare size={16} className="text-[#DC2626]" /> Conversation Log
             </h3>
           </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-            {transcript.map((msg, i) => (
-              <div key={i} className={`space-y-1 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                <p className="text-[8px] font-black text-[#DC2626] uppercase">{msg.role === 'user' ? 'YOU' : 'OMNI AI'}</p>
-                <div className={`inline-block p-4 rounded-2xl text-xs max-w-[85%] ${msg.role === 'user' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/70'}`}>
-                  {msg.text}
-                </div>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
+            {transcript.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-20">
+                <MessageSquare size={32} />
+                <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">Your interaction logs will<br/>appear here.</p>
               </div>
-            ))}
+            ) : (
+              transcript.map((msg, i) => (
+                <div key={i} className={`space-y-1 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                  <p className="text-[8px] font-black text-[#DC2626] uppercase">{msg.role === 'user' ? 'YOU' : 'OMNI AI'}</p>
+                  <div className={`inline-block p-3 rounded-2xl text-[11px] max-w-[90%] ${msg.role === 'user' ? 'bg-[#DC2626] text-white font-bold' : 'bg-white/5 text-white/70'}`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))
+            )}
             {isConnecting && (
               <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl animate-pulse">
                 <RefreshCcw size={16} className="animate-spin text-[#DC2626]" />
-                <span className="text-[10px] font-black text-white/40 uppercase">Linking Neural Network...</span>
+                <span className="text-[10px] font-black text-white/40 uppercase">Connecting...</span>
               </div>
             )}
           </div>
@@ -590,51 +637,53 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       </div>
 
       {/* Control Bar */}
-      <div className={`p-6 border-t ${theme === 'dark' ? 'border-white/10 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-xl flex items-center justify-center gap-4 sm:gap-8`}>
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-center">
-             <button 
+      <div className={`p-4 sm:p-6 border-t ${theme === 'dark' ? 'border-white/10 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-xl flex items-center justify-center gap-2 sm:gap-6 shrink-0`}>
+         <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto pb-2 scrollbar-none">
+            <ControlButton 
+              active={isMicOn} 
               onClick={() => setIsMicOn(!isMicOn)} 
-              className={`p-6 rounded-full transition-all shadow-xl border ${isMicOn ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10'}`}
-            >
-              {isMicOn ? <Mic size={28} /> : <MicOff size={28} />}
-            </button>
-            <span className="text-[8px] font-black text-white/30 mt-2 uppercase tracking-widest">Microphone</span>
-          </div>
-
-          <div className="flex flex-col items-center">
-            <button 
+              icon={isMicOn ? <Mic size={20} className="sm:w-6 sm:h-6" /> : <MicOff size={20} className="sm:w-6 sm:h-6" />} 
+              label={isMicOn ? "On" : "Muted"}
+            />
+            <ControlButton 
+              active={videoSource === 'camera'} 
               onClick={() => toggleVideo('camera')} 
-              className={`p-6 rounded-full transition-all shadow-xl border ${videoSource === 'camera' ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10'}`}
-            >
-              <Camera size={28} />
-            </button>
-            <span className="text-[8px] font-black text-white/30 mt-2 uppercase tracking-widest">Camera</span>
-          </div>
-
-          <div className="flex flex-col items-center">
-            <button 
+              icon={<Camera size={20} className="sm:w-6 sm:h-6" />} 
+              label="Camera"
+            />
+            <ControlButton 
+              active={videoSource === 'screen'} 
               onClick={() => toggleVideo('screen')} 
-              className={`p-6 rounded-full transition-all shadow-xl border ${videoSource === 'screen' ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10'}`}
+              icon={<Monitor size={20} className="sm:w-6 sm:h-6" />} 
+              label="Screen"
+            />
+            
+            <div className="h-10 w-px bg-white/10 mx-2 hidden sm:block" />
+
+            <button 
+              onClick={onClose}
+              className="flex items-center gap-3 bg-white/5 hover:bg-[#DC2626] text-white px-4 sm:px-8 py-3 sm:py-4 rounded-2xl sm:rounded-3xl border border-white/10 transition-all font-black text-[10px] sm:text-xs uppercase tracking-widest whitespace-nowrap group"
             >
-              <Monitor size={28} />
+              <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
+              <span>End Session</span>
             </button>
-            <span className="text-[8px] font-black text-white/30 mt-2 uppercase tracking-widest">Share Screen</span>
-          </div>
-        </div>
-
-        <div className="hidden sm:block h-12 w-px bg-white/10" />
-
-        <button 
-          onClick={onClose} 
-          className="flex items-center gap-3 px-8 py-4 bg-white/5 hover:bg-[#DC2626] text-white font-black rounded-full transition-all border border-white/10 uppercase text-xs tracking-widest"
-        >
-          <LogOut size={18} /> End Session
-        </button>
+         </div>
       </div>
     </div>
   );
 };
+
+const ControlButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
+  <div className="flex flex-col items-center gap-1.5">
+    <button 
+      onClick={onClick} 
+      className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] transition-all shadow-xl border ${active ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10 hover:border-white/30'}`}
+    >
+      {icon}
+    </button>
+    <span className={`text-[8px] font-black uppercase tracking-widest ${active ? 'text-[#DC2626]' : 'text-white/20'}`}>{label}</span>
+  </div>
+);
 
 const MarkdownRenderer = ({ content, className = "" }: { content: string, className?: string }) => {
   // Pre-process content to ensure LaTeX is correctly formatted for remark-math
