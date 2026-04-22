@@ -232,12 +232,16 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   const [isMicOn, setIsMicOn] = useState(true);
   const [videoSource, setVideoSource] = useState<'camera' | 'screen' | 'none'>('none');
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [isAIResponding, setIsAIResponding] = useState(false);
+  const [lastMessages, setLastMessages] = useState<{role: 'ai' | 'user', text: string}[]>([]);
+  const [liveTranscription, setLiveTranscription] = useState<string>('');
+  const [detections, setDetections] = useState<any[]>([]);
+
   const videoSourceRef = useRef<'camera' | 'screen' | 'none'>('none');
   const facingModeRef = useRef<'user' | 'environment'>('user');
-  const [transcript, setTranscript] = useState<{role: 'ai' | 'user', text: string}[]>([]);
-  const [liveTranscription, setLiveTranscription] = useState<string>('');
+  const transcriptRef = useRef<{role: 'ai' | 'user', text: string}[]>([]);
   const liveTranscriptionRef = useRef<string>('');
-  const [detections, setDetections] = useState<any[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -266,60 +270,54 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
             outputAudioTranscription: {}
           },
           callbacks: {
-            onopen: () => {
-              console.log("Live connection opened");
-              setIsConnecting(false);
-            },
+            onopen: () => setIsConnecting(false),
             onmessage: async (msg: any) => {
-              const serverContent = msg.serverContent || msg; // Handle different SDK versions
-              
-              // Handle Interruption (Barge-in)
+              const serverContent = msg.serverContent || msg; 
               if (serverContent?.interrupted) {
                 stopAllAudio();
                 setLiveTranscription('');
                 liveTranscriptionRef.current = '';
+                setIsAIResponding(false);
                 return;
               }
-
               if (serverContent?.modelTurn?.parts?.[0]?.inlineData) {
-                const audioData = serverContent.modelTurn.parts[0].inlineData.data;
-                playAudio(audioData);
+                setIsAIResponding(true);
+                playAudio(serverContent.modelTurn.parts[0].inlineData.data);
               }
-              
               if (serverContent?.modelTurn?.parts?.[0]?.text) {
                 const text = serverContent.modelTurn.parts[0].text!;
                 setLiveTranscription(prev => prev + text);
                 liveTranscriptionRef.current += text;
-                
-                // Parse spatial grounding if any
                 const groundingMatches = [...text.matchAll(/\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/g)];
                 if (groundingMatches.length > 0) {
-                  const newDetections = groundingMatches.map(m => ({
+                  setDetections(groundingMatches.map(m => ({
                     box_2d: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])],
                     label: "Target"
-                  }));
-                  setDetections(newDetections);
+                  })));
                 }
               }
-
-              // Finalize turn transcript
               if (serverContent?.turnComplete) {
                 const finalContent = liveTranscriptionRef.current;
                 if (finalContent) {
-                  setTranscript(prev => [...prev.slice(-10), { role: 'ai', text: finalContent }]);
+                  const newMsg = { role: 'ai' as const, text: finalContent };
+                  transcriptRef.current = [...transcriptRef.current.slice(-5), newMsg];
+                  setLastMessages(prev => [...prev.slice(-3), newMsg]);
                 }
                 setLiveTranscription('');
                 liveTranscriptionRef.current = '';
+                setIsAIResponding(false);
                 setTimeout(() => setDetections([]), 3000); 
               }
-
               if (serverContent?.userTurn?.parts?.[0]?.text) {
-                setTranscript(prev => [...prev.slice(-10), { role: 'user', text: serverContent.userTurn.parts[0].text! }]);
+                const newMsg = { role: 'user' as const, text: serverContent.userTurn.parts[0].text! };
+                transcriptRef.current = [...transcriptRef.current.slice(-5), newMsg];
+                setLastMessages(prev => [...prev.slice(-3), newMsg]);
+                setIsUserSpeaking(false);
               }
             },
             onerror: (err) => {
               console.error("Live Error:", err);
-              setUserNotification(`Connection Error: ${err.message || "Failed to establish live session"}`);
+              setUserNotification(`Connection Error: ${err.message || "Failed"}`);
             },
             onclose: () => onClose()
           }
@@ -328,23 +326,19 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
         startAudioInput();
       } catch (err: any) {
         console.error("Failed to connect Live:", err);
-        setUserNotification(`Live Setup Error: ${err.message || String(err)}`);
+        setUserNotification(`Live Error: ${err.message}`);
         onClose();
       }
     };
-
     startLive();
     return () => {
       sessionRef.current?.close();
       stopAllAudio();
       audioContextRef.current?.close();
-      if (currentStreamRef.current) {
-        currentStreamRef.current.getTracks().forEach(track => track.stop());
-      }
+      currentStreamRef.current?.getTracks().forEach(track => track.stop());
     };
   }, []);
 
-  // Ensure video stream is attached properly after render
   useEffect(() => {
     if (videoSource !== 'none' && videoRef.current && currentStreamRef.current) {
       videoRef.current.srcObject = currentStreamRef.current;
@@ -352,9 +346,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   }, [videoSource]);
 
   const stopAllAudio = () => {
-    audioQueueRef.current.forEach(source => {
-      try { source.stop(); } catch (e) {}
-    });
+    audioQueueRef.current.forEach(source => { try { source.stop(); } catch (e) {} });
     audioQueueRef.current = [];
     nextAudioTimeRef.current = audioContextRef.current?.currentTime || 0;
   };
@@ -363,32 +355,22 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
     try {
       if (!audioContextRef.current) audioContextRef.current = new AudioContext({ sampleRate: 24000 });
       if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
-      
       const binary = atob(base64);
       const buffer = new Int16Array(binary.length / 2);
-      for (let i = 0; i < buffer.length; i++) {
-          buffer[i] = (binary.charCodeAt(i * 2) & 0xFF) | (binary.charCodeAt(i * 2 + 1) << 8);
-      }
+      for (let i = 0; i < buffer.length; i++) buffer[i] = (binary.charCodeAt(i * 2) & 0xFF) | (binary.charCodeAt(i * 2 + 1) << 8);
       const floatBuffer = new Float32Array(buffer.length);
       for (let i = 0; i < buffer.length; i++) floatBuffer[i] = buffer[i] / 32768;
-
       const audioBuffer = audioContextRef.current.createBuffer(1, floatBuffer.length, 24000);
       audioBuffer.getChannelData(0).set(floatBuffer);
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
-      
       const startTime = Math.max(audioContextRef.current.currentTime, nextAudioTimeRef.current);
       source.start(startTime);
       nextAudioTimeRef.current = startTime + audioBuffer.duration;
       audioQueueRef.current.push(source);
-      
-      source.onended = () => {
-        audioQueueRef.current = audioQueueRef.current.filter(s => s !== source);
-      };
-    } catch (err) {
-      console.error("Audio playback error:", err);
-    }
+      source.onended = () => audioQueueRef.current = audioQueueRef.current.filter(s => s !== source);
+    } catch (err) { console.error("Audio playback error:", err); }
   };
 
   const startAudioInput = async () => {
@@ -397,292 +379,151 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       const audioCtx = new AudioContext({ sampleRate: 16000 });
       const source = audioCtx.createMediaStreamSource(stream);
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-      
       processor.onaudioprocess = (e) => {
         if (!isMicOn || !sessionRef.current) return;
         const input = e.inputBuffer.getChannelData(0);
         const pcm = new Int16Array(input.length);
         for (let i = 0; i < input.length; i++) pcm[i] = Math.max(-1, Math.min(1, input[i])) * 32767;
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-        sessionRef.current.sendRealtimeInput({ audio: { data: base64, mimeType: 'audio/pcm;rate=16000' } });
+        sessionRef.current.sendRealtimeInput({ audio: { data: btoa(String.fromCharCode(...new Uint8Array(pcm.buffer))), mimeType: 'audio/pcm;rate=16000' } });
+        let sum = 0;
+        for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+        setIsUserSpeaking(Math.sqrt(sum / input.length) > 0.05);
       };
-
       source.connect(processor);
       processor.connect(audioCtx.destination);
-    } catch (err) {
-      console.error("Mic error:", err);
-    }
+    } catch (err) { console.error("Mic error:", err); }
   };
 
   const toggleVideo = async (type: 'camera' | 'screen') => {
     if (type === 'screen' && (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia)) {
-      setUserNotification("Screen sharing is not supported on this device or browser (common on mobile).");
-      return;
+      setUserNotification("Screen sharing not supported."); return;
     }
-
-    if (videoSourceRef.current === type && type === 'screen') {
-      if (currentStreamRef.current) {
-        currentStreamRef.current.getTracks().forEach(track => track.stop());
-        currentStreamRef.current = null;
-      }
+    if (videoSource === type) {
+      currentStreamRef.current?.getTracks().forEach(track => track.stop());
+      currentStreamRef.current = null;
       setVideoSource('none');
       videoSourceRef.current = 'none';
       return;
     }
-
-    // Special case for camera: if already on, toggle facing mode?
-    // Actually, let's keep toggle simple and add a separate rotate button
-    if (videoSourceRef.current === type && type === 'camera') {
-       if (currentStreamRef.current) {
-        currentStreamRef.current.getTracks().forEach(track => track.stop());
-        currentStreamRef.current = null;
-      }
-      setVideoSource('none');
-      videoSourceRef.current = 'none';
-      return;
-    }
-
-    // Stop existing stream
-    if (currentStreamRef.current) {
-      currentStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-
+    currentStreamRef.current?.getTracks().forEach(track => track.stop());
     try {
-      let stream: MediaStream;
-      if (type === 'camera') {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            width: { ideal: 640 }, 
-            height: { ideal: 480 },
-            facingMode: facingModeRef.current
-          } 
-        });
-      } else {
-        stream = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1280, height: 720 } });
-      }
-      
+      const stream = type === 'camera' 
+        ? await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: facingModeRef.current } })
+        : await navigator.mediaDevices.getDisplayMedia({ video: { width: 1280, height: 720 } });
       currentStreamRef.current = stream;
       setVideoSource(type);
       videoSourceRef.current = type;
-
       const interval = setInterval(() => {
         if (videoSourceRef.current === 'none' || !sessionRef.current || !currentStreamRef.current || !canvasRef.current || !videoRef.current) {
-          clearInterval(interval);
-          return;
+          clearInterval(interval); return;
         }
         const ctx = canvasRef.current.getContext('2d');
         if (ctx && videoRef.current.readyState >= 2) {
           ctx.drawImage(videoRef.current, 0, 0, 640, 480);
-          const base64 = canvasRef.current.toDataURL('image/jpeg', 0.6).split(',')[1];
-          sessionRef.current.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
+          sessionRef.current.sendRealtimeInput({ video: { data: canvasRef.current.toDataURL('image/jpeg', 0.6).split(',')[1], mimeType: 'image/jpeg' } });
         }
       }, 1000);
-    } catch (err: any) {
-      console.error("Video error:", err);
-      setUserNotification(`Video error: ${err.message || String(err)}`);
-    }
+    } catch (err: any) { console.error("Video error:", err); setUserNotification(`Video error: ${err.message}`); }
   };
 
   const switchCamera = async () => {
-    const newMode = facingMode === 'user' ? 'environment' : 'user';
-    setFacingMode(newMode);
-    facingModeRef.current = newMode;
-    if (videoSource === 'camera') {
-      await toggleVideo('camera'); // Stop
-      await toggleVideo('camera'); // Start with new mode
-    }
+    try {
+      const newMode = facingMode === 'user' ? 'environment' : 'user';
+      setFacingMode(newMode);
+      facingModeRef.current = newMode;
+      if (videoSource === 'camera') {
+        currentStreamRef.current?.getTracks().forEach(track => track.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: newMode } });
+        currentStreamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      }
+    } catch (err: any) { console.error("Switch error:", err); setUserNotification(`Switch Error: ${err.message}`); }
   };
 
-  // Spatial Grounding Drawing Effect
   useEffect(() => {
-    if (!drawingCanvasRef.current || detections.length === 0) {
-      // Clear canvas if no detections
-      if (drawingCanvasRef.current) {
-        const ctx = drawingCanvasRef.current.getContext('2d');
-        ctx?.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
-      }
-      return;
-    }
-
-    const ctx = drawingCanvasRef.current.getContext('2d');
+    const ctx = drawingCanvasRef.current?.getContext('2d');
     if (!ctx) return;
-
-    ctx.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
-    ctx.strokeStyle = '#DC2626';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([10, 5]);
-
+    ctx.clearRect(0, 0, drawingCanvasRef.current!.width, drawingCanvasRef.current!.height);
+    if (detections.length === 0) return;
+    ctx.strokeStyle = '#DC2626'; ctx.lineWidth = 4; ctx.setLineDash([10, 5]);
     detections.forEach(det => {
       const [ymin, xmin, ymax, xmax] = det.box_2d;
       const x = (xmin / 1000) * drawingCanvasRef.current!.width;
       const y = (ymin / 1000) * drawingCanvasRef.current!.height;
       const w = ((xmax - xmin) / 1000) * drawingCanvasRef.current!.width;
       const h = ((ymax - ymin) / 1000) * drawingCanvasRef.current!.height;
-      
-      ctx.strokeRect(x, y, w, h);
-      
-      // Draw label background
-      ctx.fillStyle = '#DC2626';
-      ctx.fillRect(x, y - 24, 60, 24);
-      ctx.fillStyle = 'white';
-      ctx.font = 'bold 12px Inter';
-      ctx.fillText(det.label || "AI TARGET", x + 5, y - 8);
+      ctx.strokeRect(x, y, w, h); ctx.fillStyle = '#DC2626'; ctx.fillRect(x, y - 24, 60, 24);
+      ctx.fillStyle = 'white'; ctx.font = 'bold 12px Inter'; ctx.fillText(det.label || "AI", x + 5, y - 8);
     });
   }, [detections]);
 
   return (
-    <div className={`fixed inset-0 z-[200] flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} overflow-hidden`}>
-      {/* Header */}
-      <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between bg-black/20 backdrop-blur-xl shrink-0`}>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#DC2626] rounded-xl sm:rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.3)]">
-            <Activity size={20} className="text-white animate-pulse" />
-          </div>
-          <div>
-            <h2 className="text-sm sm:text-xl font-black text-white italic tracking-tighter uppercase leading-none">LIVE TUTOR <span className="text-[#DC2626]">SESSION</span></h2>
-            <p className="text-[7px] sm:text-[9px] font-black text-white/40 uppercase tracking-[0.2em] sm:tracking-[0.3em]">Vision Enabled Study Assist</p>
-          </div>
+    <div className={`fixed inset-0 z-[200] flex flex-col ${theme === 'dark' ? 'bg-[#050810]' : 'bg-slate-50'} overflow-hidden font-sans`}>
+      <div className={`px-4 py-3 border-b ${theme === 'dark' ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-2xl flex items-center justify-between shrink-0`}>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#DC2626] to-[#991B1B] rounded-xl flex items-center justify-center shadow-lg"><Activity size={18} className="text-white animate-pulse" /></div>
+          <div><h2 className={`text-xs sm:text-base font-black tracking-tighter uppercase leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>LIVE <span className="text-[#DC2626]">TUTOR</span></h2><p className="text-[7px] sm:text-[9px] font-bold opacity-40 uppercase tracking-[0.2em]">Vision Intelligence Active</p></div>
         </div>
-        <button onClick={onClose} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl sm:rounded-2xl transition-all border border-white/10">
-          <X size={18} />
-        </button>
+        <button onClick={onClose} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl transition-all border border-white/10"><X size={18} /></button>
       </div>
 
-      {/* Main Viewport */}
-      <div className="flex-1 relative flex flex-col md:flex-row p-2 sm:p-4 gap-2 sm:gap-4 overflow-hidden">
-        <div className={`flex-[2] h-[40vh] md:h-auto ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-[2rem] sm:rounded-[3rem] border relative overflow-hidden shadow-2xl`}>
-          <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20 flex flex-wrap gap-2">
-            <div className="bg-[#DC2626] text-white px-2 py-1 sm:px-4 sm:py-1.5 rounded-full text-[8px] sm:text-[10px] font-black uppercase shadow-lg animate-pulse">Session Active</div>
-            {videoSource !== 'none' && <div className="bg-black/60 backdrop-blur-md text-white px-2 py-1 sm:px-4 sm:py-1.5 rounded-full text-[8px] sm:text-[10px] font-black uppercase border border-white/10">{videoSource} Feed</div>}
-            {videoSource === 'camera' && (
-              <button onClick={switchCamera} className="bg-white/10 backdrop-blur-md text-white px-3 py-1 rounded-full text-[8px] font-black uppercase border border-white/20 flex items-center gap-2 hover:bg-white/20 transition-all">
-                <RefreshCcw size={10} /> Switch Camera
-              </button>
-            )}
-          </div>
-
-          <div className="w-full h-full flex items-center justify-center bg-black/40 relative">
+      <div className="flex-1 relative p-2 sm:p-4 overflow-hidden flex flex-col items-center">
+        <div className={`w-full max-w-2xl h-full flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[1.5rem] sm:rounded-[3rem] shadow-2xl relative overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
+          <div className="flex-1 relative flex items-center justify-center overflow-hidden">
             {videoSource === 'none' ? (
-              <div className="text-center space-y-8 p-12">
-                <motion.div 
-                  animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }}
-                  transition={{ repeat: Infinity, duration: 4 }}
-                  className="w-48 h-48 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/30 shadow-[0_0_80px_rgba(220,38,38,0.3)]"
-                >
-                  <Brain size={96} className="text-[#DC2626]" />
-                </motion.div>
-                <div className="space-y-4">
-                  <p className="text-white font-black text-2xl uppercase tracking-tighter italic">Waiting for Vision Input</p>
-                  <p className="text-white/40 text-xs font-bold uppercase tracking-widest max-w-xs mx-auto leading-relaxed">Turn on Camera or Screen Share to let Omni AI see what you're working on.</p>
+              <div className="text-center space-y-6">
+                <motion.div animate={{ scale: isUserSpeaking ? [1, 1.1, 1] : 1, x: isAIResponding ? [-2, 2, -2, 2, 0] : 0 }} transition={{ scale: { repeat: Infinity, duration: 0.5 }, x: { repeat: Infinity, duration: 0.1 } }} className="w-20 h-20 sm:w-32 sm:h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/30 shadow-[0_0_40px_rgba(220,38,38,0.2)]"><Brain size={40} className={`text-[#DC2626] ${isUserSpeaking ? 'animate-pulse' : ''}`} /></motion.div>
+                <div className="space-y-1 sm:space-y-2 px-8">
+                  <p className="text-white font-black text-xs sm:text-sm uppercase tracking-tight italic">AI Ready & Listening</p>
+                  <p className="text-white/30 text-[7px] sm:text-[8px] font-bold uppercase tracking-widest leading-relaxed max-w-xs mx-auto">Turn on your camera or screen share to start.</p>
                 </div>
               </div>
             ) : (
-              <div className="relative w-full h-full">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />
+              <div className="relative w-full h-full bg-black">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 <canvas ref={drawingCanvasRef} width="1280" height="720" className="absolute inset-0 w-full h-full pointer-events-none" />
                 <canvas ref={canvasRef} width="640" height="480" className="hidden" />
               </div>
             )}
-
-            {/* AI Speech Bubble Overlay */}
-            <AnimatePresence>
-              {(liveTranscription || detections.length > 0) && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 50, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 50, scale: 0.95 }}
-                  className="absolute bottom-8 left-8 right-8 z-30"
-                >
-                  <div className="bg-[#DC2626] backdrop-blur-2xl p-6 rounded-[2.5rem] shadow-2xl border border-white/20">
-                    <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-2">Omni AI Speaking...</p>
-                    <p className="text-white text-lg font-bold leading-tight">{liveTranscription || "Look at the highlighted area..."}</p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {/* History / Transcript Sidebar */}
-        <div className={`flex-1 min-w-0 md:min-w-[320px] rounded-[2rem] sm:rounded-[3rem] border ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'} flex flex-col overflow-hidden`}>
-          <div className="p-4 sm:p-6 border-b border-white/5">
-            <h3 className="text-[10px] sm:text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-              <MessageSquare size={16} className="text-[#DC2626]" /> Conversation Log
-            </h3>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
-            {transcript.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-20">
-                <MessageSquare size={32} />
-                <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">Your interaction logs will<br/>appear here.</p>
-              </div>
-            ) : (
-              transcript.map((msg, i) => (
-                <div key={i} className={`space-y-1 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
-                  <p className="text-[8px] font-black text-[#DC2626] uppercase">{msg.role === 'user' ? 'YOU' : 'OMNI AI'}</p>
-                  <div className={`inline-block p-3 rounded-2xl text-[11px] max-w-[90%] ${msg.role === 'user' ? 'bg-[#DC2626] text-white font-bold' : 'bg-white/5 text-white/70'}`}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))
-            )}
-            {isConnecting && (
-              <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl animate-pulse">
-                <RefreshCcw size={16} className="animate-spin text-[#DC2626]" />
-                <span className="text-[10px] font-black text-white/40 uppercase">Connecting...</span>
-              </div>
-            )}
+            <div className="absolute inset-x-4 bottom-4 z-30 pointer-events-none flex flex-col justify-end gap-2 max-h-[50%] overflow-hidden">
+              <AnimatePresence mode="popLayout">
+                {lastMessages.map((msg, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 0.6, scale: 0.95, y: 0 }} exit={{ opacity: 0 }} className={`p-2 rounded-xl text-[8px] sm:text-[9px] font-bold max-w-[80%] ${msg.role === 'user' ? 'self-end bg-black text-[#DC2626]' : 'self-start bg-black/40 text-white'}`}>{msg.role === 'user' ? 'YOU: ' : ''}{msg.text}</motion.div>
+                ))}
+                {(liveTranscription || isAIResponding) && (
+                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-[#DC2626] p-4 rounded-xl sm:rounded-3xl shadow-2xl border border-white/20 w-full pointer-events-auto">
+                    <div className="flex items-center gap-2 mb-1"><div className="w-1 h-1 bg-white rounded-full animate-bounce" /><p className="text-[7px] font-black text-white/50 uppercase tracking-widest">SPEAKING</p></div>
+                    <p className="text-white text-xs sm:text-sm font-bold leading-tight">{liveTranscription || "..."}</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            {videoSource === 'camera' && <button onClick={switchCamera} className="absolute top-4 right-4 z-40 bg-black/40 backdrop-blur-md p-2 rounded-xl border border-white/10 text-white hover:bg-[#DC2626] transition-all"><RefreshCcw size={16} /></button>}
           </div>
         </div>
       </div>
 
-      {/* Control Bar */}
-      <div className={`p-4 sm:p-6 border-t ${theme === 'dark' ? 'border-white/10 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-xl flex items-center justify-center gap-2 sm:gap-6 shrink-0`}>
-         <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto pb-2 scrollbar-none">
-            <ControlButton 
-              active={isMicOn} 
-              onClick={() => setIsMicOn(!isMicOn)} 
-              icon={isMicOn ? <Mic size={20} className="sm:w-6 sm:h-6" /> : <MicOff size={20} className="sm:w-6 sm:h-6" />} 
-              label={isMicOn ? "On" : "Muted"}
-            />
-            <ControlButton 
-              active={videoSource === 'camera'} 
-              onClick={() => toggleVideo('camera')} 
-              icon={<Camera size={20} className="sm:w-6 sm:h-6" />} 
-              label="Camera"
-            />
-            <ControlButton 
-              active={videoSource === 'screen'} 
-              onClick={() => toggleVideo('screen')} 
-              icon={<Monitor size={20} className="sm:w-6 sm:h-6" />} 
-              label="Screen"
-            />
-            
-            <div className="h-10 w-px bg-white/10 mx-2 hidden sm:block" />
-
-            <button 
-              onClick={onClose}
-              className="flex items-center gap-3 bg-white/5 hover:bg-[#DC2626] text-white px-4 sm:px-8 py-3 sm:py-4 rounded-2xl sm:rounded-3xl border border-white/10 transition-all font-black text-[10px] sm:text-xs uppercase tracking-widest whitespace-nowrap group"
-            >
-              <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
-              <span>End Session</span>
-            </button>
+      <div className={`p-4 sm:p-6 border-t ${theme === 'dark' ? 'border-white/5 bg-black/60' : 'border-slate-200 bg-white'} backdrop-blur-3xl shrink-0`}>
+         <div className="max-w-xl mx-auto flex items-center justify-between gap-2 overflow-x-auto">
+            <div className="flex items-center gap-2">
+               <IconButton active={isMicOn} onClick={() => setIsMicOn(!isMicOn)} icon={isMicOn ? <Mic size={18} /> : <MicOff size={18} />} label="Mic" />
+               <IconButton active={videoSource === 'camera'} onClick={() => toggleVideo('camera')} icon={<Camera size={18} />} label="Cam" />
+               <IconButton active={videoSource === 'screen'} onClick={() => toggleVideo('screen')} icon={<Monitor size={18} />} label="Share" />
+            </div>
+            <button onClick={onClose} className="bg-[#DC2626] text-white px-4 py-3 rounded-xl font-black text-[9px] sm:text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-lg active:scale-95 transition-all"><LogOut size={16} /> <span>End</span></button>
          </div>
       </div>
     </div>
   );
 };
 
-const ControlButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
-  <div className="flex flex-col items-center gap-1.5">
-    <button 
-      onClick={onClick} 
-      className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] transition-all shadow-xl border ${active ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10 hover:border-white/30'}`}
-    >
+const IconButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
+  <button onClick={onClick} className="flex flex-col items-center gap-1 min-w-[48px]">
+    <div className={`p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all ${active ? 'bg-[#DC2626] text-white border-transparent shadow-lg' : 'bg-white/5 text-white/40 border-white/10 hover:border-white/20'}`}>
       {icon}
-    </button>
-    <span className={`text-[8px] font-black uppercase tracking-widest ${active ? 'text-[#DC2626]' : 'text-white/20'}`}>{label}</span>
-  </div>
+    </div>
+    <span className={`text-[7px] font-black uppercase tracking-tighter ${active ? 'text-[#DC2626]' : 'text-white/20'}`}>{label}</span>
+  </button>
 );
 
 const MarkdownRenderer = ({ content, className = "" }: { content: string, className?: string }) => {
