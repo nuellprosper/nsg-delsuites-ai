@@ -5,7 +5,7 @@ import {
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
-  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save,
+  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff,
   Search, Check, Info, Volume2, Square, Mail, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -232,12 +232,18 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   const [isMicOn, setIsMicOn] = useState(true);
   const [videoSource, setVideoSource] = useState<'camera' | 'screen' | 'none'>('none');
   const videoSourceRef = useRef<'camera' | 'screen' | 'none'>('none');
-  const [transcript, setTranscript] = useState<string[]>([]);
+  const [transcript, setTranscript] = useState<{role: 'ai' | 'user', text: string}[]>([]);
+  const [liveTranscription, setLiveTranscription] = useState<string>('');
+  const liveTranscriptionRef = useRef<string>('');
+  const [detections, setDetections] = useState<any[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const nextAudioTimeRef = useRef<number>(0);
+  const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
+  const currentStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const startLive = async () => {
@@ -249,37 +255,78 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       try {
         const aiInstance = getAiInstance();
         const session = await aiInstance.live.connect({
-          model: "gemini-3.1-flash-live-preview", // Updated to Gemini 3.1 Live
+          model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
-            systemInstruction: "You are Omni AI in Live Mode. You can see and hear the user. Be helpful, concise, and academic.",
+            systemInstruction: "You are Omni AI Tutor. You help students learn by seeing their world or screen. When you talk, use spatial grounding to point out objects using [ymin, xmin, ymax, xmax] coordinates. Be concise, academic, and encouraging. If the user interrupts, stop immediately and listen.",
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
             inputAudioTranscription: {},
             outputAudioTranscription: {}
           },
           callbacks: {
-            onopen: () => setIsConnecting(false),
+            onopen: () => {
+              console.log("Live connection opened");
+              setIsConnecting(false);
+            },
             onmessage: async (msg: any) => {
-              const serverContent = (msg as any).serverContent;
+              const serverContent = msg.serverContent || msg; // Handle different SDK versions
+              
+              // Handle Interruption (Barge-in)
+              if (serverContent?.interrupted) {
+                stopAllAudio();
+                setLiveTranscription('');
+                liveTranscriptionRef.current = '';
+                return;
+              }
+
               if (serverContent?.modelTurn?.parts?.[0]?.inlineData) {
                 const audioData = serverContent.modelTurn.parts[0].inlineData.data;
                 playAudio(audioData);
               }
+              
               if (serverContent?.modelTurn?.parts?.[0]?.text) {
-                setTranscript(prev => [...prev, `AI: ${serverContent.modelTurn.parts[0].text!}`]);
+                const text = serverContent.modelTurn.parts[0].text!;
+                setLiveTranscription(prev => prev + text);
+                liveTranscriptionRef.current += text;
+                
+                // Parse spatial grounding if any
+                const groundingMatches = [...text.matchAll(/\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/g)];
+                if (groundingMatches.length > 0) {
+                  const newDetections = groundingMatches.map(m => ({
+                    box_2d: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])],
+                    label: "Target"
+                  }));
+                  setDetections(newDetections);
+                }
               }
+
+              // Finalize turn transcript
+              if (serverContent?.turnComplete) {
+                const finalContent = liveTranscriptionRef.current;
+                if (finalContent) {
+                  setTranscript(prev => [...prev.slice(-10), { role: 'ai', text: finalContent }]);
+                }
+                setLiveTranscription('');
+                liveTranscriptionRef.current = '';
+                setTimeout(() => setDetections([]), 3000); 
+              }
+
               if (serverContent?.userTurn?.parts?.[0]?.text) {
-                setTranscript(prev => [...prev, `You: ${serverContent.userTurn.parts[0].text!}`]);
+                setTranscript(prev => [...prev.slice(-10), { role: 'user', text: serverContent.userTurn.parts[0].text! }]);
               }
             },
-            onerror: (err) => console.error("Live Error:", err),
+            onerror: (err) => {
+              console.error("Live Error:", err);
+              setUserNotification(`Connection Error: ${err.message || "Failed to establish live session"}`);
+            },
             onclose: () => onClose()
           }
         });
         sessionRef.current = session;
         startAudioInput();
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to connect Live:", err);
+        setUserNotification(`Live Setup Error: ${err.message || String(err)}`);
         onClose();
       }
     };
@@ -287,29 +334,59 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
     startLive();
     return () => {
       sessionRef.current?.close();
+      stopAllAudio();
       audioContextRef.current?.close();
+      if (currentStreamRef.current) {
+        currentStreamRef.current.getTracks().forEach(track => track.stop());
+      }
     };
   }, []);
 
-  const playAudio = async (base64: string) => {
-    if (!audioContextRef.current) audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-    const binary = atob(base64);
-    const buffer = new Int16Array(binary.length / 2);
-    for (let i = 0; i < buffer.length; i++) {
-      buffer[i] = (binary.charCodeAt(i * 2) & 0xFF) | (binary.charCodeAt(i * 2 + 1) << 8);
+  // Ensure video stream is attached properly after render
+  useEffect(() => {
+    if (videoSource !== 'none' && videoRef.current && currentStreamRef.current) {
+      videoRef.current.srcObject = currentStreamRef.current;
     }
-    const floatBuffer = new Float32Array(buffer.length);
-    for (let i = 0; i < buffer.length; i++) floatBuffer[i] = buffer[i] / 32768;
+  }, [videoSource]);
 
-    const audioBuffer = audioContextRef.current.createBuffer(1, floatBuffer.length, 24000);
-    audioBuffer.getChannelData(0).set(floatBuffer);
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(audioContextRef.current.destination);
-    
-    const startTime = Math.max(audioContextRef.current.currentTime, nextAudioTimeRef.current);
-    source.start(startTime);
-    nextAudioTimeRef.current = startTime + audioBuffer.duration;
+  const stopAllAudio = () => {
+    audioQueueRef.current.forEach(source => {
+      try { source.stop(); } catch (e) {}
+    });
+    audioQueueRef.current = [];
+    nextAudioTimeRef.current = audioContextRef.current?.currentTime || 0;
+  };
+
+  const playAudio = async (base64: string) => {
+    try {
+      if (!audioContextRef.current) audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
+      
+      const binary = atob(base64);
+      const buffer = new Int16Array(binary.length / 2);
+      for (let i = 0; i < buffer.length; i++) {
+          buffer[i] = (binary.charCodeAt(i * 2) & 0xFF) | (binary.charCodeAt(i * 2 + 1) << 8);
+      }
+      const floatBuffer = new Float32Array(buffer.length);
+      for (let i = 0; i < buffer.length; i++) floatBuffer[i] = buffer[i] / 32768;
+
+      const audioBuffer = audioContextRef.current.createBuffer(1, floatBuffer.length, 24000);
+      audioBuffer.getChannelData(0).set(floatBuffer);
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContextRef.current.destination);
+      
+      const startTime = Math.max(audioContextRef.current.currentTime, nextAudioTimeRef.current);
+      source.start(startTime);
+      nextAudioTimeRef.current = startTime + audioBuffer.duration;
+      audioQueueRef.current.push(source);
+      
+      source.onended = () => {
+        audioQueueRef.current = audioQueueRef.current.filter(s => s !== source);
+      };
+    } catch (err) {
+      console.error("Audio playback error:", err);
+    }
   };
 
   const startAudioInput = async () => {
@@ -337,121 +414,222 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
 
   const toggleVideo = async (type: 'camera' | 'screen') => {
     if (videoSourceRef.current === type) {
+      if (currentStreamRef.current) {
+        currentStreamRef.current.getTracks().forEach(track => track.stop());
+        currentStreamRef.current = null;
+      }
       setVideoSource('none');
       videoSourceRef.current = 'none';
-      if (videoRef.current) videoRef.current.srcObject = null;
       return;
+    }
+
+    // Stop existing stream
+    if (currentStreamRef.current) {
+      currentStreamRef.current.getTracks().forEach(track => track.stop());
     }
 
     try {
       let stream: MediaStream;
       if (type === 'camera') {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error("Camera is not supported in this browser or environment.");
-        }
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
       } else {
-        // Fallback for older browsers or specific iframe restrictions
-        const getDisplayMedia = navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices) || 
-                                (navigator as any).getDisplayMedia?.bind(navigator);
-        
-        if (!getDisplayMedia) {
-          throw new Error("Screen sharing is not supported in this browser or environment (try opening in a new tab).");
-        }
-        stream = await getDisplayMedia({ video: true });
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1280, height: 720 } });
       }
       
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      currentStreamRef.current = stream;
       setVideoSource(type);
       videoSourceRef.current = type;
 
-      // 1fps frame capture for 2GB RAM optimization
       const interval = setInterval(() => {
-        if (videoSourceRef.current === 'none' || !sessionRef.current || !videoRef.current || !canvasRef.current) {
+        if (videoSourceRef.current === 'none' || !sessionRef.current || !currentStreamRef.current || !canvasRef.current || !videoRef.current) {
           clearInterval(interval);
           return;
         }
         const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-          const base64 = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
+        if (ctx && videoRef.current.readyState >= 2) {
+          ctx.drawImage(videoRef.current, 0, 0, 640, 480);
+          const base64 = canvasRef.current.toDataURL('image/jpeg', 0.6).split(',')[1];
           sessionRef.current.sendRealtimeInput({ video: { data: base64, mimeType: 'image/jpeg' } });
         }
       }, 1000);
     } catch (err: any) {
       console.error("Video error:", err);
-      const msg = err.message || String(err);
-      if (msg.includes("Permission denied") || msg.includes("NotAllowedError")) {
-        setUserNotification("Permission denied. Please allow camera/screen access in your browser settings.");
-      } else if (msg.includes("getDisplayMedia is not a function")) {
-        setUserNotification("Screen sharing is not supported in this iframe. Please open the app in a new tab.");
-      } else {
-        setUserNotification(`Video error: ${msg}`);
-      }
+      setUserNotification(`Video error: ${err.message || String(err)}`);
     }
   };
 
+  // Spatial Grounding Drawing Effect
+  useEffect(() => {
+    if (!drawingCanvasRef.current || detections.length === 0) {
+      // Clear canvas if no detections
+      if (drawingCanvasRef.current) {
+        const ctx = drawingCanvasRef.current.getContext('2d');
+        ctx?.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
+      }
+      return;
+    }
+
+    const ctx = drawingCanvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, drawingCanvasRef.current.width, drawingCanvasRef.current.height);
+    ctx.strokeStyle = '#DC2626';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([10, 5]);
+
+    detections.forEach(det => {
+      const [ymin, xmin, ymax, xmax] = det.box_2d;
+      const x = (xmin / 1000) * drawingCanvasRef.current!.width;
+      const y = (ymin / 1000) * drawingCanvasRef.current!.height;
+      const w = ((xmax - xmin) / 1000) * drawingCanvasRef.current!.width;
+      const h = ((ymax - ymin) / 1000) * drawingCanvasRef.current!.height;
+      
+      ctx.strokeRect(x, y, w, h);
+      
+      // Draw label background
+      ctx.fillStyle = '#DC2626';
+      ctx.fillRect(x, y - 24, 60, 24);
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 12px Inter';
+      ctx.fillText(det.label || "AI TARGET", x + 5, y - 8);
+    });
+  }, [detections]);
+
   return (
-    <div className={`flex-1 flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} p-3 sm:p-6 space-y-4 sm:space-y-6`}>
-      <div className="flex-1 flex gap-6">
-        <div className={`flex-1 ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-3xl border relative overflow-hidden flex flex-col`}>
-          <div className="absolute top-4 left-4 z-10 flex gap-2">
-            <div className="bg-[#DC2626] text-white px-3 py-1 rounded-full text-[10px] font-black uppercase animate-pulse">Live</div>
-            {videoSource !== 'none' && <div className={`${theme === 'dark' ? 'bg-white/10 text-white/60' : 'bg-zinc-100 text-zinc-500'} px-3 py-1 rounded-full text-[10px] font-black uppercase`}>{videoSource} active</div>}
+    <div className={`fixed inset-0 z-[200] flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} overflow-hidden`}>
+      {/* Header */}
+      <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between bg-black/20 backdrop-blur-xl`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.3)]">
+            <Activity size={24} className="text-white animate-pulse" />
           </div>
-          
-          <div className="flex-1 flex items-center justify-center">
+          <div>
+            <h2 className="text-xl font-black text-white italic tracking-tighter uppercase leading-none">LIVE TUTOR <span className="text-[#DC2626]">SESSION</span></h2>
+            <p className="text-[9px] font-black text-white/40 uppercase tracking-[0.3em]">Vision Enabled Study Assist</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-2xl transition-all border border-white/10">
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* Main Viewport */}
+      <div className="flex-1 relative flex flex-col sm:flex-row p-4 gap-4 overflow-hidden">
+        <div className={`flex-[2] ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'} rounded-[3rem] border relative overflow-hidden shadow-2xl`}>
+          <div className="absolute top-6 left-6 z-20 flex gap-2">
+            <div className="bg-[#DC2626] text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase shadow-lg animate-pulse">Session Active</div>
+            {videoSource !== 'none' && <div className="bg-black/60 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase border border-white/10">{videoSource} Feed</div>}
+          </div>
+
+          <div className="w-full h-full flex items-center justify-center bg-black/40 relative">
             {videoSource === 'none' ? (
-              <div className="text-center space-y-8">
+              <div className="text-center space-y-8 p-12">
                 <motion.div 
-                  animate={{ scale: [1, 1.1, 1], opacity: [0.5, 1, 0.5] }}
-                  transition={{ repeat: Infinity, duration: 2 }}
-                  className="w-32 h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border border-[#DC2626]/20 shadow-[0_0_50px_rgba(220,38,38,0.2)]"
+                  animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }}
+                  transition={{ repeat: Infinity, duration: 4 }}
+                  className="w-48 h-48 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/30 shadow-[0_0_80px_rgba(220,38,38,0.3)]"
                 >
-                  <Brain size={64} className="text-[#DC2626]" />
+                  <Brain size={96} className="text-[#DC2626]" />
                 </motion.div>
-                <div>
-                  <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Omni AI is Listening</p>
-                  <div className="flex gap-1 justify-center mt-4">
-                    {[0, 1, 2].map(i => (
-                      <motion.div key={i} animate={{ height: [4, 16, 4] }} transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }} className="w-1 bg-[#DC2626] rounded-full" />
-                    ))}
-                  </div>
+                <div className="space-y-4">
+                  <p className="text-white font-black text-2xl uppercase tracking-tighter italic">Waiting for Vision Input</p>
+                  <p className="text-white/40 text-xs font-bold uppercase tracking-widest max-w-xs mx-auto leading-relaxed">Turn on Camera or Screen Share to let Omni AI see what you're working on.</p>
                 </div>
               </div>
             ) : (
-              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+              <div className="relative w-full h-full">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />
+                <canvas ref={drawingCanvasRef} width="1280" height="720" className="absolute inset-0 w-full h-full pointer-events-none" />
+                <canvas ref={canvasRef} width="640" height="480" className="hidden" />
+              </div>
             )}
-            <canvas ref={canvasRef} width="320" height="240" className="hidden" />
-          </div>
 
-          <div className={`p-6 ${theme === 'dark' ? 'bg-black/40 border-white/10' : 'bg-slate-100/40 border-slate-200'} backdrop-blur-xl border-t max-h-40 overflow-y-auto`}>
-            <p className="text-[10px] font-black text-white/20 uppercase tracking-widest mb-2">Transcript</p>
-            <div className="space-y-2">
-              {transcript.map((t, i) => (
-                <p key={i} className="text-xs text-white/60 leading-relaxed">{t}</p>
-              ))}
-              {isConnecting && <p className="text-xs text-[#DC2626] animate-pulse">Initializing WebSocket Connection...</p>}
-            </div>
+            {/* AI Speech Bubble Overlay */}
+            <AnimatePresence>
+              {(liveTranscription || detections.length > 0) && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 50, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 50, scale: 0.95 }}
+                  className="absolute bottom-8 left-8 right-8 z-30"
+                >
+                  <div className="bg-[#DC2626] backdrop-blur-2xl p-6 rounded-[2.5rem] shadow-2xl border border-white/20">
+                    <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-2">Omni AI Speaking...</p>
+                    <p className="text-white text-lg font-bold leading-tight">{liveTranscription || "Look at the highlighted area..."}</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* History / Transcript Sidebar */}
+        <div className={`flex-1 min-w-[320px] rounded-[3rem] border ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'} flex flex-col overflow-hidden`}>
+          <div className="p-6 border-b border-white/5">
+            <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+              <MessageSquare size={16} className="text-[#DC2626]" /> Conversation Log
+            </h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            {transcript.map((msg, i) => (
+              <div key={i} className={`space-y-1 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                <p className="text-[8px] font-black text-[#DC2626] uppercase">{msg.role === 'user' ? 'YOU' : 'OMNI AI'}</p>
+                <div className={`inline-block p-4 rounded-2xl text-xs max-w-[85%] ${msg.role === 'user' ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white/70'}`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {isConnecting && (
+              <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl animate-pulse">
+                <RefreshCcw size={16} className="animate-spin text-[#DC2626]" />
+                <span className="text-[10px] font-black text-white/40 uppercase">Linking Neural Network...</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-3 sm:gap-6">
-        <button onClick={() => setIsMicOn(!isMicOn)} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${isMicOn ? 'bg-[#DC2626] text-white' : `${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'}`}`}>
-          {isMicOn ? <Mic size={20} className="sm:size-[28px]" /> : <Mic size={20} className="sm:size-[28px] opacity-20" />}
-        </button>
-        <button onClick={() => toggleVideo('camera')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'camera' ? 'bg-[#DC2626] text-white' : `${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'}`}`}>
-          <Camera size={20} className="sm:size-[28px]" />
-        </button>
-        <button onClick={() => toggleVideo('screen')} className={`p-4 sm:p-6 rounded-full transition-all shadow-2xl ${videoSource === 'screen' ? 'bg-[#DC2626] text-white' : `${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'}`}`}>
-          <Monitor size={20} className="sm:size-[28px]" />
-        </button>
-        <button onClick={() => window.open(window.location.href, '_blank')} className={`p-4 sm:p-6 ${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'} rounded-full hover:bg-[#DC2626]/10 transition-all border`} title="Open in new tab for screen sharing">
-          <Share2 size={20} className="sm:size-[28px]" />
-        </button>
-        <button onClick={onClose} className={`p-4 sm:p-6 ${theme === 'dark' ? 'bg-white/5 text-white/40 border-white/10' : 'bg-zinc-100 text-zinc-500 border-zinc-200'} rounded-full hover:bg-[#DC2626] hover:text-white transition-all border`}>
-          <X size={20} className="sm:size-[28px]" />
+      {/* Control Bar */}
+      <div className={`p-6 border-t ${theme === 'dark' ? 'border-white/10 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-xl flex items-center justify-center gap-4 sm:gap-8`}>
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center">
+             <button 
+              onClick={() => setIsMicOn(!isMicOn)} 
+              className={`p-6 rounded-full transition-all shadow-xl border ${isMicOn ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10'}`}
+            >
+              {isMicOn ? <Mic size={28} /> : <MicOff size={28} />}
+            </button>
+            <span className="text-[8px] font-black text-white/30 mt-2 uppercase tracking-widest">Microphone</span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <button 
+              onClick={() => toggleVideo('camera')} 
+              className={`p-6 rounded-full transition-all shadow-xl border ${videoSource === 'camera' ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10'}`}
+            >
+              <Camera size={28} />
+            </button>
+            <span className="text-[8px] font-black text-white/30 mt-2 uppercase tracking-widest">Camera</span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <button 
+              onClick={() => toggleVideo('screen')} 
+              className={`p-6 rounded-full transition-all shadow-xl border ${videoSource === 'screen' ? 'bg-[#DC2626] text-white border-transparent' : 'bg-white/5 text-white/40 border-white/10'}`}
+            >
+              <Monitor size={28} />
+            </button>
+            <span className="text-[8px] font-black text-white/30 mt-2 uppercase tracking-widest">Share Screen</span>
+          </div>
+        </div>
+
+        <div className="hidden sm:block h-12 w-px bg-white/10" />
+
+        <button 
+          onClick={onClose} 
+          className="flex items-center gap-3 px-8 py-4 bg-white/5 hover:bg-[#DC2626] text-white font-black rounded-full transition-all border border-white/10 uppercase text-xs tracking-widest"
+        >
+          <LogOut size={18} /> End Session
         </button>
       </div>
     </div>
@@ -1470,7 +1648,7 @@ export default function App() {
     localStorage.setItem('nsg_active_tab', activeTab);
   }, [activeTab]);
 
-  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses'>(() => {
+  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'live' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses'>(() => {
     return (localStorage.getItem('nsg_tools_subtab') as any) || 'menu';
   });
 
@@ -5209,6 +5387,7 @@ ${session.fullAnalysis}
                   <div className="grid grid-cols-2 gap-4">
                     {[
                       { id: 'record', title: 'Record Lecture', icon: Mic, color: 'from-red-600 to-red-400', desc: 'AI-Powered Recording' },
+                      { id: 'live', title: 'Live AI Tutor', icon: Activity, color: 'from-[#DC2626] to-red-600', desc: 'Vision-Enabled Real-time Help' },
                       { id: 'quiz', title: 'Smart Quiz', icon: Zap, color: 'from-yellow-500 to-amber-400', desc: 'Test Your Knowledge' },
                       { id: 'exam', title: 'CBT Exam', icon: ShieldCheck, color: 'from-orange-600 to-orange-400', desc: 'Professional Testing' },
                       { id: 'faculty', title: 'Faculty Specials', icon: GraduationCap, color: 'from-blue-600 to-indigo-400', desc: 'Department Specific' },
@@ -5242,8 +5421,9 @@ ${session.fullAnalysis}
                     </button>
                     <div className="flex items-center gap-2">
                        <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">
-                        {toolsSubTab === 'record' && 'Recording Engine'}
-                        {toolsSubTab === 'quiz' && 'Quiz Engine'}
+                         {toolsSubTab === 'record' && 'Recording Engine'}
+                         {toolsSubTab === 'live' && 'Live AI Tutor'}
+                         {toolsSubTab === 'quiz' && 'Quiz Engine'}
                         {toolsSubTab === 'exam' && 'CBT Examination'}
                         {toolsSubTab === 'faculty' && 'Faculty Specials'}
                         {toolsSubTab === 'assignment' && 'Assignment Solver'}
@@ -5567,6 +5747,12 @@ ${session.fullAnalysis}
                   )}
 
           {/* TOOLS SUB-SECTIONS CONTINUED */}
+          {toolsSubTab === 'live' && (
+            <motion.div key="live" initial={{opacity:0, scale: 0.95}} animate={{opacity:1, scale: 1}} exit={{opacity: 0}} className="fixed inset-0 z-[100]">
+               <GeminiLive onClose={() => setToolsSubTab('menu')} setUserNotification={setUserNotification} theme={theme} />
+            </motion.div>
+          )}
+
           {toolsSubTab === 'quiz' && (
             <motion.div key="quiz" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className="space-y-6">
               <AdUnit slot="7536999840" />
@@ -6243,16 +6429,7 @@ ${session.fullAnalysis}
               {/* Main Chat Area */}
               <div className="flex-1 flex flex-col relative h-full overflow-hidden">
                 <AnimatePresence>
-                  {isLiveActive && (
-                    <motion.div 
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      className={`absolute inset-0 z-[100] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'}`}
-                    >
-                      <GeminiLive onClose={() => setIsLiveActive(false)} setUserNotification={setUserNotification} theme={theme} />
-                    </motion.div>
-                  )}
+                  {/* Removed legacy isLiveActive trigger as it moved to tools */}
                 </AnimatePresence>
                 {/* Chat Header */}
                 <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/20 backdrop-blur-md">
@@ -6265,7 +6442,7 @@ ${session.fullAnalysis}
                   </div>
                 <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => setIsLiveActive(true)}
+                      onClick={() => setToolsSubTab('live')}
                       className="flex items-center gap-2 bg-[#DC2626]/10 hover:bg-[#DC2626]/20 text-[#DC2626] px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all border border-[#DC2626]/20"
                     >
                       <Activity size={14} className="animate-pulse" /> LIVE TUTOR
