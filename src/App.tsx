@@ -280,22 +280,31 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                 setIsAIResponding(false);
                 return;
               }
-              if (serverContent?.modelTurn?.parts?.[0]?.inlineData) {
+
+              // Handle model turn parts
+              if (serverContent?.modelTurn?.parts) {
                 setIsAIResponding(true);
-                playAudio(serverContent.modelTurn.parts[0].inlineData.data);
-              }
-              if (serverContent?.modelTurn?.parts?.[0]?.text) {
-                const text = serverContent.modelTurn.parts[0].text!;
-                setLiveTranscription(prev => prev + text);
-                liveTranscriptionRef.current += text;
-                const groundingMatches = [...text.matchAll(/\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/g)];
-                if (groundingMatches.length > 0) {
-                  setDetections(groundingMatches.map(m => ({
-                    box_2d: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])],
-                    label: "Target"
-                  })));
+                for (const part of serverContent.modelTurn.parts) {
+                  if (part.inlineData) {
+                    playAudio(part.inlineData.data);
+                  }
+                  if (part.text) {
+                    const text = part.text;
+                    setLiveTranscription(prev => prev + text);
+                    liveTranscriptionRef.current += text;
+                    
+                    // Spatial grounding
+                    const groundingMatches = [...text.matchAll(/\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/g)];
+                    if (groundingMatches.length > 0) {
+                      setDetections(groundingMatches.map(m => ({
+                        box_2d: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])],
+                        label: "Target"
+                      })));
+                    }
+                  }
                 }
               }
+
               if (serverContent?.turnComplete) {
                 const finalContent = liveTranscriptionRef.current;
                 if (finalContent) {
@@ -308,11 +317,16 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                 setIsAIResponding(false);
                 setTimeout(() => setDetections([]), 3000); 
               }
-              if (serverContent?.userTurn?.parts?.[0]?.text) {
-                const newMsg = { role: 'user' as const, text: serverContent.userTurn.parts[0].text! };
-                transcriptRef.current = [...transcriptRef.current.slice(-5), newMsg];
-                setLastMessages(prev => [...prev.slice(-3), newMsg]);
-                setIsUserSpeaking(false);
+
+              if (serverContent?.userTurn?.parts) {
+                for (const part of serverContent.userTurn.parts) {
+                  if (part.text) {
+                    const newMsg = { role: 'user' as const, text: part.text };
+                    transcriptRef.current = [...transcriptRef.current.slice(-5), newMsg];
+                    setLastMessages(prev => [...prev.slice(-3), newMsg]);
+                    setIsUserSpeaking(false);
+                  }
+                }
               }
             },
             onerror: (err) => {
@@ -458,59 +472,110 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   }, [detections]);
 
   return (
-    <div className={`fixed inset-0 z-[200] flex flex-col ${theme === 'dark' ? 'bg-[#050810]' : 'bg-slate-50'} overflow-hidden font-sans`}>
-      <div className={`px-4 py-3 border-b ${theme === 'dark' ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-2xl flex items-center justify-between shrink-0`}>
+    <div className={`fixed inset-0 z-[200] flex flex-col ${theme === 'dark' ? 'bg-[#050810]' : 'bg-slate-50'} overflow-hidden overscroll-none font-sans`}>
+      <div className={`px-4 py-3 border-b ${theme === 'dark' ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-2xl flex items-center justify-between shrink-0 h-14 sm:h-16`}>
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#DC2626] to-[#991B1B] rounded-xl flex items-center justify-center shadow-lg"><Activity size={18} className="text-white animate-pulse" /></div>
-          <div><h2 className={`text-xs sm:text-base font-black tracking-tighter uppercase leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>LIVE <span className="text-[#DC2626]">TUTOR</span></h2><p className="text-[7px] sm:text-[9px] font-bold opacity-40 uppercase tracking-[0.2em]">Vision Intelligence Active</p></div>
+          <div className="overflow-hidden">
+            <h2 className={`text-xs sm:text-base font-black tracking-tighter uppercase leading-tight truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>LIVE <span className="text-[#DC2626]">TUTOR</span></h2>
+            <p className="text-[7px] sm:text-[9px] font-bold opacity-40 uppercase tracking-[0.2em] truncate">Omni Intelligence</p>
+          </div>
         </div>
-        <button onClick={onClose} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl transition-all border border-white/10"><X size={18} /></button>
+        <button onClick={onClose} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl transition-all border border-white/10 active:scale-90"><X size={18} /></button>
       </div>
 
-      <div className="flex-1 relative p-2 sm:p-4 overflow-hidden flex flex-col items-center">
-        <div className={`w-full max-w-2xl h-full flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[1.5rem] sm:rounded-[3rem] shadow-2xl relative overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
-          <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+      <div className="flex-1 relative p-2 sm:p-4 overflow-hidden flex flex-col items-center justify-center min-h-0 w-full max-h-[calc(100vh-120px)] sm:max-h-none">
+        <div className={`w-full max-w-2xl h-full flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[2rem] sm:rounded-[3rem] shadow-2xl relative overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'} min-h-0`}>
+          <div className="flex-1 relative flex items-center justify-center overflow-hidden h-full min-h-0">
             {videoSource === 'none' ? (
-              <div className="text-center space-y-6">
-                <motion.div animate={{ scale: isUserSpeaking ? [1, 1.1, 1] : 1, x: isAIResponding ? [-2, 2, -2, 2, 0] : 0 }} transition={{ scale: { repeat: Infinity, duration: 0.5 }, x: { repeat: Infinity, duration: 0.1 } }} className="w-20 h-20 sm:w-32 sm:h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/30 shadow-[0_0_40px_rgba(220,38,38,0.2)]"><Brain size={40} className={`text-[#DC2626] ${isUserSpeaking ? 'animate-pulse' : ''}`} /></motion.div>
+              <div className="text-center space-y-4 sm:space-y-6 flex flex-col items-center justify-center h-full w-full">
+                <motion.div 
+                  animate={{ 
+                    scale: isUserSpeaking ? [1, 1.15, 1] : 1, 
+                    x: isAIResponding ? [-3, 3, -3, 3, 0] : 0,
+                    filter: isUserSpeaking ? "brightness(1.5)" : "brightness(1)"
+                  }} 
+                  transition={{ 
+                    scale: { repeat: Infinity, duration: 0.6 }, 
+                    x: { repeat: Infinity, duration: 0.12 } 
+                  }} 
+                  className="w-24 h-24 sm:w-32 sm:h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/30 shadow-[0_0_40px_rgba(220,38,38,0.2)]"
+                >
+                  <Brain size={48} className={`text-[#DC2626] ${isUserSpeaking ? 'animate-pulse' : ''}`} />
+                </motion.div>
                 <div className="space-y-1 sm:space-y-2 px-8">
-                  <p className="text-white font-black text-xs sm:text-sm uppercase tracking-tight italic">AI Ready & Listening</p>
-                  <p className="text-white/30 text-[7px] sm:text-[8px] font-bold uppercase tracking-widest leading-relaxed max-w-xs mx-auto">Turn on your camera or screen share to start.</p>
+                  <p className="text-white font-black text-sm sm:text-base uppercase tracking-tight italic">
+                    {isUserSpeaking ? "Listening..." : isAIResponding ? "AI Responding..." : "AI Ready & Listening"}
+                  </p>
+                  <p className="text-white/30 text-[8px] sm:text-[9px] font-bold uppercase tracking-widest leading-relaxed max-w-xs mx-auto">
+                    You can talk to the AI now. Turn on camera for vision tools.
+                  </p>
                 </div>
               </div>
             ) : (
-              <div className="relative w-full h-full bg-black">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+              <div className="relative w-full h-full bg-black flex items-center justify-center">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover sm:object-contain" />
                 <canvas ref={drawingCanvasRef} width="1280" height="720" className="absolute inset-0 w-full h-full pointer-events-none" />
                 <canvas ref={canvasRef} width="640" height="480" className="hidden" />
               </div>
             )}
-            <div className="absolute inset-x-4 bottom-4 z-30 pointer-events-none flex flex-col justify-end gap-2 max-h-[50%] overflow-hidden">
+
+            {/* Overlays */}
+            <div className="absolute inset-x-4 bottom-4 z-30 pointer-events-none flex flex-col justify-end gap-2 max-h-[60%] overflow-hidden">
               <AnimatePresence mode="popLayout">
                 {lastMessages.map((msg, i) => (
-                  <motion.div key={i} initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 0.6, scale: 0.95, y: 0 }} exit={{ opacity: 0 }} className={`p-2 rounded-xl text-[8px] sm:text-[9px] font-bold max-w-[80%] ${msg.role === 'user' ? 'self-end bg-black text-[#DC2626]' : 'self-start bg-black/40 text-white'}`}>{msg.role === 'user' ? 'YOU: ' : ''}{msg.text}</motion.div>
+                  <motion.div 
+                    key={i} 
+                    initial={{ opacity: 0, scale: 0.9, y: 10 }} 
+                    animate={{ opacity: 0.5, scale: 0.95, y: 0 }} 
+                    exit={{ opacity: 0 }} 
+                    className={`p-2 sm:p-3 rounded-xl text-[9px] sm:text-[10px] font-bold max-w-[85%] shadow-lg ${msg.role === 'user' ? 'self-end bg-black text-[#DC2626]' : 'self-start bg-black/60 text-white'}`}
+                  >
+                    {msg.role === 'user' ? 'YOU: ' : ''}{msg.text}
+                  </motion.div>
                 ))}
                 {(liveTranscription || isAIResponding) && (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-[#DC2626] p-4 rounded-xl sm:rounded-3xl shadow-2xl border border-white/20 w-full pointer-events-auto">
-                    <div className="flex items-center gap-2 mb-1"><div className="w-1 h-1 bg-white rounded-full animate-bounce" /><p className="text-[7px] font-black text-white/50 uppercase tracking-widest">SPEAKING</p></div>
-                    <p className="text-white text-xs sm:text-sm font-bold leading-tight">{liveTranscription || "..."}</p>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }} 
+                    animate={{ opacity: 1, y: 0 }} 
+                    exit={{ opacity: 0 }} 
+                    className="bg-[#DC2626] p-4 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl border border-white/30 w-full pointer-events-auto"
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" />
+                      <p className="text-[8px] font-black text-white/60 uppercase tracking-[0.2em]">OMNI AI SPEAKING</p>
+                    </div>
+                    <p className="text-white text-[11px] sm:text-sm font-bold leading-tight">{liveTranscription || "Thinking..."}</p>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
-            {videoSource === 'camera' && <button onClick={switchCamera} className="absolute top-4 right-4 z-40 bg-black/40 backdrop-blur-md p-2 rounded-xl border border-white/10 text-white hover:bg-[#DC2626] transition-all"><RefreshCcw size={16} /></button>}
+            
+            {videoSource === 'camera' && (
+              <button 
+                onClick={switchCamera} 
+                className="absolute top-4 right-4 z-40 bg-black/40 backdrop-blur-md p-2.5 rounded-xl border border-white/10 text-white hover:bg-[#DC2626] transition-all shadow-xl active:scale-90"
+              >
+                <RefreshCcw size={16} />
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       <div className={`p-4 sm:p-6 border-t ${theme === 'dark' ? 'border-white/5 bg-black/60' : 'border-slate-200 bg-white'} backdrop-blur-3xl shrink-0`}>
-         <div className="max-w-xl mx-auto flex items-center justify-between gap-2 overflow-x-auto">
-            <div className="flex items-center gap-2">
-               <IconButton active={isMicOn} onClick={() => setIsMicOn(!isMicOn)} icon={isMicOn ? <Mic size={18} /> : <MicOff size={18} />} label="Mic" />
-               <IconButton active={videoSource === 'camera'} onClick={() => toggleVideo('camera')} icon={<Camera size={18} />} label="Cam" />
-               <IconButton active={videoSource === 'screen'} onClick={() => toggleVideo('screen')} icon={<Monitor size={18} />} label="Share" />
+         <div className="max-w-xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-1 sm:gap-3">
+               <IconButton active={isMicOn} onClick={() => setIsMicOn(!isMicOn)} icon={isMicOn ? <Mic size={20} /> : <MicOff size={20} />} label="Mic" />
+               <IconButton active={videoSource === 'camera'} onClick={() => toggleVideo('camera')} icon={<Camera size={20} />} label="Cam" />
+               <IconButton active={videoSource === 'screen'} onClick={() => toggleVideo('screen')} icon={<Monitor size={20} />} label="Share" />
             </div>
-            <button onClick={onClose} className="bg-[#DC2626] text-white px-4 py-3 rounded-xl font-black text-[9px] sm:text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-lg active:scale-95 transition-all"><LogOut size={16} /> <span>End</span></button>
+            <button 
+              onClick={onClose} 
+              className="bg-gradient-to-br from-[#DC2626] to-red-800 text-white px-4 py-3 sm:px-6 sm:py-4 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-[11px] uppercase tracking-widest flex items-center gap-2 shadow-xl hover:brightness-110 active:scale-95 transition-all"
+            >
+              <LogOut size={16} /> <span>End Session</span>
+            </button>
          </div>
       </div>
     </div>
