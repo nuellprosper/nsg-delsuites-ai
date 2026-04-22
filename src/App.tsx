@@ -289,12 +289,12 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                     playAudio(part.inlineData.data);
                   }
                   if (part.text) {
-                    const text = part.text;
-                    setLiveTranscription(prev => prev + text);
-                    liveTranscriptionRef.current += text;
+                    const textContent = part.text;
+                    setLiveTranscription(prev => prev + textContent);
+                    liveTranscriptionRef.current += textContent;
                     
                     // Spatial grounding
-                    const groundingMatches = [...text.matchAll(/\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/g)];
+                    const groundingMatches = [...textContent.matchAll(/\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]/g)];
                     if (groundingMatches.length > 0) {
                       setDetections(groundingMatches.map(m => ({
                         box_2d: [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])],
@@ -472,8 +472,8 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   }, [detections]);
 
   return (
-    <div className={`fixed inset-0 z-[200] flex flex-col ${theme === 'dark' ? 'bg-[#050810]' : 'bg-slate-50'} overflow-hidden overscroll-none font-sans`}>
-      <div className={`px-4 py-3 border-b ${theme === 'dark' ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-2xl flex items-center justify-between shrink-0 h-14 sm:h-16`}>
+    <div className={`fixed inset-0 z-[500] flex flex-col ${theme === 'dark' ? 'bg-[#050810]' : 'bg-slate-50'} overflow-x-hidden overflow-y-auto overscroll-none font-sans pb-[env(safe-area-inset-bottom)]`}>
+      <div className={`px-4 py-3 border-b ${theme === 'dark' ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-2xl flex items-center justify-between shrink-0 h-14 sm:h-16 sticky top-0 z-50`}>
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#DC2626] to-[#991B1B] rounded-xl flex items-center justify-center shadow-lg"><Activity size={18} className="text-white animate-pulse" /></div>
           <div className="overflow-hidden">
@@ -484,22 +484,33 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
         <button onClick={onClose} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl transition-all border border-white/10 active:scale-90"><X size={18} /></button>
       </div>
 
-      <div className="flex-1 relative p-2 sm:p-4 overflow-hidden flex flex-col items-center justify-center min-h-0 w-full max-h-[calc(100vh-120px)] sm:max-h-none">
-        <div className={`w-full max-w-2xl h-full flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[2rem] sm:rounded-[3rem] shadow-2xl relative overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'} min-h-0`}>
-          <div className="flex-1 relative flex items-center justify-center overflow-hidden h-full min-h-0">
+      <div className="flex-1 relative p-2 sm:p-4 flex flex-col items-center justify-center min-h-[400px] w-full">
+        <div className={`w-full max-w-2xl h-full min-h-[400px] flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[2rem] sm:rounded-[3rem] shadow-2xl relative overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
+          <div className="flex-1 relative flex items-center justify-center overflow-hidden min-h-0">
             {videoSource === 'none' ? (
-              <div className="text-center space-y-4 sm:space-y-6 flex flex-col items-center justify-center h-full w-full">
+              <div className="text-center space-y-4 sm:space-y-6 flex flex-col items-center justify-center h-full w-full p-6">
                 <motion.div 
-                  animate={{ 
-                    scale: isUserSpeaking ? [1, 1.15, 1] : 1, 
-                    x: isAIResponding ? [-3, 3, -3, 3, 0] : 0,
-                    filter: isUserSpeaking ? "brightness(1.5)" : "brightness(1)"
-                  }} 
+                  animate={isAIResponding ? {
+                    scale: [1, 1.1, 1.05, 1.1, 1],
+                    opacity: [0.9, 1, 0.9],
+                    boxShadow: [
+                      "0 0 20px rgba(220,38,38,0.2)",
+                      "0 0 40px rgba(220,38,38,0.4)",
+                      "0 0 20px rgba(220,38,38,0.2)"
+                    ]
+                  } : isUserSpeaking ? {
+                    scale: [1, 1.2, 1],
+                    filter: ["brightness(1)", "brightness(1.5)", "brightness(1)"]
+                  } : {
+                    scale: 1,
+                    opacity: 1
+                  }}
                   transition={{ 
-                    scale: { repeat: Infinity, duration: 0.6 }, 
-                    x: { repeat: Infinity, duration: 0.12 } 
+                    repeat: Infinity, 
+                    duration: isAIResponding ? 2 : 0.8,
+                    ease: "easeInOut"
                   }} 
-                  className="w-24 h-24 sm:w-32 sm:h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/30 shadow-[0_0_40px_rgba(220,38,38,0.2)]"
+                  className="w-24 h-24 sm:w-32 sm:h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/30"
                 >
                   <Brain size={48} className={`text-[#DC2626] ${isUserSpeaking ? 'animate-pulse' : ''}`} />
                 </motion.div>
@@ -563,7 +574,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
         </div>
       </div>
 
-      <div className={`p-4 sm:p-6 border-t ${theme === 'dark' ? 'border-white/5 bg-black/60' : 'border-slate-200 bg-white'} backdrop-blur-3xl shrink-0`}>
+      <div className={`p-4 sm:p-6 border-t ${theme === 'dark' ? 'border-white/5 bg-black/60' : 'border-slate-200 bg-white'} backdrop-blur-3xl shrink-0 sticky bottom-0 z-50`}>
          <div className="max-w-xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-1 sm:gap-3">
                <IconButton active={isMicOn} onClick={() => setIsMicOn(!isMicOn)} icon={isMicOn ? <Mic size={20} /> : <MicOff size={20} />} label="Mic" />
