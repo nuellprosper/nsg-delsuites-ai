@@ -270,20 +270,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
             outputAudioTranscription: {}
           },
           callbacks: {
-            onopen: () => {
-              setIsConnecting(false);
-              // 1. Initiation Sound
-              try {
-                const pop = new Audio("https://www.soundjay.com/buttons/sounds/button-37.mp3");
-                pop.volume = 0.4;
-                pop.play().catch(() => {});
-              } catch (e) {}
-              
-              // 2. Proactive AI Greeting
-              if (sessionRef.current) {
-                sessionRef.current.send({ text: "Introduce yourself as Omni AI Tutor and ask the student what they are studying today. Keep it short and encouraging." });
-              }
-            },
+            onopen: () => setIsConnecting(false),
             onmessage: async (msg: any) => {
               const serverContent = msg.serverContent || msg; 
               
@@ -371,11 +358,30 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
               console.error("Live Error:", err);
               setUserNotification(`Connection Error: ${err.message || "Failed"}`);
             },
-            onclose: () => onClose()
+            onclose: () => handleEnd()
           }
         });
+        
         sessionRef.current = session;
         startAudioInput();
+
+        // Initiation Sequence
+        // 1. Play Sound
+        try {
+          // Note: If you attached a custom sound, please ensure it's named 'initiation.mp3' in the public folder.
+          // Using a high-quality placeholder chime for now.
+          const introSound = new Audio("https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3");
+          introSound.volume = 0.5;
+          introSound.play().catch(() => {});
+        } catch (e) {}
+
+        // 2. Trigger Greeting after a short delay to ensure everything is initialized
+        setTimeout(() => {
+          if (sessionRef.current) {
+            sessionRef.current.send([{ text: "Hello! I am Omni, your AI Tutor. I'm here to help you learn and solve problems together. What are you studying today?" }]);
+          }
+        }, 800);
+
       } catch (err: any) {
         console.error("Failed to connect Live:", err);
         setUserNotification(`Live Error: ${err.message}`);
