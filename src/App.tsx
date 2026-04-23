@@ -270,7 +270,20 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
             outputAudioTranscription: {}
           },
           callbacks: {
-            onopen: () => setIsConnecting(false),
+            onopen: () => {
+              setIsConnecting(false);
+              // 1. Initiation Sound
+              try {
+                const pop = new Audio("https://www.soundjay.com/buttons/sounds/button-37.mp3");
+                pop.volume = 0.4;
+                pop.play().catch(() => {});
+              } catch (e) {}
+              
+              // 2. Proactive AI Greeting
+              if (sessionRef.current) {
+                sessionRef.current.send({ text: "Introduce yourself as Omni AI Tutor and ask the student what they are studying today. Keep it short and encouraging." });
+              }
+            },
             onmessage: async (msg: any) => {
               const serverContent = msg.serverContent || msg; 
               
@@ -285,7 +298,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
               // Extract text from any potential location in the message
               let extractedText = "";
               
-              // Standard model turn parts
+              // 1. Check modelTurn parts (standard)
               if (serverContent?.modelTurn?.parts) {
                 setIsAIResponding(true);
                 serverContent.modelTurn.parts.forEach((part: any) => {
@@ -298,9 +311,16 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                 });
               }
               
-              // Handle server-side audio transcription if enabled
-              if (serverContent?.modelTurn?.audioTranscription) {
-                 extractedText += serverContent.modelTurn.audioTranscription.text || "";
+              // 2. Check audioTranscription (server-side transcription)
+              if (serverContent?.modelTurn?.audioTranscription?.text) {
+                 extractedText += serverContent.modelTurn.audioTranscription.text;
+                 setIsAIResponding(true);
+              }
+
+              // 3. Fallback for potential flattened structures or different SDK versions
+              if (!extractedText && serverContent?.text) {
+                extractedText = serverContent.text;
+                setIsAIResponding(true);
               }
 
               if (extractedText) {
@@ -330,6 +350,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                 setTimeout(() => setDetections([]), 3000); 
               }
 
+              // User spoken transcription check
               if (serverContent?.userTurn?.parts) {
                 let userText = "";
                 serverContent.userTurn.parts.forEach((part: any) => {
@@ -426,8 +447,16 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   };
 
   const toggleVideo = async (type: 'camera' | 'screen') => {
-    if (type === 'screen' && (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia)) {
-      setUserNotification("Screen sharing not supported."); return;
+    if (type === 'screen') {
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        if (isMobile) {
+          setUserNotification("Mobile browsers often restrict screen sharing. Please use a desktop browser for this feature.");
+        } else {
+          setUserNotification("Screen sharing is not supported by your browser or environment.");
+        }
+        return;
+      }
     }
     if (videoSource === type) {
       currentStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -508,6 +537,22 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
     });
   }, [detections]);
 
+  const handleEnd = () => {
+    try {
+      if (sessionRef.current) sessionRef.current.close();
+      stopAllAudio();
+      if (currentStreamRef.current) {
+        currentStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+      }
+    } catch (e) {
+      console.error("End session error:", e);
+    }
+    onClose();
+  };
+
   return (
     <div className={`fixed inset-0 z-[600] flex flex-col ${theme === 'dark' ? 'bg-[#050810]' : 'bg-slate-50'} overscroll-none font-sans h-full w-full overflow-hidden`}>
       {/* HEADER */}
@@ -519,7 +564,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
             <p className="text-[7px] sm:text-[9px] font-bold opacity-40 uppercase tracking-[0.2em] truncate">Omni Intelligence</p>
           </div>
         </div>
-        <button onClick={onClose} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl transition-all border border-white/10 active:scale-90"><X size={18} /></button>
+        <button onClick={handleEnd} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl transition-all border border-white/10 active:scale-90"><X size={18} /></button>
       </div>
 
       {/* MAIN CONTENT - NO INNER SCROLL, JUST FLEX GROW */}
@@ -587,7 +632,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                     {msg.role === 'user' ? 'YOU: ' : ''}{msg.text}
                   </motion.div>
                 ))}
-                {(liveTranscription || isAIResponding) && (
+                {liveTranscription && (
                   <motion.div 
                     initial={{ opacity: 0, y: 20 }} 
                     animate={{ opacity: 1, y: 0 }} 
@@ -598,7 +643,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                       <div className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" />
                       <p className="text-[7px] sm:text-[8px] font-black text-white/70 uppercase tracking-[0.2em]">LIVE TRANSCRIPT</p>
                     </div>
-                    <p className={`text-[10px] sm:text-sm font-bold leading-tight line-clamp-3 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{liveTranscription || "Thinking..."}</p>
+                    <p className={`text-[10px] sm:text-sm font-bold leading-tight line-clamp-3 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{liveTranscription}</p>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -625,7 +670,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
                <IconButton active={videoSource === 'screen'} onClick={() => toggleVideo('screen')} icon={<Monitor size={18} />} label="Share" />
             </div>
             <button 
-              onClick={onClose} 
+              onClick={handleEnd} 
               className="bg-gradient-to-br from-[#DC2626] to-red-800 text-white px-3 py-3 sm:px-6 sm:py-4 rounded-xl sm:rounded-2xl font-black text-[9px] sm:text-[11px] uppercase tracking-widest flex items-center gap-2 shadow-xl hover:brightness-110 active:scale-95 transition-all shrink-0"
             >
               <LogOut size={16} /> <span className="hidden xs:inline">End Session</span><span className="xs:hidden">End</span>
