@@ -250,6 +250,8 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   const nextAudioTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const currentStreamRef = useRef<MediaStream | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     const startLive = async () => {
@@ -366,21 +368,27 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
         startAudioInput();
 
         // Initiation Sequence
-        // 1. Play Sound
-        try {
-          // Note: If you attached a custom sound, please ensure it's named 'initiation.mp3' in the public folder.
-          // Using a high-quality placeholder chime for now.
-          const introSound = new Audio("https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3");
-          introSound.volume = 0.5;
-          introSound.play().catch(() => {});
-        } catch (e) {}
+        // 1. Play Sound (Try local first, then piano fallback)
+        const playInitSound = async () => {
+          try {
+            const localSound = new Audio("/initiation.mp3");
+            localSound.volume = 0.5;
+            await localSound.play().catch(async () => {
+              // Fallback: G1 Piano Chord
+              const fallback = new Audio("https://cdn.pixabay.com/audio/2022/03/10/audio_c9769da59d.mp3"); 
+              fallback.volume = 0.5;
+              await fallback.play().catch(() => {});
+            });
+          } catch (e) {}
+        };
+        playInitSound();
 
         // 2. Trigger Greeting after a short delay to ensure everything is initialized
         setTimeout(() => {
-          if (sessionRef.current) {
-            sessionRef.current.send([{ text: "Hello! I am Omni, your AI Tutor. I'm here to help you learn and solve problems together. What are you studying today?" }]);
+          if (sessionRef.current && typeof (sessionRef.current as any).sendRealtimeInput === 'function') {
+            (sessionRef.current as any).sendRealtimeInput({ text: "Hello! I am Omni, your AI Tutor. I'm here to help you learn and solve problems together. What are you studying today?" });
           }
-        }, 800);
+        }, 1000);
 
       } catch (err: any) {
         console.error("Failed to connect Live:", err);
@@ -394,6 +402,8 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       stopAllAudio();
       audioContextRef.current?.close();
       currentStreamRef.current?.getTracks().forEach(track => track.stop());
+      micStreamRef.current?.getTracks().forEach(track => track.stop());
+      micContextRef.current?.close();
     };
   }, []);
 
@@ -434,7 +444,9 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   const startAudioInput = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
       const audioCtx = new AudioContext({ sampleRate: 16000 });
+      micContextRef.current = audioCtx;
       const source = audioCtx.createMediaStreamSource(stream);
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processor.onaudioprocess = (e) => {
@@ -550,8 +562,14 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       if (currentStreamRef.current) {
         currentStreamRef.current.getTracks().forEach(track => track.stop());
       }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+      }
       if (audioContextRef.current) {
         audioContextRef.current.close().catch(() => {});
+      }
+      if (micContextRef.current) {
+        micContextRef.current.close().catch(() => {});
       }
     } catch (e) {
       console.error("End session error:", e);
@@ -2404,7 +2422,7 @@ export default function App() {
     </motion.div>
   );
 
-  // --- ðŸŒŸ PREMIUM ONBOARDING (MODAL STYLE) ---
+  // --- 🌟 PREMIUM ONBOARDING (MODAL STYLE) ---
   const AnalysisLoadingOverlay = () => (
     <AnimatePresence>
       {isAnalyzing && (
@@ -3853,7 +3871,7 @@ ${session.fullAnalysis}
       setIsProcessingFinal(true);
       isStopRequested.current = true;
       try {
-        console.log("ðŸ›‘ Stopping audio capture...");
+        console.log("🛑 Stopping audio capture...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -3867,7 +3885,7 @@ ${session.fullAnalysis}
 
         // Wait for all transcription processing to finish in background
         await processorQueue.current;
-        console.log("âœ… Background processing complete.");
+        console.log("✅ Background processing complete.");
       } catch (err) {
         console.error("Error stopping recording:", err);
       } finally {
@@ -7115,7 +7133,7 @@ ${session.fullAnalysis}
                   
                   <div className="flex flex-col items-center gap-1 pt-2 opacity-20">
                     <p className="text-[8px] font-black uppercase tracking-[0.4em]">Lecture OS v4.0</p>
-                    <p className="text-[7px] font-bold uppercase tracking-widest">Â© 2026 NSG Studio</p>
+                    <p className="text-[7px] font-bold uppercase tracking-widest">© 2026 NSG Studio</p>
                   </div>
                 </div>
               </div>
