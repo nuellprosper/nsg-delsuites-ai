@@ -2647,16 +2647,32 @@ export default function App() {
       return;
     }
 
+    if (allUsers.length === 0) {
+      setUserNotification("No users found to broadcast to.");
+      return;
+    }
+
     try {
-      setUserNotification(`Blasting "${templateEditForm.name}" to all users...`);
-      const res = await axios.post('/api/admin/trigger-broadcast', { 
+      setUserNotification(`Preparing manual list blast for "${templateEditForm.name}"...`);
+      
+      const recipients = allUsers
+        .filter(u => u.email)
+        .map(u => ({
+          email: u.email,
+          name: u.fullName || u.displayName || 'there'
+        }));
+
+      const res = await axios.post('/api/admin/broadcast-list', { 
         secret: 'GOD_MODE',
-        templateId: templateEditForm.id 
+        recipients,
+        subjectTemplate: templateEditForm.subject,
+        bodyTemplate: templateEditForm.body
       }); 
+
       if (res.data.success) {
         setUserNotification(`Marketing blast successful! Sent to ${res.data.count} users.`);
       } else {
-        setUserNotification(`Blast failed: ${res.data.message || 'Unknown error'}`);
+        setUserNotification(`Blast failed: ${res.data.error || 'Unknown error'}`);
       }
     } catch (err) {
       console.error(err);
@@ -7989,8 +8005,21 @@ ${session.fullAnalysis}
                       <div key={t.id} className={`p-4 rounded-2xl border transition-all cursor-pointer group ${templateEditForm?.id === t.id ? 'bg-[#DC2626]/10 border-[#DC2626]/50 shadow-inner' : 'bg-white/5 border-white/10 hover:border-white/30'}`} onClick={() => setTemplateEditForm(t)}>
                         <div className="flex items-center justify-between gap-2">
                           <p className={`text-[10px] font-black uppercase truncate ${t.active ? 'text-white' : 'text-white/20'}`}>{t.name}</p>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                            <button onClick={(e) => { e.stopPropagation(); deleteEmailTemplate(t.id); }} className="text-white/20 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setTemplateEditForm(t); }} 
+                              className="p-1.5 bg-white/5 rounded-lg text-white/40 hover:text-white transition-all"
+                              title="Edit Template"
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); deleteEmailTemplate(t.id); }} 
+                              className="p-1.5 bg-white/5 rounded-lg text-white/40 hover:text-red-500 transition-all"
+                              title="Delete Template"
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           </div>
                         </div>
                         <p className="text-[8px] font-bold text-white/30 uppercase truncate mt-1">{t.subject}</p>
