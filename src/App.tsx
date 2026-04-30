@@ -8007,13 +8007,16 @@ ${session.fullAnalysis}
                             <input value={templateEditForm.name} onChange={e => setTemplateEditForm({...templateEditForm, name: e.target.value})} className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#DC2626]/50 transition-all`} placeholder="e.g. Logic Engine Promo" />
                           </div>
                           <div className="space-y-1">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Email Subject</p>
+                            <div className="flex justify-between items-center px-1">
+                              <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Email Subject</p>
+                              <span className="text-[6px] font-black text-[#DC2626] uppercase">personalize with ${"{name}"}</span>
+                            </div>
                             <input value={templateEditForm.subject} onChange={e => setTemplateEditForm({...templateEditForm, subject: e.target.value})} className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#DC2626]/50 transition-all`} placeholder="Catchy subject line..." />
                           </div>
                         </div>
                         <div className="space-y-1">
                           <div className="flex justify-between items-center px-1">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Body (${"{name}"} supported)</p>
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Body (${"{name}"} or {"{{name}}"} supported)</p>
                           </div>
                           <textarea 
                             value={templateEditForm.body} 
