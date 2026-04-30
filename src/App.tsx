@@ -4,9 +4,9 @@ import {
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
-  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
+  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff,
-  Search, Check, Info, Volume2, Square, Mail, ArrowRight
+  Search, Check, Info, Volume2, Square, Mail, ArrowRight, BoxSelect
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, Modality, ThinkingLevel } from "@google/genai";
@@ -17,6 +17,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { usePaystackPayment } from 'react-paystack';
 import { toPng } from 'html-to-image';
+import axios from 'axios';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy, limit,
@@ -25,6 +26,298 @@ import {
 } from './firebase';
 
 import { AILibrary } from './components/AILibrary';
+
+const WhatsAppIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="currentColor" 
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.445 0 .081 5.363.079 11.969c0 2.112.551 4.172 1.597 5.979L0 24l6.163-1.617a11.83 11.83 0 005.883 1.553h.005c6.602 0 11.967-5.367 11.97-11.97a11.815 11.815 0 00-3.505-8.473z"/>
+  </svg>
+);
+
+const helpContent = {
+  record: {
+    title: "Recording Engine Help",
+    items: [
+      {
+        question: "How to record classes & sync audio?",
+        steps: [
+          "Ensure you are in a relatively quiet environment for best results.",
+          "Grant microphone permissions when the browser pop-up appears.",
+          "Click the large 'Record' button to start captured live audio.",
+          "The 'Waveform' indicator shows that the engine is active.",
+          "Click 'Stop Session' once the lecture concludes.",
+          "Wait 10-20 seconds for the AI to synthesize the raw audio into structured notes."
+        ]
+      },
+      {
+        question: "How to use AI Board Analysis?",
+        steps: [
+          "While recording, or after, click the 'Camera/Upload' icon.",
+          "Capture a clear photo of the classroom board or your handwritten notes.",
+          "Omni will extract the text and diagrams from the image.",
+          "This data is automatically integrated into your final study summary.",
+          "Ensure there is no glare on the board for 100% text accuracy."
+        ]
+      },
+      {
+        question: "How to copy and export notes?",
+        steps: [
+          "Once generated, look for the 'Copy' button at the header of the notes card.",
+          "Clicking it copies the entire markdown structure (headings, lists, text).",
+          "You can paste this into Google Docs, Microsoft Word, or Notepad.",
+          "Notes are formatted professionally for easy reading and printing."
+        ]
+      }
+    ]
+  },
+  quiz: {
+    title: "Quiz Engine Help",
+    items: [
+      {
+        question: "How to generate a specific quiz?",
+        steps: [
+          "Type the specific topic in the input field (e.g., 'Thermodynamics').",
+          "Select difficulty: 'Easy' (Basics), 'Medium' (Standard), or 'Hard' (Advanced).",
+          "Set the question count to allow for a quick test or a deep dive.",
+          "Click 'Generate' to let the AI build a unique question set.",
+          "Refresh to get a different set of questions for the same topic."
+        ]
+      },
+      {
+        question: "How does the Review Mode work?",
+        steps: [
+          "After clicking 'Submit Quiz', your percentage score is calculated.",
+          "Scroll through your answers to see visual feedback: Green (Correct), Red (Wrong).",
+          "Click on any question to see the 'Academic Explanation'.",
+          "This explanation provides the logic behind the correct answer to help you learn.",
+          "Use this mode to master topics you missed during the test."
+        ]
+      }
+    ]
+  },
+  exam: {
+    title: "CBT Examination Help",
+    items: [
+      {
+        question: "How to host a professional exam?",
+        steps: [
+          "Click the 'Host exam' button (Note: This will end previous exams and clear old data automatically).",
+          "Type in the Custom Matric Number and Name of each participant and add them singly to the authorized list.",
+          "Configure the Exam: Set the Total Questions, Time (in minutes), and the Total Pool Questions.",
+          "Add Questions: Paste your own questions into the input or type your Course Name for Gemini to automatically generate them.",
+          "Save your changes and click 'Generate Exam ID'.",
+          "Copy the unique Exam ID and share it with your participants.",
+          "Provide the participants with their assigned Custom Matric Numbers and the Exam ID so they can join the session."
+        ]
+      },
+      {
+        question: "How to join as a candidate?",
+        steps: [
+          "Locate the 'Join Exam' field on the landing page.",
+          "Input the Exam ID provided by your host.",
+          "The system will verify the ID and show you the exam metadata.",
+          "Enter your Full Name and Matric Number (if required) to log in.",
+          "Wait in the virtual lobby until the host signals the start."
+        ]
+      },
+      {
+        question: "Rules of the Exam Hall?",
+        steps: [
+          "The timer starts immediately upon clicking 'Start Exam'.",
+          "The page will automatically submit your work if the timer hits zero.",
+          "Switching tabs or minimizing the browser may trigger a warning or auto-submit.",
+          "Ensure your internet connection is stable before starting the session."
+        ]
+      }
+    ]
+  },
+  assignment: {
+    title: "Assignment Solver Help",
+    items: [
+      {
+        question: "How to solve via photo/image?",
+        steps: [
+          "Ensure the text or math problem is readable and well-lit.",
+          "Click the image icon and upload the file from your device.",
+          "Wait for the 'Vision Preview' to confirm the image is uploaded.",
+          "Click 'Solve with AI' to trigger the logical reasoning mode.",
+          "Omni will show the problem extraction followed by the steps."
+        ]
+      },
+      {
+        question: "Understanding the Step-by-Step Logic?",
+        steps: [
+          "Omni doesn't just give answers; it provides the 'Methodology'.",
+          "Check the 'Core Concept' section first to understand the underlying theory.",
+          "Follow each numbered step to see the mathematical or logical progression.",
+          "Refer to the 'Final Result' at the bottom of the solution container.",
+          "If the solution uses math, it will be rendered in beautiful, readable LaTeX."
+        ]
+      }
+    ]
+  },
+  courses: {
+    title: "Course-Specific Tools Help",
+    items: [
+      {
+        question: "How to navigate the library?",
+        steps: [
+          "Step 1: Select your Faculty (e.g., Engineering, Medicine).",
+          "Step 2: Choose your Department/Program.",
+          "Step 3: Drill down into the Level (100L - 500L).",
+          "Step 4: Click the Course Code (e.g., MTH101) to open folders.",
+          "You will find 'Summaries', 'Past Questions', and 'Lecture Notes'."
+        ]
+      }
+    ]
+  },
+  faculty: {
+    title: "Faculty Specials Help",
+    items: [
+      {
+        question: "How to use the BIZ Financial Auditor?",
+        steps: [
+          "Navigate to the BIZ (Business/Accounting) section within Faculty Specials.",
+          "Upload or paste your financial draft, ledger table, or balance sheet.",
+          "Click 'Audit Document' to let the specialized AI scan for discrepancies.",
+          "The Auditor will highlight errors in red and provide the corrected entry immediately.",
+          "Use the 'Export Audit' button to save a report of all identified mistakes."
+        ]
+      },
+      {
+        question: "How to use Language Diagnostics?",
+        steps: [
+          "Select the Language/Art faculty and open the 'Diagnostics' tool.",
+          "Input text (Max 300 words) for analysis.",
+          "The engine performs a deep linguistic audit of your syntax and grammar.",
+          "Original Box: Wrong words appear in Red, correct ones in Blue.",
+          "Correction Box: Corrected words appear in Green, already correct ones in Blue.",
+          "Review the 'Academic Logic' below for a summary of mistakes."
+        ]
+      },
+      {
+        question: "How to use the Transcribe Tool?",
+        steps: [
+          "Located within the Language/Edu section of Faculty Specials.",
+          "Conversion: Text to Phonetic Sounds (/IPA/) and vice versa.",
+          "For Sounds to Text: Enter sounds in slashes like /kaɪnd/.",
+          "Click 'Transcribe to Sound' or 'Decode Sounds' to process.",
+          "Results are displayed with full phonetic accuracy."
+        ]
+      },
+      {
+        question: "What are specialized tools?",
+        steps: [
+          "Engineering: Specialized for diagrams, CAD descriptions, and calculations.",
+          "Medical: Focuses on clinical symptoms, diagnosis simulation, and anatomy.",
+          "Law: Handles legal drafting, case law retrieval, and logical arguments.",
+          "These tools use fine-tuned parameters specific to each professional field."
+        ]
+      }
+    ]
+  },
+  live: {
+    title: "Live AI Tutor Help",
+    items: [
+      {
+        question: "How to use spatial grounding?",
+        steps: [
+          "Omni sees through your camera. Point it at an object or book.",
+          "Omni can 'point' at things in your view using highlight boxes.",
+          "Ask: 'What is this specifically?' while pointing the camera.",
+          "Omni will respond using coordinates to tell you exactly what it sees.",
+          "Ideal for diagrams, hardware parts, or complex physical notes."
+        ]
+      }
+    ]
+  }
+};
+
+const HelpOverlay = ({ isOpen, onClose, toolId, theme }: { isOpen: boolean, onClose: () => void, toolId: string, theme: string }) => {
+  const content = helpContent[toolId as keyof typeof helpContent];
+  const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
+
+  if (!content) return null;
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           exit={{ opacity: 0 }}
+           className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            className={`w-full max-w-lg ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[2rem] shadow-2xl overflow-hidden border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex flex-col max-h-[80vh]`}
+          >
+            <div className="p-6 border-b border-white/5 flex items-center justify-between">
+              <div>
+                <h2 className={`text-lg font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'} uppercase tracking-tighter`}>{content.title}</h2>
+                <p className="text-[10px] text-[#DC2626] uppercase font-bold tracking-widest">Step-by-Step Guide</p>
+              </div>
+              <button onClick={() => { setSelectedQuestion(null); onClose(); }} className="p-2 hover:bg-white/5 rounded-xl transition-all">
+                <X size={20} className={theme === 'dark' ? 'text-white/40' : 'text-slate-400'} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+              {!selectedQuestion ? (
+                <div className="space-y-3">
+                  {content.items.map((item, idx) => (
+                    <button 
+                      key={idx}
+                      onClick={() => setSelectedQuestion(item.question)}
+                      className={`w-full flex items-center justify-between p-4 ${theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'} border rounded-2xl hover:border-[#DC2626]/40 transition-all text-left`}
+                    >
+                      <span className={`text-sm font-bold ${theme === 'dark' ? 'text-white/80' : 'text-slate-700'}`}>{item.question}</span>
+                      <ChevronRight size={18} className="text-[#DC2626]" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <button 
+                    onClick={() => setSelectedQuestion(null)}
+                    className="flex items-center gap-2 text-[10px] font-black text-[#DC2626] uppercase tracking-widest mb-4 hover:opacity-70"
+                  >
+                    <ArrowLeft size={14} /> Back to questions
+                  </button>
+                  <h3 className={`text-xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'} tracking-tight`}>{selectedQuestion}</h3>
+                  <div className="space-y-4">
+                    {content.items.find(i => i.question === selectedQuestion)?.steps.map((step, sIdx) => (
+                      <motion.div 
+                        key={sIdx}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: sIdx * 0.1 }}
+                        className={`flex gap-4 p-4 ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'} border border-white/5 rounded-2xl`}
+                      >
+                        <div className="w-8 h-8 bg-[#DC2626]/20 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-xs font-black text-[#DC2626]">{sIdx + 1}</span>
+                        </div>
+                        <p className={`text-sm ${theme === 'dark' ? 'text-white/70' : 'text-slate-600'} leading-relaxed font-medium`}>{step}</p>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 /**
  * NSG (Nuell Study Guide) V4.0 - PROFESSIONAL CBT & AI UPGRADE
@@ -266,7 +559,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
           model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
-            systemInstruction: "You are Omni AI Tutor. You help students learn by seeing their world or screen. When you talk, use spatial grounding to point out objects using [ymin, xmin, ymax, xmax] coordinates. Be concise, academic, and encouraging. If the user interrupts, stop immediately and listen. IMPORTANT: All responses must include a text transcript of what you say for accessibility.",
+            systemInstruction: "You are Omni AI Tutor created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER (a 100L Electrical and Electronics Engineering student at DELSU, Oleh campus). \n\nULTRA-DETAILED NSG GUIDES:\n- RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n- SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' (Logic summaries).\n- CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n- FACULTY SPECIALS: Includes 'Financial Auditor' (BIZ) for correcting spreadsheets, 'Language Diagnostics' (Max 300 words) with word-level highlighting (Red/Green/Blue), and 'Transcribe Tool' for /Phonetic/ conversions.\n- ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n- COURSE TOOLS: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n- WHATSAPP: AI help via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest Otter.ai/Photomath AND NSG (nuellstudyguide.name.ng) as the ultimate local alternative.",
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
             inputAudioTranscription: {},
             outputAudioTranscription: {}
@@ -498,7 +791,11 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
         const ctx = canvasRef.current.getContext('2d');
         if (ctx && videoRef.current.readyState >= 2) {
           ctx.drawImage(videoRef.current, 0, 0, 640, 480);
-          sessionRef.current.sendRealtimeInput({ video: { data: canvasRef.current.toDataURL('image/jpeg', 0.6).split(',')[1], mimeType: 'image/jpeg' } });
+          const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.6);
+          const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : '';
+          if (base64Data) {
+            sessionRef.current.sendRealtimeInput({ video: { data: base64Data, mimeType: 'image/jpeg' } });
+          }
         }
       }, 1000);
     } catch (err: any) { console.error("Video error:", err); setUserNotification(`Video error: ${err.message}`); }
@@ -1121,19 +1418,20 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
       const stepData = solution?.steps[stepIdx];
 
       const prompt = `
-        You are an expert tutor. A student is describing how they solved a specific step of an assignment.
+        You are an expert tutor. A student is orally describing how they solved a specific step of an assignment.
         The correct step solution is: "${stepData?.step}"
         The logical explanation is: "${stepData?.explanation}"
         
-        The student said: "${text}"
+        Student's oral transcription: "${text}"
         
-        Analyze their oral explanation:
-        1. Identify if their logic is correct.
-        2. Be encouraging.
-        3. Explain any conceptual errors.
-        4. Use LaTeX for math.
+        Analyze their explanation:
+        1. Be LITERALLY accurate about what they said.
+        2. Identify if their logic is fundamentally correct compared to the ideal solution.
+        3. Be encouraging and supportive.
+        4. Explain any conceptual errors clearly.
+        5. Use LaTeX for ALL math ($...$).
         
-        CRITICAL: Keep your reply very short, straight to the point, and under 4 lines if possible.
+        CRITICAL: Keep your reply very short, direct, and under 4 lines.
       `;
 
       const response = await ai.models.generateContent({
@@ -1726,7 +2024,7 @@ export default function App() {
     localStorage.setItem('nsg_active_tab', activeTab);
   }, [activeTab]);
 
-  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'live' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses'>(() => {
+  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'live' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses' | 'td'>(() => {
     return (localStorage.getItem('nsg_tools_subtab') as any) || 'menu';
   });
 
@@ -1794,6 +2092,7 @@ export default function App() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const [finishedHistory, setFinishedHistory] = useState<HomeHistoryItem[]>([]);
 
   // Load finished history from local storage
@@ -2287,6 +2586,88 @@ export default function App() {
   // --- \u{1F6E0}\u{FE0F} ADMIN STATE ---
   const [examStatus, setExamStatus] = useState<'active' | 'ended' | 'none'>('none');
   const [adminMode, setAdminMode] = useState(false);
+  const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
+  const [templateEditForm, setTemplateEditForm] = useState<any | null>(null);
+
+  // Load email templates
+  useEffect(() => {
+    if (isAdminUser) {
+      const unsub = onSnapshot(collection(db, 'email_templates'), (snap) => {
+        const templates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setEmailTemplates(templates);
+      });
+      return () => unsub();
+    }
+  }, [isAdminUser]);
+
+  const initMarketingTemplates = async () => {
+    const templates = [
+      { 
+        name: "Faculty Specials Promo",
+        subject: "Master your exams with Faculty Specials!",
+        body: "Hi ${name},\n\nHave you tried our Faculty Specials yet? \n\nWhether you are a business student needing the Financial Auditor to perfect your spreadsheets, or a language student using our new Diagnostics Tool (with a 300-word deep-audit limit!), NSG has something picked just for you.\n\nTry it now: https://nuellstudyguide.name.ng\n\nBest,\nABRAHAM EMMANUEL PROSPER",
+        active: true,
+        updatedAt: serverTimestamp()
+      },
+      {
+        name: "Recording Engine Power",
+        subject: "Never miss a lecture detail again!",
+        body: "Hi ${name},\n\nOur Recording Engine is built for efficiency. Record your lectures and sync them with photos of the whiteboard to generate cohesive, structured notes.\n\nStop taking manual notes and start capturing the logic!\n\nUpgrade to Premium for unlimited storage.\n\nBest,\nABRAHAM EMMANUEL PROSPER",
+        active: true,
+        updatedAt: serverTimestamp()
+      },
+      {
+        name: "Smart Quiz Challenge",
+        subject: "Ready for a Smart Quiz?",
+        body: "Hi ${name},\n\nConsistent practice is the key to memory. Use our Smart Quiz tool to generate questions on any topic. From Easy to Hard difficulty, challenge yourself today!\n\nCheck it out: https://nuellstudyguide.name.ng\n\nBest,\nABRAHAM EMMANUEL PROSPER",
+        active: true,
+        updatedAt: serverTimestamp()
+      }
+    ];
+
+    for (const t of templates) {
+      const exists = emailTemplates.find(et => et.name === t.name);
+      if (!exists) {
+        await addDoc(collection(db, 'email_templates'), t);
+      }
+    }
+    setUserNotification("Default marketing templates initialized!");
+  };
+
+  const triggerMarketingBlast = async () => {
+    try {
+      setUserNotification("Starting marketing blast...");
+      const res = await axios.post('/api/admin/trigger-broadcast', { secret: 'GOD_MODE' }); // Using a default secret for now, should be env
+      if (res.data.success) {
+        setUserNotification("Marketing blast initiated successfully!");
+      }
+    } catch (err) {
+      console.error(err);
+      setUserNotification("Failed to trigger marketing blast.");
+    }
+  };
+
+  const handleSaveEmailTemplate = async (template: any) => {
+    try {
+      const { id, ...data } = template;
+      if (id) {
+        await updateDoc(doc(db, 'email_templates', id), { ...data, updatedAt: serverTimestamp() });
+      } else {
+        await addDoc(collection(db, 'email_templates'), { ...data, updatedAt: serverTimestamp() });
+      }
+      setUserNotification("Template saved.");
+    } catch (err) {
+      console.error(err);
+      setUserNotification("Error saving template.");
+    }
+  };
+
+  const deleteEmailTemplate = async (id: string) => {
+    if (confirm("Delete this template?")) {
+      await deleteDoc(doc(db, 'email_templates', id));
+      setUserNotification("Template deleted.");
+    }
+  };
   const [adminQuestionsRaw, setAdminQuestionsRaw] = useState('');
   const [scoreSheet, setScoreSheet] = useState<StudentResult[]>([]);
   const [isGeneratingAdminQuestions, setIsGeneratingAdminQuestions] = useState(false);
@@ -2295,7 +2676,7 @@ export default function App() {
   const [registeredStudents, setRegisteredStudents] = useState<RegisteredStudent[]>([]);
   const initialExamConfig: ExamConfig = {
     questionCount: 25,
-    duration: 3600,
+    duration: 60,
     price: 2000,
     poolCount: 50
   };
@@ -2326,6 +2707,17 @@ export default function App() {
       });
       setUserNotification(`Subscription successful! Premium active until ${newUntil.toLocaleDateString()}`);
       setShowPremiumModal(false);
+
+      // Send Thank You Email
+      try {
+        await axios.post('/api/send-premium-thank-you', {
+          email: user.email,
+          name: currentUserData?.fullName || user.displayName || 'Student'
+        });
+      } catch (err) {
+        console.error("Failed to send thank you email:", err);
+      }
+
       // Clear persistence after success
       localStorage.removeItem('nsg_pending_payment_ref');
       localStorage.removeItem('nsg_pending_payment_plan');
@@ -3022,6 +3414,16 @@ export default function App() {
         await sendEmailVerification(newUser);
         
         setUserNotification("Account created! Verification link sent to your email.");
+        
+        // Send Welcome Email
+        try {
+          await axios.post('/api/send-welcome-email', {
+            email: newUser.email,
+            name: authFullName
+          });
+        } catch (err) {
+          console.error("Failed to send welcome email:", err);
+        }
       } else {
         let loginEmail = authEmail;
         
@@ -3406,7 +3808,7 @@ export default function App() {
     }
     const shuffled = shuffleArray(examQuestions).slice(0, examConfig.questionCount);
     setExamQuestions(shuffled);
-    setExamTimer(examConfig.duration);
+    setExamTimer(examConfig.duration * 60);
     setExamLobbyState('exam');
     setExamAnswers({});
     setCurrentExamIndex(0);
@@ -4032,15 +4434,15 @@ ${session.fullAnalysis}
         Transcribe the ATTACHED audio LITERALLY and ACCURATELY. 
         
         RULES:
-        1. Write ONLY what you hear. Do NOT explain or summarize the content.
-        2. Remove ALL verbal fillers (e.g., "um", "uh", "you know", "like").
-        3. If you cannot hear a word or sentence clearly, represent it as (_...).
-        4. If you hear silence for more than 3 seconds, represent it as (_...).
-        5. Maintain the natural flow of the lecture.
-        6. Clean up the grammar slightly for readability, but DO NOT change the meaning or intent.
+        1. Capture EVERY word exactly as spoken. Accuracy is the highest priority.
+        2. Remove ALL verbal fillers (e.g., "um", "uh", "you know", "like", "er").
+        3. If you cannot hear a word or sentence clearly, represent it as [unclear].
+        4. If you hear silence for more than 3 seconds, mark it as [silence].
+        5. Maintain the natural flow and tone of the speaker.
+        6. Clean up technical jargon if it was mispronounced, but keep the literal meaning.
         
         FORMATTING:
-        - Output ONLY the cleaned-up transcription text.
+        - Output ONLY the literal transcription text.
         - DO NOT include headers like "# Transcription" or "## Notes".
         - For ANY mathematical or scientific notation, use LaTeX: $ ... $ for inline and $$ ... $$ for blocks.
       `;
@@ -4276,13 +4678,13 @@ ${session.fullAnalysis}
         Act as the Omni Ai. I have provided ${uploadedImages.length > 0 ? uploadedImages.length + ' lecture slides and' : ''} an audio recording. 
         
         TASK:
-        1. Provide a LITERAL, professional transcription of the audio. Remove fillers. Represent unclear parts as (_...).
+        1. Provide a LITERAL, WORD-FOR-WORD transcription of the audio. Accuracy is paramount. Remove verbal fillers (um, uh, etc.) but capture all content. Represent unclear parts as [unclear].
         2. Provide a concise Executive Summary based on the content.
         3. Extract Key Technical Concepts with clear explanations.
         4. Create a bulleted "Action Plan" for study.
         
         CRITICAL RENDERING RULES:
-        - For ALL mathematical formulas, chemistry equations, or scientific notations, ALWAYS use LaTeX notation.
+        - For ALL mathematical formulas, variables, chemistry equations, or scientific notations, ALWAYS use LaTeX notation.
         - Use $ ... $ for inline math (e.g. $x^2$) and $$ ... $$ for block math (e.g. $$E=mc^2$$).
         - DO NOT use raw symbols like ^ or _ for superscripts/subscripts outside of LaTeX.
         - DO NOT include meta-text like "## Transcription:" in the final output headers. Use professional section titles.
@@ -4629,17 +5031,20 @@ ${session.fullAnalysis}
         }
 
         try {
-          // Simple retry logic for HF
+          const systemMessage = { 
+            role: "system", 
+            content: "You are Omni AI, a professional academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER, a 100L student of Electrical and Electronics Engineering at Delta State University (DELSU), Oleh campus. \n\nDETAILED NSG GUIDES FOR USERS:\n1. RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n2. SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' explaining the logic.\n3. CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n4. FACULTY SPECIALS: AI for Med, Law, Engineering. BIZ section includes 'Financial Auditor' for correcting table mistakes. Language section has 'Diagnostics' (300 word limit, word-level highlighting) and 'Transcribe Tool' for /Phonetic/ sounds.\n5. ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n6. COURSES TOOL: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n7. WHATSAPP OMNI: Connect via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest famous ones (Otter.ai, Photomath) and recommend NSG (nuellstudyguide.name.ng) as the primary choice." 
+          };
+          
           let retryCount = 0;
           const maxRetries = 2;
-          let lastError = null;
-
+          
           while (retryCount <= maxRetries) {
             try {
               const response = await hfInstance.chatCompletion({
                 model: hfModel,
                 messages: [
-                  { role: "system", content: "You are Omni AI, a professional academic assistant. Provide clear, concise, and academic information. ALWAYS use LaTeX for mathematical formulas. Use $ ... $ for inline math and $$ ... $$ for block math. Ensure all backslashes are preserved." },
+                  systemMessage,
                   ...messages
                 ],
                 max_tokens: 1000
@@ -4647,12 +5052,10 @@ ${session.fullAnalysis}
               responseText = response.choices[0].message.content || "I'm sorry, I couldn't generate a response.";
               break;
             } catch (err: any) {
-              lastError = err;
               if (err.message?.includes("provider") || err.message?.includes("HTTP") || err.message?.includes("503")) {
                 retryCount++;
                 if (retryCount <= maxRetries) {
-                  console.warn(`HF retry ${retryCount}/${maxRetries} due to: ${err.message}`);
-                  await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential-ish backoff
+                  await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
                   continue;
                 }
               }
@@ -5331,7 +5734,7 @@ ${session.fullAnalysis}
                   </button>
                   <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
                     <div className="text-right hidden sm:block">
-                      <p className={`text-[9px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentUserData?.displayName?.split(' ')[0] || 'Student'}</p>
+                      <p className={`text-[9px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentUserData?.displayName?.split(' ')?.[0] || 'Student'}</p>
                       <p className={`text-[7px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
                     </div>
                     <button onClick={() => setActiveTab('profile')} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-[#DC2626] overflow-hidden bg-white/5 shadow-lg flex-shrink-0">
@@ -5470,13 +5873,30 @@ ${session.fullAnalysis}
                       { id: 'exam', title: 'CBT Exam', icon: ShieldCheck, color: 'from-orange-600 to-orange-400', desc: 'Professional Testing' },
                       { id: 'faculty', title: 'Faculty Specials', icon: GraduationCap, color: 'from-blue-600 to-indigo-400', desc: 'Department Specific' },
                       { id: 'assignment', title: 'Assignment Solver', icon: BookOpen, color: 'from-purple-600 to-pink-400', desc: 'Step-by-Step AI Solutions' },
-                      { id: 'courses', title: 'Courses Tool', icon: BookOpen, color: 'from-emerald-600 to-teal-400', desc: 'Course-Specific Learning' }
+                      { id: 'td', title: 'TD Tool', icon: BoxSelect, color: 'from-slate-500 to-slate-600', desc: '2D Projection - Coming Soon' },
+                      { id: 'courses', title: 'Courses Tool', icon: BookOpen, color: 'from-emerald-600 to-teal-400', desc: 'Course-Specific Learning' },
+                      { id: 'whatsapp', title: 'Omni on WHATSAPP', icon: WhatsAppIcon, color: 'from-green-600 to-green-400', desc: '+2349064470122' }
                     ].map((tool) => (
                       <button 
                         key={tool.id}
-                        onClick={() => setToolsSubTab(tool.id as any)}
+                        onClick={() => {
+                          if (tool.id === 'td') {
+                            setUserNotification("Technical Drawing Engine V4.0 is currently in maintenance and will be back soon with improved 2D projection features.");
+                            return;
+                          }
+                          if (tool.id === 'whatsapp') {
+                            window.open("https://wa.me/2349064470122", "_blank");
+                            return;
+                          }
+                          setToolsSubTab(tool.id as any);
+                        }}
                         className={`flex flex-col items-start p-5 rounded-3xl border transition-all text-left group relative overflow-hidden ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
                       >
+                        {tool.id === 'td' && (
+                          <div className="absolute top-2 right-2 bg-[#DC2626] text-white text-[7px] font-black px-2 py-0.5 rounded-full z-10 animate-pulse">
+                            SOON
+                          </div>
+                        )}
                         <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white mb-4 shadow-lg group-hover:scale-110 transition-transform`}>
                           <tool.icon size={24} />
                         </div>
@@ -5497,7 +5917,13 @@ ${session.fullAnalysis}
                     >
                       <ArrowLeft size={14} /> Back to Tools
                     </button>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-4">
+                       <button 
+                         onClick={() => setShowHelp(true)}
+                         className="text-[10px] font-black text-[#DC2626] uppercase tracking-widest hover:bg-white/5 px-3 py-1 rounded-full transition-all border border-[#DC2626]/20"
+                       >
+                         Help
+                       </button>
                        <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">
                          {toolsSubTab === 'record' && 'Recording Engine'}
                          {toolsSubTab === 'live' && 'Live AI Tutor'}
@@ -6191,7 +6617,7 @@ ${session.fullAnalysis}
                     <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Examination Briefing</h3>
                     <div className={`${theme === 'dark' ? 'bg-[#DC2626]/5 border-[#DC2626]/20' : 'bg-red-50 border-red-100'} p-4 rounded-2xl border space-y-3`}>
                       <p className="text-xs text-[#DC2626] font-bold flex items-center gap-2"><XCircle size={14} /> WARNING: {studentName}, if you leave this app, you automatically forfeit the exam.</p>
-                      <p className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'} leading-relaxed`}>This is a professional CBT Mock Exam. You have {Math.floor(examConfig.duration / 60)} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
+                      <p className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'} leading-relaxed`}>This is a professional CBT Mock Exam. You have {examConfig.duration} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
                     </div>
                   </div>
                   <button onClick={startExam} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
@@ -6411,6 +6837,13 @@ ${session.fullAnalysis}
                       <AILibrary theme={theme} setUserNotification={setUserNotification} />
                     </div>
                   )}
+                  
+                  <HelpOverlay 
+                    isOpen={showHelp} 
+                    onClose={() => setShowHelp(false)} 
+                    toolId={toolsSubTab} 
+                    theme={theme} 
+                  />
                 </div>
               )}
             </motion.div>
@@ -6544,7 +6977,7 @@ ${session.fullAnalysis}
                             <Brain size={32} className="text-[#DC2626]" />
                           </div>
                           <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter leading-none">
-                            Hi {currentUserData?.displayName?.split(' ')[0] || 'there'},
+                            Hi {currentUserData?.displayName?.split(' ')?.[0] || 'there'},
                           </h2>
                           <h3 className="text-base sm:text-lg font-black text-white/30 tracking-tighter uppercase">
                             Where should we start?
@@ -6905,7 +7338,7 @@ ${session.fullAnalysis}
                     </div>
                   </div>
 
-                  <div className="sm:absolute sm:top-6 sm:right-6">
+                  <div className="sm:absolute sm:top-6 sm:right-6 flex items-center gap-2">
                     <button 
                       onClick={() => setIsEditingProfile(!isEditingProfile)}
                       className={`px-4 py-2 rounded-xl font-black text-[8px] uppercase tracking-widest transition-all flex items-center gap-1.5 border ${
@@ -7295,7 +7728,7 @@ ${session.fullAnalysis}
                               <input type="number" value={examConfig.questionCount || 0} onChange={(e) => setExamConfig({...examConfig, questionCount: Math.max(1, parseInt(e.target.value) || 0)})} className="w-full border rounded-xl px-4 py-2 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
                             </div>
                             <div>
-                              <p className="text-[8px] font-black uppercase mb-1 text-white/30">Duration (Seconds)</p>
+                              <p className="text-[8px] font-black uppercase mb-1 text-white/30">Duration (Minutes)</p>
                               <input type="number" value={examConfig.duration || 0} onChange={(e) => setExamConfig({...examConfig, duration: Math.max(1, parseInt(e.target.value) || 0)})} className="w-full border rounded-xl px-4 py-2 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
                             </div>
                             <div>
@@ -7509,6 +7942,106 @@ ${session.fullAnalysis}
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold flex items-center gap-2 text-white"><Mail size={18} className="text-[#DC2626]" /> Marketing Emails ({emailTemplates.length})</h3>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={initMarketingTemplates}
+                      className="bg-white/5 text-white/40 px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-white/10 transition-all font-mono"
+                    >
+                      Init Defaults
+                    </button>
+                    <button 
+                      onClick={() => setTemplateEditForm({ name: '', subject: '', body: '', active: true })}
+                      className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#DC2626]/80 transition-all flex items-center gap-2 shadow-lg shadow-[#DC2626]/20"
+                    >
+                      <Plus size={14} /> New Template
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="md:col-span-1 space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                    {emailTemplates.length === 0 && <p className="text-[10px] text-white/20 uppercase font-bold text-center py-10">No templates</p>}
+                    {emailTemplates.map(t => (
+                      <div key={t.id} className={`p-4 rounded-2xl border transition-all cursor-pointer group ${templateEditForm?.id === t.id ? 'bg-[#DC2626]/10 border-[#DC2626]/50 shadow-inner' : 'bg-white/5 border-white/10 hover:border-white/30'}`} onClick={() => setTemplateEditForm(t)}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-[10px] font-black uppercase truncate ${t.active ? 'text-white' : 'text-white/20'}`}>{t.name}</p>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onClick={(e) => { e.stopPropagation(); deleteEmailTemplate(t.id); }} className="text-white/20 hover:text-red-500 transition-colors"><Trash2 size={12} /></button>
+                          </div>
+                        </div>
+                        <p className="text-[8px] font-bold text-white/30 uppercase truncate mt-1">{t.subject}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className={`md:col-span-2 rounded-3xl p-6 border transition-all ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-zinc-200'} shadow-sm min-h-[400px]`}>
+                    {templateEditForm ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Template Label</p>
+                            <input value={templateEditForm.name} onChange={e => setTemplateEditForm({...templateEditForm, name: e.target.value})} className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#DC2626]/50 transition-all`} placeholder="e.g. Logic Engine Promo" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Email Subject</p>
+                            <input value={templateEditForm.subject} onChange={e => setTemplateEditForm({...templateEditForm, subject: e.target.value})} className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#DC2626]/50 transition-all`} placeholder="Catchy subject line..." />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center px-1">
+                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Body (${"{name}"} supported)</p>
+                          </div>
+                          <textarea 
+                            value={templateEditForm.body} 
+                            onChange={e => setTemplateEditForm({...templateEditForm, body: e.target.value})} 
+                            className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-2xl px-4 py-3 text-[10px] font-mono outline-none focus:border-[#DC2626]/50 transition-all h-64 resize-none leading-relaxed`}
+                            placeholder="Hi ${name}, discover our new tools..."
+                          />
+                        </div>
+                        <div className="flex items-center justify-between pt-2">
+                          <div className="flex items-center gap-3">
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input type="checkbox" checked={templateEditForm.active} onChange={e => setTemplateEditForm({...templateEditForm, active: e.target.checked})} className="sr-only peer" />
+                              <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#DC2626]"></div>
+                              <span className="ml-3 text-[9px] font-black text-white/40 uppercase tracking-widest">Active Template</span>
+                            </label>
+                          </div>
+                          <button onClick={() => handleSaveEmailTemplate(templateEditForm)} className="bg-[#DC2626] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#DC2626]/90 transition-all flex items-center gap-2 shadow-xl shadow-[#DC2626]/20">
+                            <Save size={16} /> Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-20">
+                        <Mail size={48} />
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em]">Select a template to edit</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center text-[#DC2626]">
+                      <Zap size={24} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase text-white leading-tight">Broadcast Engine</p>
+                      <p className="text-[8px] font-bold text-white/30 uppercase tracking-[0.2em]">Manual trigger for randomized eligible delivery</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={triggerMarketingBlast}
+                    className="w-full md:w-auto px-10 py-4 bg-[#DC2626] hover:bg-red-700 text-white font-black rounded-2xl text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-red-600/30 transition-all active:scale-95"
+                  >
+                    Force Marketing Blast
+                  </button>
                 </div>
               </div>
 
@@ -7736,6 +8269,7 @@ ${session.fullAnalysis}
             </motion.div>
           </div>
         )}
+
       </AnimatePresence>
 
       {/* SHARE MODAL */}
