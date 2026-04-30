@@ -13,9 +13,29 @@ import { getFirestore } from "firebase-admin/firestore";
 dotenv.config();
 
 // Initialize Firebase Admin
-const adminApp = admin.initializeApp({
-  projectId: firebaseConfig.projectId,
-});
+let adminApp;
+const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+if (serviceAccount) {
+  try {
+    const cert = JSON.parse(serviceAccount);
+    adminApp = admin.initializeApp({
+      credential: admin.credential.cert(cert),
+      projectId: firebaseConfig.projectId,
+    });
+    console.log("Firebase Admin initialized with Service Account from env");
+  } catch (e) {
+    console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT:", e);
+    adminApp = admin.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
+  }
+} else {
+  adminApp = admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+  });
+  console.log("Firebase Admin initialized with Project ID only (ADC)");
+}
 
 const adminDb = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
 
@@ -25,12 +45,28 @@ async function startServer() {
 
   app.use(express.json());
 
+  console.log("Server starting with environment:", {
+    HAS_EMAIL_USER: !!process.env.EMAIL_USER,
+    HAS_EMAIL_PASS: !!process.env.EMAIL_PASS,
+    HAS_PAYSTACK_KEY: !!process.env.PAYSTACK_SECRET_KEY,
+    NODE_ENV: process.env.NODE_ENV
+  });
+
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS?.replace(/\s/g, ''),
     },
+  });
+
+  // Verify transporter connection on startup
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error("Transporter Verify Error:", error);
+    } else {
+      console.log("Server is ready to take our messages");
+    }
   });
 
   app.post("/api/send-welcome-email", async (req, res) => {
@@ -158,8 +194,11 @@ async function startServer() {
       return res.status(400).send("Invalid recipient list");
     }
 
+    console.log(`Manual blast request received for ${recipients.length} recipients`);
+    
     let count = 0;
     const nameRegex = /\$\{name\}|\{\{name\}\}/g;
+    const errors: string[] = [];
 
     try {
       for (const rec of recipients) {
@@ -176,14 +215,15 @@ async function startServer() {
           });
           count++;
           console.log(`Manual broadcast sent to ${rec.email}`);
-        } catch (e) {
+        } catch (e: any) {
           console.error(`Failed to send to ${rec.email}:`, e);
+          errors.push(`${rec.email}: ${e.message}`);
         }
       }
-      res.json({ success: true, count });
-    } catch (error) {
+      res.json({ success: true, count, errors: errors.length > 0 ? errors : undefined });
+    } catch (error: any) {
       console.error("Broadcast Batch Error:", error);
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: String(error.message || error) });
     }
   });
 
