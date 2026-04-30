@@ -100,12 +100,16 @@ async function startServer() {
 
         // Send if forced (manual) OR more than 2 days since last marketing email
         if (forceAll || daysSinceLast >= 2) {
-          const body = selectedTemplate.body.replace(/\$\{name\}/g, userData.fullName || userData.displayName || 'there');
+          const userName = userData.fullName || userData.displayName || 'there';
+          const nameRegex = /\$\{name\}|\{\{name\}\}/g;
+          
+          const subject = selectedTemplate.subject.replace(nameRegex, userName);
+          const body = selectedTemplate.body.replace(nameRegex, userName);
           
           await transporter.sendMail({
-            from: process.env.EMAIL_USER,
+            from: `"ABRAHAM EMMANUEL PROSPER" <${process.env.EMAIL_USER}>`,
             to: userData.email,
-            subject: selectedTemplate.subject,
+            subject: subject,
             text: body,
           });
 
