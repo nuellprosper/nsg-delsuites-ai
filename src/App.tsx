@@ -206,7 +206,7 @@ const helpContent = {
         steps: [
           "Located within the Language/Edu section of Faculty Specials.",
           "Conversion: Text to Phonetic Sounds (/IPA/) and vice versa.",
-          "For Sounds to Text: Enter sounds in slashes like /kaɪnd/.",
+          "For Sounds to Text: Enter sounds in slashes like /kaÉªnd/.",
           "Click 'Transcribe to Sound' or 'Decode Sounds' to process.",
           "Results are displayed with full phonetic accuracy."
         ]
@@ -2595,55 +2595,72 @@ export default function App() {
       const unsub = onSnapshot(collection(db, 'email_templates'), (snap) => {
         const templates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setEmailTemplates(templates);
+      }, (error) => {
+        handleFirestoreError(error, FirestoreOperation.LIST, 'email_templates');
       });
       return () => unsub();
     }
   }, [isAdminUser]);
 
   const initMarketingTemplates = async () => {
-    const templates = [
-      { 
-        name: "Faculty Specials Promo",
-        subject: "Master your exams with Faculty Specials!",
-        body: "Hi ${name},\n\nHave you tried our Faculty Specials yet? \n\nWhether you are a business student needing the Financial Auditor to perfect your spreadsheets, or a language student using our new Diagnostics Tool (with a 300-word deep-audit limit!), NSG has something picked just for you.\n\nTry it now: https://nuellstudyguide.name.ng\n\nBest,\nABRAHAM EMMANUEL PROSPER",
-        active: true,
-        updatedAt: serverTimestamp()
-      },
-      {
-        name: "Recording Engine Power",
-        subject: "Never miss a lecture detail again!",
-        body: "Hi ${name},\n\nOur Recording Engine is built for efficiency. Record your lectures and sync them with photos of the whiteboard to generate cohesive, structured notes.\n\nStop taking manual notes and start capturing the logic!\n\nUpgrade to Premium for unlimited storage.\n\nBest,\nABRAHAM EMMANUEL PROSPER",
-        active: true,
-        updatedAt: serverTimestamp()
-      },
-      {
-        name: "Smart Quiz Challenge",
-        subject: "Ready for a Smart Quiz?",
-        body: "Hi ${name},\n\nConsistent practice is the key to memory. Use our Smart Quiz tool to generate questions on any topic. From Easy to Hard difficulty, challenge yourself today!\n\nCheck it out: https://nuellstudyguide.name.ng\n\nBest,\nABRAHAM EMMANUEL PROSPER",
-        active: true,
-        updatedAt: serverTimestamp()
-      }
-    ];
+    try {
+      const templates = [
+        { 
+          name: "Faculty Specials Promo",
+          subject: "Master your exams with Faculty Specials!",
+          body: "Hi ${name},\n\nHave you tried our Faculty Specials yet? \n\nWhether you are a business student needing the Financial Auditor to perfect your spreadsheets, or a language student using our new Diagnostics Tool (with a 300-word deep-audit limit!), NSG has something picked just for you.\n\nTry it now: https://nuellstudyguide.name.ng\n\nBest,\nABRAHAM EMMANUEL PROSPER",
+          active: true,
+          updatedAt: serverTimestamp()
+        },
+        {
+          name: "Recording Engine Power",
+          subject: "Never miss a lecture detail again!",
+          body: "Hi ${name},\n\nOur Recording Engine is built for efficiency. Record your lectures and sync them with photos of the whiteboard to generate cohesive, structured notes.\n\nStop taking manual notes and start capturing the logic!\n\nUpgrade to Premium for unlimited storage.\n\nBest,\nABRAHAM EMMANUEL PROSPER",
+          active: true,
+          updatedAt: serverTimestamp()
+        },
+        {
+          name: "Smart Quiz Challenge",
+          subject: "Ready for a Smart Quiz?",
+          body: "Hi ${name},\n\nConsistent practice is the key to memory. Use our Smart Quiz tool to generate questions on any topic. From Easy to Hard difficulty, challenge yourself today!\n\nCheck it out: https://nuellstudyguide.name.ng\n\nBest,\nABRAHAM EMMANUEL PROSPER",
+          active: true,
+          updatedAt: serverTimestamp()
+        }
+      ];
 
-    for (const t of templates) {
-      const exists = emailTemplates.find(et => et.name === t.name);
-      if (!exists) {
-        await addDoc(collection(db, 'email_templates'), t);
+      for (const t of templates) {
+        const exists = emailTemplates.find(et => et.name === t.name);
+        if (!exists) {
+          await addDoc(collection(db, 'email_templates'), t);
+        }
       }
+      setUserNotification("Default marketing templates initialized!");
+    } catch (error) {
+      handleFirestoreError(error, FirestoreOperation.CREATE, 'email_templates');
+      setUserNotification("Error initializing templates.");
     }
-    setUserNotification("Default marketing templates initialized!");
   };
 
   const triggerMarketingBlast = async () => {
+    if (!templateEditForm?.id) {
+      setUserNotification("Please select a saved template first!");
+      return;
+    }
+
     try {
-      setUserNotification("Starting marketing blast...");
-      const res = await axios.post('/api/admin/trigger-broadcast', { secret: 'GOD_MODE' }); // Using a default secret for now, should be env
+      setUserNotification(`Blasting "${templateEditForm.name}" to all users...`);
+      const res = await axios.post('/api/admin/trigger-broadcast', { 
+        secret: 'GOD_MODE',
+        templateId: templateEditForm.id 
+      }); 
       if (res.data.success) {
-        setUserNotification("Marketing blast initiated successfully!");
+        setUserNotification(`Marketing blast successful! Sent to ${res.data.count} users.`);
+      } else {
+        setUserNotification(`Blast failed: ${res.data.message || 'Unknown error'}`);
       }
     } catch (err) {
       console.error(err);
-      setUserNotification("Failed to trigger marketing blast.");
+      setUserNotification("Server error triggering blast.");
     }
   };
 
@@ -2657,8 +2674,9 @@ export default function App() {
       }
       setUserNotification("Template saved.");
     } catch (err) {
-      console.error(err);
-      setUserNotification("Error saving template.");
+      console.error("Save Template Error:", err);
+      handleFirestoreError(err, FirestoreOperation.WRITE, `email_templates/${template.id || 'new'}`);
+      setUserNotification("Error saving template. Check console for details.");
     }
   };
 
@@ -2814,7 +2832,7 @@ export default function App() {
     </motion.div>
   );
 
-  // --- 🌟 PREMIUM ONBOARDING (MODAL STYLE) ---
+  // --- ðŸŒŸ PREMIUM ONBOARDING (MODAL STYLE) ---
   const AnalysisLoadingOverlay = () => (
     <AnimatePresence>
       {isAnalyzing && (
@@ -4273,7 +4291,7 @@ ${session.fullAnalysis}
       setIsProcessingFinal(true);
       isStopRequested.current = true;
       try {
-        console.log("🛑 Stopping audio capture...");
+        console.log("ðŸ›‘ Stopping audio capture...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -4287,7 +4305,7 @@ ${session.fullAnalysis}
 
         // Wait for all transcription processing to finish in background
         await processorQueue.current;
-        console.log("✅ Background processing complete.");
+        console.log("âœ… Background processing complete.");
       } catch (err) {
         console.error("Error stopping recording:", err);
       } finally {
@@ -7566,7 +7584,7 @@ ${session.fullAnalysis}
                   
                   <div className="flex flex-col items-center gap-1 pt-2 opacity-20">
                     <p className="text-[8px] font-black uppercase tracking-[0.4em]">Lecture OS v4.0</p>
-                    <p className="text-[7px] font-bold uppercase tracking-widest">© 2026 NSG Studio</p>
+                    <p className="text-[7px] font-bold uppercase tracking-widest">Â© 2026 NSG Studio</p>
                   </div>
                 </div>
               </div>
@@ -8028,19 +8046,26 @@ ${session.fullAnalysis}
 
                 <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center text-[#DC2626]">
+                    <div className={`w-12 h-12 ${templateEditForm?.id ? 'bg-[#DC2626]/20 text-[#DC2626]' : 'bg-white/5 text-white/10'} rounded-2xl flex items-center justify-center transition-all`}>
                       <Zap size={24} />
                     </div>
                     <div>
                       <p className="text-xs font-black uppercase text-white leading-tight">Broadcast Engine</p>
-                      <p className="text-[8px] font-bold text-white/30 uppercase tracking-[0.2em]">Manual trigger for randomized eligible delivery</p>
+                      <p className="text-[8px] font-bold text-white/30 uppercase tracking-[0.2em]">
+                        {templateEditForm?.id ? `Target: "${templateEditForm.name}"` : 'Select a template to enable mass send'}
+                      </p>
                     </div>
                   </div>
                   <button 
                     onClick={triggerMarketingBlast}
-                    className="w-full md:w-auto px-10 py-4 bg-[#DC2626] hover:bg-red-700 text-white font-black rounded-2xl text-[10px] uppercase tracking-[0.2em] shadow-2xl shadow-red-600/30 transition-all active:scale-95"
+                    disabled={!templateEditForm?.id}
+                    className={`w-full md:w-auto px-10 py-4 font-black rounded-2xl text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 ${
+                      templateEditForm?.id 
+                        ? 'bg-[#DC2626] hover:bg-red-700 text-white shadow-2xl shadow-red-600/30' 
+                        : 'bg-white/5 text-white/10 cursor-not-allowed border border-white/5'
+                    }`}
                   >
-                    Force Marketing Blast
+                    Force Mass Blast
                   </button>
                 </div>
               </div>
