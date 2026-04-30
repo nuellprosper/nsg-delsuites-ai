@@ -14,7 +14,6 @@ dotenv.config();
 
 // Initialize Firebase Admin
 const adminApp = admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
   projectId: firebaseConfig.projectId,
 });
 
@@ -92,33 +91,37 @@ async function startServer() {
       let count = 0;
       
       for (const userDoc of usersSnap.docs) {
-        const userData = userDoc.data();
-        if (!userData.email) continue;
-        
-        const lastEmail = userData.lastMarketingEmailAt?.toDate() || new Date(0);
-        const daysSinceLast = (Date.now() - lastEmail.getTime()) / (1000 * 60 * 60 * 24);
+        try {
+          const userData = userDoc.data();
+          if (!userData.email) continue;
+          
+          const lastEmail = userData.lastMarketingEmailAt?.toDate() || new Date(0);
+          const daysSinceLast = (Date.now() - lastEmail.getTime()) / (1000 * 60 * 60 * 24);
 
-        // Send if forced (manual) OR more than 2 days since last marketing email
-        if (forceAll || daysSinceLast >= 2) {
-          const userName = userData.fullName || userData.displayName || 'there';
-          const nameRegex = /\$\{name\}|\{\{name\}\}/g;
-          
-          const subject = selectedTemplate.subject.replace(nameRegex, userName);
-          const body = selectedTemplate.body.replace(nameRegex, userName);
-          
-          await transporter.sendMail({
-            from: `"ABRAHAM EMMANUEL PROSPER" <${process.env.EMAIL_USER}>`,
-            to: userData.email,
-            subject: subject,
-            text: body,
-          });
+          // Send if forced (manual) OR more than 2 days since last marketing email
+          if (forceAll || daysSinceLast >= 2) {
+            const userName = userData.fullName || userData.displayName || 'there';
+            const nameRegex = /\$\{name\}|\{\{name\}\}/g;
+            
+            const subject = selectedTemplate.subject.replace(nameRegex, userName);
+            const body = selectedTemplate.body.replace(nameRegex, userName);
+            
+            await transporter.sendMail({
+              from: `"ABRAHAM EMMANUEL PROSPER" <${process.env.EMAIL_USER}>`,
+              to: userData.email,
+              subject: subject,
+              text: body,
+            });
 
-          await userDoc.ref.update({
-            lastMarketingEmailAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          
-          count++;
-          console.log(`Sent marketing email to ${userData.email}`);
+            await userDoc.ref.update({
+              lastMarketingEmailAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            
+            count++;
+            console.log(`Sent marketing email to ${userData.email}`);
+          }
+        } catch (err) {
+          console.error(`Error sending to user ${userDoc.id}:`, err);
         }
       }
       return { success: true, count };
@@ -141,6 +144,47 @@ async function startServer() {
     
     const result = await broadcastMarketingEmail(templateId, true);
     res.json(result);
+  });
+
+  // Trigger manual broadcast with provided recipient list (avoids backend IAM lookup issues)
+  app.post("/api/admin/broadcast-list", async (req, res) => {
+    const { secret, recipients, subjectTemplate, bodyTemplate } = req.body;
+    
+    if (secret !== (process.env.ADMIN_SECRET || 'GOD_MODE')) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    if (!recipients || !Array.isArray(recipients)) {
+      return res.status(400).send("Invalid recipient list");
+    }
+
+    let count = 0;
+    const nameRegex = /\$\{name\}|\{\{name\}\}/g;
+
+    try {
+      for (const rec of recipients) {
+        try {
+          const userName = rec.name || 'there';
+          const subject = subjectTemplate.replace(nameRegex, userName);
+          const body = bodyTemplate.replace(nameRegex, userName);
+
+          await transporter.sendMail({
+            from: `"ABRAHAM EMMANUEL PROSPER" <${process.env.EMAIL_USER}>`,
+            to: rec.email,
+            subject: subject,
+            text: body,
+          });
+          count++;
+          console.log(`Manual broadcast sent to ${rec.email}`);
+        } catch (e) {
+          console.error(`Failed to send to ${rec.email}:`, e);
+        }
+      }
+      res.json({ success: true, count });
+    } catch (error) {
+      console.error("Broadcast Batch Error:", error);
+      res.status(500).json({ success: false, error: String(error) });
+    }
   });
 
   // Paystack verification endpoint
