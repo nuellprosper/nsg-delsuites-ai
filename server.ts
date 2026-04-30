@@ -14,10 +14,11 @@ dotenv.config();
 
 // Initialize Firebase Admin
 const adminApp = admin.initializeApp({
+  credential: admin.credential.applicationDefault(),
   projectId: firebaseConfig.projectId,
 });
 
-const adminDb = getFirestore(firebaseConfig.firestoreDatabaseId || "(default)");
+const adminDb = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
 
 async function startServer() {
   const app = express();
@@ -70,23 +71,35 @@ async function startServer() {
   });
 
   // Marketing Email Logic
-  const broadcastMarketingEmail = async () => {
+  const broadcastMarketingEmail = async (templateId?: string, forceAll: boolean = false) => {
     try {
-      const templatesSnap = await adminDb.collection('email_templates').where('active', '==', true).get();
-      if (templatesSnap.empty) return;
+      let selectedTemplate;
+      
+      if (templateId) {
+        const tDoc = await adminDb.collection('email_templates').doc(templateId).get();
+        if (!tDoc.exists) return { success: false, message: "Template not found" };
+        selectedTemplate = tDoc.data();
+      } else {
+        const templatesSnap = await adminDb.collection('email_templates').where('active', '==', true).get();
+        if (templatesSnap.empty) return { success: false, message: "No active templates" };
+        const templates = templatesSnap.docs.map(doc => doc.data());
+        selectedTemplate = templates[Math.floor(Math.random() * templates.length)];
+      }
 
-      const templates = templatesSnap.docs.map(doc => doc.data());
-      const selectedTemplate = templates[Math.floor(Math.random() * templates.length)];
+      if (!selectedTemplate) return { success: false, message: "No template selected" };
 
       const usersSnap = await adminDb.collection('users').get();
+      let count = 0;
       
       for (const userDoc of usersSnap.docs) {
         const userData = userDoc.data();
+        if (!userData.email) continue;
+        
         const lastEmail = userData.lastMarketingEmailAt?.toDate() || new Date(0);
         const daysSinceLast = (Date.now() - lastEmail.getTime()) / (1000 * 60 * 60 * 24);
 
-        // Send if more than 2 days since last marketing email
-        if (daysSinceLast >= 2) {
+        // Send if forced (manual) OR more than 2 days since last marketing email
+        if (forceAll || daysSinceLast >= 2) {
           const body = selectedTemplate.body.replace(/\$\{name\}/g, userData.fullName || userData.displayName || 'there');
           
           await transporter.sendMail({
@@ -100,25 +113,30 @@ async function startServer() {
             lastMarketingEmailAt: admin.firestore.FieldValue.serverTimestamp()
           });
           
+          count++;
           console.log(`Sent marketing email to ${userData.email}`);
         }
       }
+      return { success: true, count };
     } catch (error) {
       console.error("Broadcast error:", error);
+      return { success: false, error: String(error) };
     }
   };
 
-  // Run broadcast check every 24 hours
-  setInterval(broadcastMarketingEmail, 24 * 60 * 60 * 1000);
+  // Run periodic broadcast check every 24 hours (strictly following the 2-day rule)
+  setInterval(() => broadcastMarketingEmail(), 24 * 60 * 60 * 1000);
 
-  // Trigger manual broadcast (for admin)
+  // Trigger manual broadcast (for admin) - sends TO ALL immediately
   app.post("/api/admin/trigger-broadcast", async (req, res) => {
-    const { secret } = req.body;
-    if (secret !== process.env.ADMIN_SECRET && process.env.NODE_ENV === 'production') {
+    const { secret, templateId } = req.body;
+    // Allow 'GOD_MODE' for dev/ease, or check env
+    if (secret !== (process.env.ADMIN_SECRET || 'GOD_MODE')) {
       return res.status(403).send("Unauthorized");
     }
-    await broadcastMarketingEmail();
-    res.json({ success: true, message: "Broadcast initiated" });
+    
+    const result = await broadcastMarketingEmail(templateId, true);
+    res.json(result);
   });
 
   // Paystack verification endpoint
