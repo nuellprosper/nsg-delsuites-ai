@@ -78,7 +78,14 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
   const fileToGenerativePart = async (file: File) => {
     const base64EncodedDataPromise = new Promise<string>((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        if (result) {
+          resolve(result.split(',')[1] || "");
+        } else {
+          resolve("");
+        }
+      };
       reader.readAsDataURL(file);
     });
     return {
@@ -112,7 +119,18 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
 
   // LANG State
   const [langInput, setLangInput] = useState('');
-  const [langOutput, setLangOutput] = useState<{ original: string; corrected: string; errors: string[] } | null>(null);
+  const [langOutput, setLangOutput] = useState<{ 
+    original_analysis: { word: string; is_mistake: boolean }[]; 
+    corrected_analysis: { word: string; is_correction: boolean }[];
+    explanation: string;
+  } | null>(null);
+  const [transcribeInput, setTranscribeInput] = useState('');
+  const [transcribeOutput, setTranscribeOutput] = useState('');
+
+  const getWordCount = (str: string) => {
+    if (!str.trim()) return 0;
+    return str.trim().split(/\s+/).length;
+  };
 
   const startListening = () => {
     console.log("Attempting to start speech recognition...");
@@ -1057,7 +1075,12 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
 
                 <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-2">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Input Text</p>
+                    <div className="flex justify-between items-center px-1">
+                      <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Input Text (300 Words Max)</p>
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${getWordCount(langInput) > 300 ? 'text-red-500' : 'text-white/20'}`}>
+                        {getWordCount(langInput)} / 300
+                      </span>
+                    </div>
                     <textarea 
                       value={langInput}
                       onChange={(e) => setLangInput(e.target.value)}
@@ -1069,10 +1092,21 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
                   <button 
                     onClick={async () => {
                       if (!langInput) return;
+                      if (getWordCount(langInput) > 300) {
+                        if (setUserNotification) setUserNotification("Text exceeds 300 word limit. Please shorten it.");
+                        return;
+                      }
                       setIsAiLoading(true);
                       try {
                         const ai = getAiInstance();
-                        const prompt = `Analyze this text for grammar mistakes. Provide pinpoint direct corrections in a modern style. Use Markdown for formatting. Return ONLY a JSON object with keys: original, corrected, errors (array of strings). Text: ${langInput}`;
+                        const prompt = `Analyze this text for grammar mistakes. 
+                        Return ONLY a JSON object with:
+                        1. "original_analysis": array of objects { word: string, is_mistake: boolean } - every word from the input exactly as is, with is_mistake true if it is part of a grammar error.
+                        2. "corrected_analysis": array of objects { word: string, is_correction: boolean } - the full corrected text split into words, with is_correction true if the word was changed/added.
+                        3. "explanation": string - brief markdown explanation of mistakes.
+                        Ensure punctuation is attached to the words.
+                        Text: ${langInput}`;
+                        
                         const result = await ai.models.generateContent({
                           model: MODEL_NAME,
                           contents: { parts: [{ text: prompt }] },
@@ -1081,8 +1115,9 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
                         const text = result?.text || "";
                         const cleanedText = text.replace(/```json|```/g, '').trim();
                         setLangOutput(JSON.parse(cleanedText));
-                      } catch (err) {
+                      } catch (err: any) {
                         console.error(err);
+                        if (setUserNotification) setUserNotification(`AI Error: ${err.message}`);
                       } finally {
                         setIsAiLoading(false);
                       }
@@ -1093,40 +1128,162 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
                   </button>
 
                   {langOutput && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
-                      <div className="bg-red-500/5 border border-red-500/10 rounded-2xl p-4 space-y-2">
-                        <h4 className="text-[8px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2">
-                          <AlertCircle size={10} /> Original
-                        </h4>
-                        <p className="text-xs text-red-200/60 leading-relaxed">
-                          {langOutput.original.split(' ').map((word, i) => (
-                            <span key={i} className={langOutput.errors.some(e => word.includes(e.split(' ')[1] || e)) ? 'bg-red-500/20 text-red-400 px-1 rounded' : ''}>
-                              {word}{' '}
-                            </span>
-                          ))}
-                        </p>
-                      </div>
-                      <div className="bg-green-500/5 border border-green-500/10 rounded-2xl p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-[8px] font-black text-green-500 uppercase tracking-widest flex items-center gap-2">
-                            <CheckCircle2 size={10} /> Corrected
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+                          <h4 className="text-[8px] font-black text-white/40 uppercase tracking-widest flex items-center gap-2">
+                            <AlertCircle size={10} /> Original Text Analysis
                           </h4>
-                          <div className="flex items-center gap-2">
-                            <CopyButton text={langOutput.corrected} />
-                            <button 
-                              onClick={() => setLangOutput(null)}
-                              className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
-                              title="Clear Result"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                          <div className="text-xs leading-relaxed max-h-48 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10">
+                            {langOutput.original_analysis.map((item, i) => (
+                              <span 
+                                key={i} 
+                                className={item.is_mistake ? 'text-red-400 font-bold bg-red-400/10 px-0.5 rounded' : 'text-blue-400'}
+                              >
+                                {item.word}{' '}
+                              </span>
+                            ))}
                           </div>
                         </div>
-                        <div className="text-xs text-green-200/60 leading-relaxed">
-                          <MarkdownRenderer content={langOutput.corrected} />
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-[8px] font-black text-white/40 uppercase tracking-widest flex items-center gap-2">
+                              <CheckCircle2 size={10} /> Corrected Version
+                            </h4>
+                            <div className="flex items-center gap-2">
+                              <CopyButton text={langOutput.corrected_analysis.map(i => i.word).join(' ')} />
+                              <button 
+                                onClick={() => setLangOutput(null)}
+                                className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
+                                title="Clear Result"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="text-xs leading-relaxed max-h-48 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10">
+                            {langOutput.corrected_analysis.map((item, i) => (
+                              <span 
+                                key={i} 
+                                className={item.is_correction ? 'text-green-400 font-bold bg-green-400/10 px-0.5 rounded' : 'text-blue-400'}
+                              >
+                                {item.word}{' '}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       </div>
+                      
+                      {langOutput.explanation && (
+                        <div className="bg-black/20 border border-white/5 rounded-2xl p-4">
+                          <h4 className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest mb-2">Academic Logic</h4>
+                          <div className="text-[10px] text-white/50 leading-relaxed">
+                            <MarkdownRenderer content={langOutput.explanation} />
+                          </div>
+                        </div>
+                      )}
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Transcribe Tool */}
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-500">
+                    <Mic size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-tight">Transcribe Tool</h2>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Text ↔ Phonetic Sounds (/IPA/)</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Input Text or /Sounds/</p>
+                    <textarea 
+                      value={transcribeInput}
+                      onChange={(e) => setTranscribeInput(e.target.value)}
+                      placeholder="Enter word/sentence to transcribe or /phonetic sounds/ to decode..."
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all h-24 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={async () => {
+                        if (!transcribeInput) return;
+                        setIsAiLoading(true);
+                        try {
+                          const ai = getAiInstance();
+                          const prompt = `Convert this text to phonetic (IPA) transcription. 
+                          Every single word sound must be enclosed in forward slashes, e.g. /kaɪnd/. 
+                          Full sentences should look like: /ðɪs/ /ɪz/ /ə/ /test/.
+                          Return ONLY the transcribed version.
+                          Text: ${transcribeInput}`;
+                          const result = await ai.models.generateContent({
+                            model: MODEL_NAME,
+                            contents: { parts: [{ text: prompt }] }
+                          });
+                          setTranscribeOutput(result?.text || "");
+                        } catch (err: any) {
+                          if (setUserNotification) setUserNotification(`AI Error: ${err.message}`);
+                        } finally {
+                          setIsAiLoading(false);
+                        }
+                      }}
+                      className="flex-1 py-3 bg-[#DC2626] text-white rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-[#DC2626]/20"
+                    >
+                      Transcribe to Sound
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (!transcribeInput) return;
+                        setIsAiLoading(true);
+                        try {
+                          const ai = getAiInstance();
+                          const prompt = `Convert these phonetic (IPA) sounds back to standard English text. 
+                          Input will be sounds in slashes like /kaɪnd/.
+                          Return ONLY the English text.
+                          Sounds: ${transcribeInput}`;
+                          const result = await ai.models.generateContent({
+                            model: MODEL_NAME,
+                            contents: { parts: [{ text: prompt }] }
+                          });
+                          setTranscribeOutput(result?.text || "");
+                        } catch (err: any) {
+                          if (setUserNotification) setUserNotification(`AI Error: ${err.message}`);
+                        } finally {
+                          setIsAiLoading(false);
+                        }
+                      }}
+                      className="flex-1 py-3 bg-white/5 border border-white/10 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                    >
+                      Decode Sounds
+                    </button>
+                  </div>
+
+                  {transcribeOutput && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-black/40 border border-white/5 rounded-2xl p-4"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest">Transcription Result</h4>
+                        <div className="flex items-center gap-2">
+                          <CopyButton text={transcribeOutput} />
+                          <button 
+                            onClick={() => setTranscribeOutput('')}
+                            className="p-1.5 hover:bg-white/10 rounded-lg transition-all text-white/40 hover:text-red-500"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-sm font-bold text-white tracking-wide">{transcribeOutput}</p>
+                    </motion.div>
                   )}
                 </div>
               </div>
