@@ -101,12 +101,30 @@
         "author": { "type": "string" }
       },
       "required": ["title", "content", "timestamp"]
+    },
+    "EmailTemplate": {
+      "title": "Email Template",
+      "description": "Customizable marketing email templates.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "subject": { "type": "string" },
+        "body": { "type": "string" },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "subject", "body"]
     }
   },
   "firestore": {
     "/users/{uid}": {
       "schema": "User",
       "description": "User profiles."
+    },
+    "/email_templates/{templateId}": {
+      "schema": "EmailTemplate",
+      "description": "Editable email marketing templates."
     },
     "/blogPosts/{postId}": {
       "schema": "BlogPost",
