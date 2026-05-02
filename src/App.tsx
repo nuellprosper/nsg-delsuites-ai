@@ -207,7 +207,7 @@ const helpContent = {
         steps: [
           "Located within the Language/Edu section of Faculty Specials.",
           "Conversion: Text to Phonetic Sounds (/IPA/) and vice versa.",
-          "For Sounds to Text: Enter sounds in slashes like /kaɪnd/.",
+          "For Sounds to Text: Enter sounds in slashes like /kaÉªnd/.",
           "Click 'Transcribe to Sound' or 'Decode Sounds' to process.",
           "Results are displayed with full phonetic accuracy."
         ]
@@ -3383,7 +3383,7 @@ export default function App() {
     </motion.div>
   );
 
-  // --- 🌟 PREMIUM ONBOARDING (MODAL STYLE) ---
+  // --- ðŸŒŸ PREMIUM ONBOARDING (MODAL STYLE) ---
   const AnalysisLoadingOverlay = () => (
     <AnimatePresence>
       {isAnalyzing && (
@@ -4843,7 +4843,7 @@ ${session.fullAnalysis}
       setIsProcessingFinal(true);
       isStopRequested.current = true;
       try {
-        console.log("🛑 Stopping audio capture...");
+        console.log("ðŸ›‘ Stopping audio capture...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -4857,7 +4857,7 @@ ${session.fullAnalysis}
 
         // Wait for all transcription processing to finish in background
         await processorQueue.current;
-        console.log("✅ Background processing complete.");
+        console.log("âœ… Background processing complete.");
 
         // AUTO-SAVE TO VAULT (NOTES TOOL) - AS REQUESTED
         if (transcriptionNotesRef.current) {
@@ -6193,7 +6193,7 @@ ${session.fullAnalysis}
             className="flex flex-col flex-1 h-full overflow-hidden"
           >
             {/* HEADER */}
-            <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} sticky top-0 z-40`}>
+            <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
         <div className="flex items-center gap-3">
           <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#0A0F1C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center`}>
             <Brain size={22} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
@@ -6255,7 +6255,7 @@ ${session.fullAnalysis}
       </header>
 
       {/* MAIN CONTENT */}
-      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pb-24 overflow-y-auto flex flex-col min-h-screen ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'}`}>
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pb-24 overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} custom-scrollbar`}>
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -6306,7 +6306,7 @@ ${session.fullAnalysis}
                     <p className={`text-sm ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>No recent activity found. Start studying to see your history here!</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 overflow-y-auto max-h-[75vh] no-scrollbar pb-10">
+                  <div className="space-y-4 pb-10">
                     {homeHistory.map((item) => (
                       <div 
                         key={item.id}
@@ -8110,9 +8110,9 @@ ${session.fullAnalysis}
               initial={{ opacity: 0, y: 20 }} 
               animate={{ opacity: 1, y: 0 }} 
               exit={{ opacity: 0, y: -20 }} 
-              className="flex-1 flex flex-col overflow-hidden space-y-4 sm:space-y-6 px-2 sm:px-0"
+              className="flex-1 flex flex-col space-y-4 sm:space-y-6 px-2 sm:px-0"
             >
-              <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 sm:space-y-6 pb-4">
+              <div className="space-y-4 sm:space-y-6 pb-4">
               {/* Profile Header Card */}
               <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-4 sm:p-6 rounded-[2rem] shadow-2xl relative overflow-hidden group`}>
                 <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-[#DC2626]/20 via-[#DC2626]/5 to-transparent opacity-50" />
@@ -8391,7 +8391,7 @@ ${session.fullAnalysis}
                   
                   <div className="flex flex-col items-center gap-1 pt-2 opacity-20">
                     <p className="text-[8px] font-black uppercase tracking-[0.4em]">Lecture OS v4.0</p>
-                    <p className="text-[7px] font-bold uppercase tracking-widest">© 2026 NSG Studio</p>
+                    <p className="text-[7px] font-bold uppercase tracking-widest">Â© 2026 NSG Studio</p>
                   </div>
                 </div>
               </div>
