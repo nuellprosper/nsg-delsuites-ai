@@ -3,7 +3,8 @@ import {
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
-  Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle,
+  ChevronUp, ChevronDown,
+  Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle, RotateCcw,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff,
   Search, Check, Info, Volume2, Square, Mail, ArrowRight, BoxSelect
@@ -206,7 +207,7 @@ const helpContent = {
         steps: [
           "Located within the Language/Edu section of Faculty Specials.",
           "Conversion: Text to Phonetic Sounds (/IPA/) and vice versa.",
-          "For Sounds to Text: Enter sounds in slashes like /kaÉªnd/.",
+          "For Sounds to Text: Enter sounds in slashes like /kaɪnd/.",
           "Click 'Transcribe to Sound' or 'Decode Sounds' to process.",
           "Results are displayed with full phonetic accuracy."
         ]
@@ -416,6 +417,8 @@ interface LectureSession {
   audioBase64?: string;
   isPinned?: boolean;
   status?: 'pending' | 'analyzed';
+  timestamp?: number;
+  createdAt?: any;
 }
 
 interface QuizQuestion {
@@ -676,12 +679,12 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
         };
         playInitSound();
 
-        // 2. Trigger Greeting after a short delay to ensure everything is initialized
-        setTimeout(() => {
-          if (sessionRef.current && typeof (sessionRef.current as any).sendRealtimeInput === 'function') {
-            (sessionRef.current as any).sendRealtimeInput({ text: "Hello! I am Omni, your AI Tutor. I'm here to help you learn and solve problems together. What are you studying today?" });
-          }
-        }, 1000);
+    // 2. Trigger Greeting after a short delay to ensure everything is initialized
+    setTimeout(() => {
+      if (sessionRef.current && typeof (sessionRef.current as any).sendRealtimeInput === 'function') {
+        (sessionRef.current as any).sendRealtimeInput({ text: "hi" });
+      }
+    }, 1000);
 
       } catch (err: any) {
         console.error("Failed to connect Live:", err);
@@ -726,7 +729,9 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
-      const startTime = Math.max(audioContextRef.current.currentTime, nextAudioTimeRef.current);
+      
+      // Add a small lookahead/buffer offset (0.1s) to prevent cracking from scheduling jitter
+      const startTime = Math.max(audioContextRef.current.currentTime + 0.1, nextAudioTimeRef.current);
       source.start(startTime);
       nextAudioTimeRef.current = startTime + audioBuffer.duration;
       audioQueueRef.current.push(source);
@@ -1287,10 +1292,10 @@ interface AssignmentSolution {
   summary: string;
 }
 
-const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerativePart, setUserNotification, setChatHistory, setActiveTab, setActiveChatSessionId, addToFinishedHistory, finishedHistory }: any) => {
+const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerativePart, setUserNotification, setChatHistory, setActiveTab, setActiveChatSessionId, addToFinishedHistory, finishedHistory, solution, setSolution }: any) => {
   const [images, setImages] = useState<MediaFile[]>([]);
+  const [assignmentText, setAssignmentText] = useState("");
   const [isSolving, setIsSolving] = useState(false);
-  const [solution, setSolution] = useState<AssignmentSolution | null>(null);
   const [userWorkings, setUserWorkings] = useState<{
     [stepIdx: number]: {
       imagePreview?: string;
@@ -1526,8 +1531,8 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
   };
 
   const solveAssignment = async () => {
-    if (images.length === 0) {
-      setUserNotification("Please upload images of your assignment first.");
+    if (images.length === 0 && !assignmentText.trim()) {
+      setUserNotification("Please provide assignment content (image or text).");
       return;
     }
 
@@ -1539,7 +1544,10 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
       const imageParts = await Promise.all(images.map(img => fileToGenerativePart(img.file)));
 
       const prompt = `
-        You are an expert academic tutor. Analyze these assignment images.
+        You are an expert academic tutor.
+        ${assignmentText ? `The student has provided this text: "${assignmentText}"` : ""}
+        ${images.length > 0 ? "Analyze these assignment images." : ""}
+        
         Solve the problems step-by-step with clear, educational explanations.
         
         CRITICAL: Use LaTeX for ALL mathematical expressions, variables, and formulas.
@@ -1589,6 +1597,7 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
           title: data.title || "Assignment Solution",
           type: 'assignment',
           date: new Date().toLocaleDateString(),
+          timestamp: Date.now(),
           data: data
         });
         setUserNotification("Step-by-step solution generated!");
@@ -1610,6 +1619,7 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
               title: data.title || "Assignment Solution",
               type: 'assignment',
               date: new Date().toLocaleDateString(),
+              timestamp: Date.now(),
               data: data
             });
             setUserNotification("Step-by-step solution generated!");
@@ -1703,30 +1713,51 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
         <p className={`text-xs ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} mt-1 mb-8`}>Upload up to 5 images for detailed academic solutions.</p>
 
         <div className="space-y-6">
-          <div className="flex flex-wrap gap-4 justify-center">
-            <AnimatePresence>
-              {images.map(img => (
-                <motion.div key={img.id} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} className="relative group">
-                  <img src={img.preview} className={`w-24 h-24 object-cover rounded-2xl border-2 ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'} shadow-xl`} />
-                  <button onClick={() => removeImage(img.id)} className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                    <X size={12} />
-                  </button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            
-            {images.length < 5 && (
-              <label className={`w-24 h-24 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${theme === 'dark' ? 'border-white/10 text-white/20 hover:border-[#DC2626]/40 hover:text-[#DC2626]' : 'border-slate-200 text-slate-300 hover:border-[#DC2626]/40 hover:text-[#DC2626]'}`}>
-                <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
-                <Plus size={28} />
-                <span className="text-[9px] font-black uppercase mt-1">Upload</span>
-              </label>
-            )}
+          <div className="space-y-3">
+             <label className="text-[10px] font-black uppercase tracking-widest text-[#DC2626]">Assignment Details (Text)</label>
+             <textarea 
+               value={assignmentText}
+               onChange={(e) => setAssignmentText(e.target.value)}
+               className={`w-full p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'} text-xs resize-none outline-none focus:border-[#DC2626]/50 min-h-[120px] transition-all`}
+               placeholder="Type or paste your assignment questions here..."
+             />
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-[10px] font-black uppercase tracking-widest text-[#DC2626]">Upload Photos</label>
+            <div className="flex flex-wrap gap-4 justify-center">
+              <AnimatePresence>
+                {images.map(img => (
+                  <motion.div key={img.id} initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} className="relative group">
+                    <img src={img.preview} className={`w-24 h-24 object-cover rounded-2xl border-2 ${theme === 'dark' ? 'border-white/10' : 'border-slate-100'} shadow-xl`} />
+                    <button onClick={() => removeImage(img.id)} className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                      <X size={12} />
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              
+              {images.length < 5 && (
+                <div className="flex gap-3">
+                  <label className={`w-24 h-24 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${theme === 'dark' ? 'border-white/10 text-white/20 hover:border-[#DC2626]/40 hover:text-[#DC2626]' : 'border-slate-200 text-slate-300 hover:border-[#DC2626]/40 hover:text-[#DC2626]'}`}>
+                    <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
+                    <Upload size={24} />
+                    <span className="text-[8px] font-black uppercase mt-1">Gallery</span>
+                  </label>
+                  <label className={`w-24 h-24 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${theme === 'dark' ? 'border-white/10 text-white/20 hover:border-[#DC2626]/40 hover:text-[#DC2626]' : 'border-slate-200 text-slate-300 hover:border-[#DC2626]/40 hover:text-[#DC2626]'}`}>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleImageUpload} className="hidden" />
+                    <Camera size={24} />
+                    <span className="text-[8px] font-black uppercase mt-1">Camera</span>
+                  </label>
+                </div>
+              )}
+            </div>
+            <p className={`text-[9px] text-center ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'}`}>Max 5 photos allowed</p>
           </div>
 
           <button
             onClick={solveAssignment}
-            disabled={isSolving || images.length === 0}
+            disabled={isSolving || (images.length === 0 && !assignmentText.trim())}
             className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-5 rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
           >
             {isSolving ? <><RefreshCcw size={18} className="animate-spin" /> Analyzing...</> : <><Sparkles size={18} /> Solve Assignment</>}
@@ -1952,11 +1983,12 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
 interface HomeHistoryItem {
   id: string;
   title: string;
-  type: 'quiz' | 'recording' | 'exam' | 'assignment';
+  type: 'quiz' | 'recording' | 'exam' | 'assignment' | 'faculty' | 'note';
   progress?: number;
   date?: string;
   score?: number;
   total?: number;
+  timestamp?: number;
   data?: any; // To store solution or other relevant metadata
 }
 
@@ -2024,7 +2056,7 @@ export default function App() {
     localStorage.setItem('nsg_active_tab', activeTab);
   }, [activeTab]);
 
-  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'live' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses' | 'td'>(() => {
+  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'live' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses' | 'td' | 'notes'>(() => {
     return (localStorage.getItem('nsg_tools_subtab') as any) || 'menu';
   });
 
@@ -2094,6 +2126,7 @@ export default function App() {
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [finishedHistory, setFinishedHistory] = useState<HomeHistoryItem[]>([]);
+  const [activeAssignmentSolution, setActiveAssignmentSolution] = useState<any>(null);
 
   // Load finished history from local storage
   useEffect(() => {
@@ -2129,6 +2162,18 @@ export default function App() {
         console.error("History Sync Error:", err);
       }
     }
+  };
+
+  const handleSaveFacultyHistory = (id: string, title: string, type: string, score?: number, data?: any) => {
+    addToFinishedHistory({
+      id,
+      title,
+      type: type as any,
+      score,
+      date: new Date().toLocaleDateString(),
+      timestamp: Date.now(),
+      data
+    });
   };
 
   const removeFromHistory = (id: string, e?: React.MouseEvent) => {
@@ -2557,19 +2602,56 @@ export default function App() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [userQuizAnswers, setUserQuizAnswers] = useState<number[]>([]);
 
+  const truncateTitle = (title: string, wordLimit: number = 10) => {
+    if (!title) return '';
+    const words = title.split(/\s+/);
+    if (words.length > wordLimit) {
+      return words.slice(0, wordLimit).join(' ') + '...';
+    }
+    return title;
+  };
+
+  // Notes state
+  const [userNotes, setUserNotes] = useState<any[]>([]);
+  const [selectedNote, setSelectedNote] = useState<any>(null);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [noteHistory, setNoteHistory] = useState<string[]>([]);
+  const [redoStack, setRedoStack] = useState<string[]>([]);
+  const [isUploadingNoteFile, setIsUploadingNoteFile] = useState(false);
+  const [notePreviewMode, setNotePreviewMode] = useState(false);
+  const transcriptionNotesRef = useRef('');
+
   // Helper to get unfinished items
-  const unfinishedQuizzes: HomeHistoryItem[] = quizQuestions.length > 0 && quizState === 'active' ? [{ id: 'current-quiz', title: quizTopic || 'Ongoing Quiz', type: 'quiz', progress: Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100) }] : [];
+  const unfinishedQuizzes: HomeHistoryItem[] = quizQuestions.length > 0 && quizState === 'active' ? [{ id: 'current-quiz', title: truncateTitle(quizTopic || 'Ongoing Quiz'), type: 'quiz', progress: Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100) }] : [];
   const recordingsHistory: HomeHistoryItem[] = sessions.map(s => ({ 
     id: s.id, 
-    title: s.title, 
+    title: truncateTitle(s.title), 
     type: 'recording', 
     date: s.date,
+    timestamp: s.timestamp || (s.createdAt?.toMillis ? s.createdAt.toMillis() : new Date(s.date || 0).getTime()),
     progress: s.fullAnalysis ? 100 : 0
   }));
-  const homeHistoryFull = [...unfinishedQuizzes, ...recordingsHistory, ...finishedHistory];
+  const notesHistory: HomeHistoryItem[] = userNotes.map(n => {
+    const timestamp = n.updatedAt?.toMillis ? n.updatedAt.toMillis() : (n.createdAt?.toMillis ? n.createdAt.toMillis() : Date.now());
+    return {
+      id: n.id,
+      title: truncateTitle(n.title || 'Untitled Note'),
+      type: 'note' as any,
+      date: n.updatedAt?.toDate ? n.updatedAt.toDate().toLocaleDateString() : 'Just now',
+      timestamp
+    };
+  });
+  
+  const homeHistoryFull = [
+    ...unfinishedQuizzes.map(i => ({ ...i, timestamp: Date.now() + 1000 })), // Current items at very top
+    ...recordingsHistory, 
+    ...notesHistory, 
+    ...finishedHistory.map(h => ({ ...h, title: truncateTitle(h.title), timestamp: h.timestamp || new Date(h.date || 0).getTime() }))
+  ];
+
   const homeHistory = homeHistoryFull.filter((item, index, self) => 
     self.findIndex(i => i.id === item.id) === index
-  ).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).slice(0, 50);
+  ).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 50);
 
   const [matricNumber, setMatricNumber] = useState('');
   const [studentName, setStudentName] = useState('');
@@ -2588,6 +2670,448 @@ export default function App() {
   const [adminMode, setAdminMode] = useState(false);
   const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
   const [templateEditForm, setTemplateEditForm] = useState<any | null>(null);
+  const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'premium' | 'free'>('all');
+  // --- BLOCK EDITOR HELPERS ---
+  const parseToBlocks = (md: string) => {
+    if (!md) return [{ id: 'init-text', type: 'text' as const, content: '' }];
+    
+    // Simple regex to find markdown images
+    const regex = /!\[(.*?)\]\((.*?)\)/g;
+    const blocks: any[] = [];
+    let lastIndex = 0;
+    let match;
+    let textBlockCount = 0;
+
+    while ((match = regex.exec(md)) !== null) {
+      // Add text before image
+      if (match.index > lastIndex) {
+        blocks.push({
+          id: `text-${textBlockCount++}`,
+          type: 'text',
+          content: md.substring(lastIndex, match.index)
+        });
+      }
+      
+      // Add image block (stable ID based on URL)
+      blocks.push({
+        id: `img-${match[2].substring(0, 30)}`,
+        type: 'image',
+        alt: match[1],
+        url: match[2]
+      });
+      
+      lastIndex = regex.lastIndex;
+    }
+
+    // Add remaining text
+    if (lastIndex < md.length) {
+      blocks.push({
+        id: `text-${textBlockCount++}`,
+        type: 'text',
+        content: md.substring(lastIndex)
+      });
+    }
+
+    if (blocks.length === 0) return [{ id: 'init-text', type: 'text' as const, content: '' }];
+    return blocks;
+  };
+
+  const blocksToMarkdown = (blocks: any[]) => {
+    return blocks.map(b => {
+      if (b.type === 'text') return b.content;
+      if (b.type === 'image') return `![${b.alt}](${b.url})`;
+      return '';
+    }).join('');
+  };
+
+  const [noteBlocks, setNoteBlocks] = useState<any[]>([]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [noteScrollPos, setNoteScrollPos] = useState<'top' | 'bottom' | null>(null);
+  const isFirstLoad = useRef(true);
+  const lastFocusedBlock = useRef<{ id: string, start: number, end: number } | null>(null);
+
+  // Handle initial scroll to bottom and scroll detection
+  useEffect(() => {
+    if (selectedNote) {
+      if (isFirstLoad.current) {
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+          isFirstLoad.current = false;
+        }, 100);
+      }
+    } else {
+      isFirstLoad.current = true;
+    }
+  }, [selectedNote]);
+
+  const handleNoteScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    
+    // If we are at the top (or near), show "Go to Bottom"
+    if (scrollTop < 100 && scrollHeight > clientHeight + 100) {
+      setNoteScrollPos('bottom');
+    } 
+    // If we are at the bottom (or near), show "Go to Top"
+    else if (scrollTop + clientHeight > scrollHeight - 100 && scrollHeight > clientHeight + 100) {
+      setNoteScrollPos('top');
+    }
+    // Middle area
+    else if (scrollHeight > clientHeight + 100) {
+      // Logic for showing depending on which direction user is further from
+      if (scrollTop > scrollHeight / 2) {
+        setNoteScrollPos('top');
+      } else {
+        setNoteScrollPos('bottom');
+      }
+    } else {
+      setNoteScrollPos(null);
+    }
+  };
+
+  const scrollToPosition = (pos: 'top' | 'bottom') => {
+    if (!scrollContainerRef.current) return;
+    scrollContainerRef.current.scrollTo({
+      top: pos === 'top' ? 0 : scrollContainerRef.current.scrollHeight,
+      behavior: 'smooth'
+    });
+  };
+
+  // Update blocks when selectedNote changes (and not currently editing blocks)
+  const isUpdatingBlocksInternally = useRef(false);
+  
+  useEffect(() => {
+    if (selectedNote && selectedNote.content !== undefined) {
+      if (isUpdatingBlocksInternally.current) {
+        isUpdatingBlocksInternally.current = false;
+        return;
+      }
+      const parsed = parseToBlocks(selectedNote.content);
+      if (blocksToMarkdown(parsed) !== blocksToMarkdown(noteBlocks)) {
+        setNoteBlocks(parsed);
+      }
+    } else {
+      setNoteBlocks([]);
+    }
+  }, [selectedNote?.id, selectedNote?.content]);
+
+  const updateBlock = (id: string, content: string) => {
+    const newBlocks = noteBlocks.map(b => b.id === id ? { ...b, content } : b);
+    setNoteBlocks(newBlocks);
+    isUpdatingBlocksInternally.current = true;
+    handleNoteContentChange(blocksToMarkdown(newBlocks));
+  };
+
+  const removeBlock = (id: string) => {
+    const newBlocks = noteBlocks.filter(b => b.id !== id);
+    setNoteBlocks(newBlocks);
+    handleNoteContentChange(blocksToMarkdown(newBlocks));
+  };
+
+  useEffect(() => {
+    if (user) {
+      const q = query(
+        collection(db, 'notes'),
+        where('uid', '==', user.uid)
+      );
+      const unsub = onSnapshot(q, (snap) => {
+        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Sort by updatedAt desc locally
+        const sortedList = list.sort((a: any, b: any) => {
+          const timeA = a.updatedAt?.toMillis ? a.updatedAt.toMillis() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : 0);
+          const timeB = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : 0);
+          return timeB - timeA;
+        });
+        setUserNotes(sortedList);
+      }, (err) => {
+        console.error("Notes fetch error:", err);
+      });
+      return () => unsub();
+    } else {
+      setUserNotes([]);
+    }
+  }, [user]);
+
+  // --- IMAGE COMPRESSION UTILITY ---
+  const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(base64Str); // Fallback to original if error
+    });
+  };
+
+  // --- CLOUDINARY UPLOAD HELPER ---
+  const handleCloudinaryUpload = async (base64: string): Promise<string | null> => {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      console.warn("Cloudinary not configured, falling back to base64");
+      return base64;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', base64);
+      formData.append('upload_preset', uploadPreset);
+
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) throw new Error('Upload failed');
+      const data = await response.json();
+      return data.secure_url;
+    } catch (err) {
+      console.error("Cloudinary error:", err);
+      return base64; // Fallback
+    }
+  };
+
+  const calculateDocumentSize = (data: any) => {
+    const str = JSON.stringify(data);
+    return new TextEncoder().encode(str).length;
+  };
+
+  const saveNote = async (content: string, title?: string, noteId?: string, attachments?: any[]) => {
+    if (!user) return null;
+    
+    const noteData: any = {
+      uid: user.uid,
+      content: content || '',
+      title: title || 'Untitled Note',
+      attachments: attachments || [],
+      updatedAt: serverTimestamp()
+    };
+
+    // Firestore 1MB Limit Check
+    const size = calculateDocumentSize(noteData);
+    if (size > 1000000) { // Limit is 1,048,576 bytes
+      setUserNotification("Note is too large! Please remove some images or text.");
+      return null;
+    }
+
+    setIsSavingNote(true);
+    try {
+      let finalId = noteId;
+      if (noteId) {
+        await updateDoc(doc(db, 'notes', noteId), noteData);
+      } else {
+        noteData.createdAt = serverTimestamp();
+        const docRef = await addDoc(collection(db, 'notes'), noteData);
+        finalId = docRef.id;
+        // Update selectedNote if it's the one we just saved
+        if (selectedNote && !selectedNote.id) {
+          setSelectedNote({ ...selectedNote, id: finalId });
+        }
+      }
+      return finalId;
+    } catch (err) {
+      console.error("Save note error:", err);
+      handleFirestoreError(err, FirestoreOperation.WRITE, `notes/${noteId || 'new'}`);
+      return null;
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedNote || !user) return;
+    // Don't auto-save if content is empty and it's a new note
+    if (!selectedNote.id && !selectedNote.content && !selectedNote.title) return;
+
+    const timer = setTimeout(() => {
+      saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments);
+    }, 5000); // 5 second debounce
+    return () => clearTimeout(timer);
+  }, [selectedNote?.content, selectedNote?.title, selectedNote?.attachments, user]);
+
+  const handleNoteContentChange = (newVal: string) => {
+    if (newVal === selectedNote.content) return;
+    setNoteHistory(prev => [...prev.slice(-49), selectedNote.content]);
+    setRedoStack([]);
+    setSelectedNote({ ...selectedNote, content: newVal });
+  };
+
+  const undoNote = () => {
+    if (noteHistory.length === 0) return;
+    const prev = noteHistory[noteHistory.length - 1];
+    setRedoStack(curr => [selectedNote.content, ...curr]);
+    setNoteHistory(curr => curr.slice(0, -1));
+    setSelectedNote({ ...selectedNote, content: prev });
+  };
+
+  const redoNote = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[0];
+    setNoteHistory(curr => [...curr, selectedNote.content]);
+    setRedoStack(curr => curr.slice(1));
+    setSelectedNote({ ...selectedNote, content: next });
+  };
+
+  const insertText = (before: string, after: string = '') => {
+    const textarea = document.getElementById('note-main-textarea') as HTMLTextAreaElement;
+    if (!textarea || !selectedNote) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = selectedNote.content || '';
+    const selection = text.substring(start, end);
+    
+    // Check if we are already wrapped in these tags (toggle logic)
+    const beforeSection = text.substring(Math.max(0, start - before.length), start);
+    const afterSection = text.substring(end, Math.min(text.length, end + after.length));
+    
+    let newVal: string;
+    let newCursor: number;
+    
+    const isList = before === '\n- ' || before === '\n1. ';
+
+    if (!isList && beforeSection === before && afterSection === after && before !== '') {
+      // Toggle OFF: Remove existing wrapping
+      newVal = text.substring(0, start - before.length) + selection + text.substring(end + after.length);
+      newCursor = start - before.length + selection.length;
+    } else if (!isList && selection.startsWith(before) && selection.endsWith(after) && before !== '') {
+      // Toggle OFF: Remove wrapping inside selection
+      const inner = selection.substring(before.length, selection.length - after.length);
+      newVal = text.substring(0, start) + inner + text.substring(end);
+      newCursor = start + inner.length;
+    } else if (isList) {
+      // Smart List Insertion
+      const isStartOfDoc = start === 0;
+      const effectiveBefore = isStartOfDoc ? before.trimStart() : before;
+      
+      const lines = text.substring(0, start).split('\n');
+      const currentLine = lines[lines.length - 1];
+      
+      let prefix = effectiveBefore;
+      if (before === '\n1. ') {
+        const match = currentLine.match(/^(\d+)\.\s/);
+        const prevLine = lines.length > 1 ? lines[lines.length - 2] : '';
+        const prevMatch = prevLine.match(/^(\d+)\.\s/);
+
+        if (match) {
+          prefix = `\n${parseInt(match[1]) + 1}. `;
+        } else if (prevMatch) {
+          prefix = `\n${parseInt(prevMatch[1]) + 1}. `;
+        } else if (isStartOfDoc) {
+          prefix = '1. ';
+        }
+      } else if (before === '\n- ' && isStartOfDoc) {
+        prefix = '- ';
+      }
+      
+      newVal = text.substring(0, start) + prefix + text.substring(end);
+      newCursor = start + prefix.length;
+    } else {
+      // Toggle ON: Add wrapping
+      const replacement = before + (selection || '') + after;
+      newVal = text.substring(0, start) + replacement + text.substring(end);
+      newCursor = start + before.length + (selection ? selection.length : 0);
+    }
+    
+    handleNoteContentChange(newVal);
+    
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newCursor, newCursor);
+    }, 50);
+  };
+
+  const uploadNoteFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    
+    setIsUploadingNoteFile(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        let base64 = event.target?.result as string;
+        let finalUrl = base64;
+
+        if (file.type.startsWith('image/')) {
+          base64 = await compressImage(base64, 800, 800, 0.6);
+          finalUrl = await handleCloudinaryUpload(base64) || base64;
+        }
+
+        const newAttachment = {
+          name: file.name,
+          type: file.type,
+          url: finalUrl,
+          id: Math.random().toString(36).substr(2, 9)
+        };
+        
+        const updatedAttachments = [...(selectedNote.attachments || []), newAttachment];
+        
+        if (file.type.startsWith('image/')) {
+          const imageMarkdown = `\n![${file.name}](${finalUrl})\n`;
+          const textarea = document.getElementById('note-main-textarea') as HTMLTextAreaElement;
+          const currentContent = selectedNote.content || '';
+          
+          let updatedContent: string;
+          if (textarea) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            updatedContent = currentContent.substring(0, start) + imageMarkdown + currentContent.substring(end);
+          } else {
+            updatedContent = currentContent + imageMarkdown;
+          }
+
+          handleNoteContentChange(updatedContent);
+          setSelectedNote({ ...selectedNote, attachments: updatedAttachments, content: updatedContent });
+          setUserNotification(`Image "${file.name}" inserted.`);
+        } else {
+          setSelectedNote({ ...selectedNote, attachments: updatedAttachments });
+          setUserNotification(`File "${file.name}" added to note.`);
+        }
+        
+        setIsUploadingNoteFile(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Upload error:", err);
+      setUserNotification("Failed to upload file.");
+      setIsUploadingNoteFile(false);
+    }
+  };
+
+  const deleteNote = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this note?")) return;
+    try {
+      await deleteDoc(doc(db, 'notes', id));
+      if (selectedNote?.id === id) setSelectedNote(null);
+    } catch (err) {
+      console.error("Delete note error:", err);
+    }
+  };
 
   // Load email templates
   useEffect(() => {
@@ -2653,9 +3177,20 @@ export default function App() {
     }
 
     try {
-      setUserNotification(`Preparing manual list blast for "${templateEditForm.name}"...`);
+      setUserNotification(`Preparing manual list blast for "${templateEditForm.name}" to ${broadcastTarget.toUpperCase()} users...`);
       
-      const recipients = allUsers
+      const filteredUsers = allUsers.filter(u => {
+        if (broadcastTarget === 'premium') return u.isPremium;
+        if (broadcastTarget === 'free') return !u.isPremium;
+        return true;
+      });
+
+      if (filteredUsers.length === 0) {
+        setUserNotification(`No users found matching "${broadcastTarget}" criteria.`);
+        return;
+      }
+
+      const recipients = filteredUsers
         .filter(u => u.email)
         .map(u => ({
           email: u.email,
@@ -2848,7 +3383,7 @@ export default function App() {
     </motion.div>
   );
 
-  // --- ðŸŒŸ PREMIUM ONBOARDING (MODAL STYLE) ---
+  // --- 🌟 PREMIUM ONBOARDING (MODAL STYLE) ---
   const AnalysisLoadingOverlay = () => (
     <AnimatePresence>
       {isAnalyzing && (
@@ -3895,6 +4430,7 @@ export default function App() {
       type: 'exam',
       progress: 100,
       date: new Date().toLocaleDateString(),
+      timestamp: Date.now(),
       score: score,
       total: examQuestions.length
     });
@@ -4307,7 +4843,7 @@ ${session.fullAnalysis}
       setIsProcessingFinal(true);
       isStopRequested.current = true;
       try {
-        console.log("ðŸ›‘ Stopping audio capture...");
+        console.log("🛑 Stopping audio capture...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -4321,7 +4857,15 @@ ${session.fullAnalysis}
 
         // Wait for all transcription processing to finish in background
         await processorQueue.current;
-        console.log("âœ… Background processing complete.");
+        console.log("✅ Background processing complete.");
+
+        // AUTO-SAVE TO VAULT (NOTES TOOL) - AS REQUESTED
+        if (transcriptionNotesRef.current) {
+          await saveNote(
+            transcriptionNotesRef.current,
+            `Recording: ${new Date().toLocaleTimeString()} (${formatTime(recordingTime)})`
+          );
+        }
       } catch (err) {
         console.error("Error stopping recording:", err);
       } finally {
@@ -4361,6 +4905,7 @@ ${session.fullAnalysis}
                 id: sessionId,
                 title: `Recording: ${new Date().toLocaleTimeString()}`,
                 date: new Date().toLocaleDateString(),
+                timestamp: Date.now(),
                 duration: formatTime(recordingTime),
                 imageCount: uploadedImages.length,
                 summary: "Recording captured. Analysis pending...",
@@ -4490,7 +5035,9 @@ ${session.fullAnalysis}
       for await (const chunk of response) {
         streamedText += chunk.text || "";
         if (streamedText.trim()) {
-           setTranscriptionNotes(streamedText.trim());
+           const cleaned = streamedText.trim();
+           setTranscriptionNotes(cleaned);
+           transcriptionNotesRef.current = cleaned;
         }
       }
 
@@ -4499,6 +5046,7 @@ ${session.fullAnalysis}
       const sessionId = currentRecordingSessionIdRef.current;
       if (finalText && finalText !== " ...") {
         setTranscriptionNotes(finalText);
+        transcriptionNotesRef.current = finalText;
         // Auto-save to Firestore if we have a session ID
         if (user && sessionId) {
            updateDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), { 
@@ -4762,6 +5310,14 @@ ${session.fullAnalysis}
         }
         await setDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), newSession);
         setCurrentRecordingSessionId(null); // Reset after full analysis
+        
+        // Auto-save to Notes Tool
+        if (transcriptionNotes) {
+          saveNote(
+            transcriptionNotes, 
+            `Lecture Note: ${new Date().toLocaleTimeString()} (${newSession.duration})`
+          );
+        }
       }
       
       setAnalysisResult(text);
@@ -5405,6 +5961,7 @@ ${session.fullAnalysis}
         type: 'quiz',
         progress: 100,
         date: new Date().toLocaleDateString(),
+        timestamp: Date.now(),
         score: finalScore,
         total: quizQuestions.length
       });
@@ -5636,7 +6193,7 @@ ${session.fullAnalysis}
             className="flex flex-col flex-1 h-full overflow-hidden"
           >
             {/* HEADER */}
-            <header className={`px-5 py-4 flex justify-between items-center border-b ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]/95' : 'border-slate-200 bg-white/95'} backdrop-blur-xl sticky top-0 z-40`}>
+            <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} sticky top-0 z-40`}>
         <div className="flex items-center gap-3">
           <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#0A0F1C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center`}>
             <Brain size={22} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
@@ -5684,9 +6241,6 @@ ${session.fullAnalysis}
                 <p className={`text-[10px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user.displayName}</p>
                 <p className={`text-[8px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
               </div>
-              <button onClick={handleLogout} className={`p-2 rounded-xl ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70' : 'bg-slate-100 border-slate-200 text-slate-600'} hover:text-[#DC2626] transition-all`}>
-                <LogOut size={20} />
-              </button>
             </div>
           ) : (
             <button onClick={() => setShowAuthModal(true)} className="flex items-center gap-2 bg-[#DC2626] text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-[#DC2626]/20">
@@ -5701,7 +6255,7 @@ ${session.fullAnalysis}
       </header>
 
       {/* MAIN CONTENT */}
-      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pt-4 sm:pt-6 pb-24 overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'}`}>
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pb-24 overflow-y-auto flex flex-col min-h-screen ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'}`}>
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -5727,7 +6281,7 @@ ${session.fullAnalysis}
           
           {/* HOME TAB */}
           {activeTab === 'home' && (
-            <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
+            <motion.div key="home" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6 pt-4">
               {!isOnline && (
                 <div className="bg-[#DC2626]/10 border border-[#DC2626]/20 p-3 rounded-2xl flex items-center gap-3 mx-2">
                   <div className="w-8 h-8 bg-[#DC2626] rounded-full flex items-center justify-center text-white">
@@ -5739,50 +6293,6 @@ ${session.fullAnalysis}
                   </div>
                 </div>
               )}
-              {/* Home Header with Bell and Premium */}
-              <div className="flex items-center justify-between px-2 mb-4">
-                <div className="flex items-center gap-3">
-                  <Home size={24} className="text-[#DC2626]" />
-                  <h2 className={`text-2xl font-black uppercase tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Home</h2>
-                </div>
-                
-                <div className="flex items-center gap-1 sm:gap-2">
-                  {!isPremium && (
-                    <button 
-                      onClick={() => setShowPremiumModal(true)}
-                      className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[7px] sm:text-[8px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 flex items-center gap-1 hover:scale-105 transition-all"
-                    >
-                      <Sparkles size={10} className="sm:size-[12px]" /> <span className="hidden xs:inline">PREMIUM</span>
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => setActiveTab('notifications')}
-                    className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all relative ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
-                  >
-                    <Bell size={16} className="sm:size-[18px]" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#DC2626] text-white text-[7px] font-black rounded-full flex items-center justify-center border-2 border-[#0A0F1C]">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </button>
-                  <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
-                    <div className="text-right hidden sm:block">
-                      <p className={`text-[9px] font-black uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{currentUserData?.displayName?.split(' ')?.[0] || 'Student'}</p>
-                      <p className={`text-[7px] uppercase font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'}`}>{isAdminUser ? 'Admin' : 'Student'}</p>
-                    </div>
-                    <button onClick={() => setActiveTab('profile')} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-[#DC2626] overflow-hidden bg-white/5 shadow-lg flex-shrink-0">
-                      {currentUserData?.photoURL ? (
-                        <img src={currentUserData.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/20">
-                          <User size={16} />
-                        </div>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
 
               {/* Home Feed */}
               <div className="space-y-4">
@@ -5796,7 +6306,7 @@ ${session.fullAnalysis}
                     <p className={`text-sm ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'}`}>No recent activity found. Start studying to see your history here!</p>
                   </div>
                 ) : (
-                  <div className="space-y-3 overflow-y-auto max-h-[60vh] no-scrollbar pb-4">
+                  <div className="space-y-4 overflow-y-auto max-h-[75vh] no-scrollbar pb-10">
                     {homeHistory.map((item) => (
                       <div 
                         key={item.id}
@@ -5826,59 +6336,55 @@ ${session.fullAnalysis}
                             setActiveTab('tools');
                             setToolsSubTab('assignment');
                             if (item.data) {
-                              // We need a way to set the solution in AssignmentSolver
-                              // For now, it will load but we should probably store it locally in AssignmentSolver state if we want to re-show it immediately
-                              // Let's assume the user just wants to go there for now, or we can use a global state for active solution
-                              setActiveTab('tools');
-                              setToolsSubTab('assignment');
+                              setActiveAssignmentSolution(item.data);
                             }
+                          } else if (item.type === 'note' as any) {
+                            const note = userNotes.find(n => n.id === item.id);
+                            if (note) {
+                              setSelectedNote(note);
+                              setActiveTab('tools');
+                              setToolsSubTab('notes');
+                              setNoteHistory([]);
+                              setRedoStack([]);
+                            }
+                          } else if (item.type === 'faculty') {
+                            setActiveTab('tools');
+                            setToolsSubTab('faculty');
+                            // Facuty items load their state through active session usually, or we can just go to the tab
                           }
                         }}
                         className={`group relative overflow-hidden rounded-2xl border transition-all cursor-pointer ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white border-slate-200 hover:bg-slate-50 shadow-sm'}`}
                       >
-                        {/* Gradient Bar */}
-                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-red-600 to-yellow-500" />
-                        
-                        <div className="p-4 pl-6 flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'}`}>
-                              {item.type === 'quiz' ? <Zap size={20} className="text-yellow-500" /> : 
-                               item.type === 'exam' ? <FileText size={20} className="text-[#DC2626]" /> : 
-                               item.type === 'assignment' ? <BookOpen size={20} className="text-purple-500" /> :
-                               <Mic size={20} className="text-red-500" />}
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#DC2626]" />
+                        <div className="p-2 sm:p-3 pl-4 sm:pl-5 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-100'}`}>
+                              {item.type === 'quiz' ? <Zap size={16} className="text-yellow-500" /> : 
+                               item.type === 'exam' ? <Trophy size={16} className="text-[#DC2626]" /> : 
+                               item.type === 'assignment' ? <BookOpen size={16} className="text-purple-500" /> :
+                               (item.type as any) === 'note' ? <FileText size={16} className="text-blue-500" /> :
+                               <Mic size={16} className="text-red-500" />}
                             </div>
-                            <div>
-                              <p className={`text-xs font-black uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title}</p>
-                              <div className="flex flex-col gap-1 mt-1">
-                                <p className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} uppercase`}>
-                                  {item.type === 'quiz' || item.type === 'exam'
-                                    ? (item.score !== undefined 
-                                        ? `Score: ${item.score}/${item.total} \u{2022} ${item.date}` 
-                                        : `Unfinished \u{2022} ${item.progress ?? 0}% Complete`)
-                                    : item.type === 'assignment'
-                                    ? `Assignment Solution \u{2022} ${item.date}`
-                                    : `Unanalyzed Recording \u{2022} ${item.date || 'No Date'}`}
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-[10px] sm:text-xs font-black uppercase tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'} truncate`}>
+                                <span className="opacity-40 font-mono text-[8px] mr-1 truncate inline-block max-w-[50px] shrink-0">{item.type.toUpperCase()}:</span>
+                                <span>{item.title}</span>
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className={`text-[8px] font-bold ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'} uppercase`}>
+                                  {item.score !== undefined ? `SCORE: ${item.score}/${item.total || 25}` : (item.progress !== undefined ? `${item.progress}% DONE` : item.date)}
                                 </p>
-                                {(item.type === 'quiz' || item.type === 'exam') && item.progress !== undefined && (
-                                  <div className="h-1 w-32 bg-white/5 rounded-full overflow-hidden">
-                                    <motion.div 
-                                      initial={{ width: 0 }} 
-                                      animate={{ width: `${item.progress}%` }} 
-                                      className="h-full bg-gradient-to-r from-red-600 to-yellow-500" 
-                                    />
-                                  </div>
-                                )}
                               </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <button 
-                              onClick={(e) => removeFromHistory(item.id, e)}
-                              className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'text-white/20 hover:text-red-500 hover:bg-red-500/10' : 'text-slate-300 hover:text-red-500 hover:bg-red-500/10'}`}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                            <ChevronRight size={18} className={`${theme === 'dark' ? 'text-white/20' : 'text-slate-300'}`} />
+                             <button 
+                               onClick={(e) => removeFromHistory(item.id, e)}
+                               className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'text-white/20 hover:text-red-500 hover:bg-red-500/10' : 'text-slate-300 hover:text-red-500 hover:bg-red-500/10'}`}
+                             >
+                               <Trash2 size={14} />
+                             </button>
+                             <ChevronRight size={14} className="text-white/20 group-hover:text-[#DC2626] transition-colors" />
                           </div>
                         </div>
                       </div>
@@ -5907,17 +6413,12 @@ ${session.fullAnalysis}
                       { id: 'exam', title: 'CBT Exam', icon: ShieldCheck, color: 'from-orange-600 to-orange-400', desc: 'Professional Testing' },
                       { id: 'faculty', title: 'Faculty Specials', icon: GraduationCap, color: 'from-blue-600 to-indigo-400', desc: 'Department Specific' },
                       { id: 'assignment', title: 'Assignment Solver', icon: BookOpen, color: 'from-purple-600 to-pink-400', desc: 'Step-by-Step AI Solutions' },
-                      { id: 'td', title: 'TD Tool', icon: BoxSelect, color: 'from-slate-500 to-slate-600', desc: '2D Projection - Coming Soon' },
                       { id: 'courses', title: 'Courses Tool', icon: BookOpen, color: 'from-emerald-600 to-teal-400', desc: 'Course-Specific Learning' },
                       { id: 'whatsapp', title: 'Omni on WHATSAPP', icon: WhatsAppIcon, color: 'from-green-600 to-green-400', desc: '+2349064470122' }
                     ].map((tool) => (
                       <button 
                         key={tool.id}
                         onClick={() => {
-                          if (tool.id === 'td') {
-                            setUserNotification("Technical Drawing Engine V4.0 is currently in maintenance and will be back soon with improved 2D projection features.");
-                            return;
-                          }
                           if (tool.id === 'whatsapp') {
                             window.open("https://wa.me/2349064470122", "_blank");
                             return;
@@ -5926,11 +6427,6 @@ ${session.fullAnalysis}
                         }}
                         className={`flex flex-col items-start p-5 rounded-3xl border transition-all text-left group relative overflow-hidden ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
                       >
-                        {tool.id === 'td' && (
-                          <div className="absolute top-2 right-2 bg-[#DC2626] text-white text-[7px] font-black px-2 py-0.5 rounded-full z-10 animate-pulse">
-                            SOON
-                          </div>
-                        )}
                         <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white mb-4 shadow-lg group-hover:scale-110 transition-transform`}>
                           <tool.icon size={24} />
                         </div>
@@ -5938,6 +6434,33 @@ ${session.fullAnalysis}
                         <p className={`text-[10px] font-bold ${theme === 'dark' ? 'text-white/40' : 'text-slate-500'} uppercase`}>{tool.desc}</p>
                       </button>
                     ))}
+                  </div>
+
+                  <div className="pt-4 border-t border-white/5 space-y-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 text-center">Upcoming Tools</p>
+                    <div className="grid grid-cols-2 gap-4 opacity-70">
+                      {[
+                        { id: 'notes', title: 'Notes Tool', icon: FileText, color: 'from-amber-600 to-yellow-400', desc: 'Auto-Saved Lectures' },
+                        { id: 'td', title: 'TD Tool', icon: BoxSelect, color: 'from-slate-500 to-slate-600', desc: '2D Projection Engine' }
+                      ].map((tool) => (
+                        <button 
+                          key={tool.id}
+                          onClick={() => {
+                            setUserNotification(`${tool.title} is currently in development and will be back soon.`);
+                          }}
+                          className={`flex flex-col items-start p-5 rounded-3xl border transition-all text-left group relative overflow-hidden ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
+                        >
+                          <div className="absolute top-2 right-2 bg-[#DC2626] text-white text-[7px] font-black px-2 py-0.5 rounded-full z-10 animate-pulse">
+                            SOON
+                          </div>
+                          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white mb-3 shadow-lg grayscale`}>
+                            <tool.icon size={20} />
+                          </div>
+                          <h3 className={`font-black text-[12px] uppercase tracking-tight ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'}`}>{tool.title}</h3>
+                          <p className={`text-[9px] font-bold ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'} uppercase`}>Version 5.0 Soon</p>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -6169,6 +6692,16 @@ ${session.fullAnalysis}
                                           >
                                             <Copy size={14} />
                                           </button>
+                                          <button 
+                                            onClick={() => {
+                                              saveNote(transcriptionNotes, `Lecture Note: ${new Date().toLocaleTimeString()}`);
+                                              setUserNotification("Note saved to Vault!");
+                                            }}
+                                            className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-green-500 transition-all border border-white/5"
+                                            title="Save to Notes Tool"
+                                          >
+                                            <Save size={14} />
+                                          </button>
                                         </div>
                                       </div>
                                     <div className={`max-h-60 overflow-y-auto pr-2 custom-scrollbar ${theme === 'dark' ? 'text-white/80' : 'text-slate-700'} text-xs leading-relaxed`}>
@@ -6281,6 +6814,258 @@ ${session.fullAnalysis}
                           </motion.div>
                         )}
                       </AnimatePresence>
+                    </motion.div>
+                  )}
+
+                  {toolsSubTab === 'notes' && (
+                    <motion.div key="notes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex flex-col bg-[#0A0F1C]">
+                       {/* Header - Flushed to top */}
+                       <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0A0F1C]/80 backdrop-blur-md z-20 shrink-0">
+                        {!selectedNote && (
+                          <button 
+                            onClick={async () => {
+                              setToolsSubTab('menu');
+                            }} 
+                            className="p-2 hover:bg-white/5 rounded-xl transition-all text-white/60 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
+                          >
+                            <ArrowLeft size={16} /> Back
+                          </button>
+                        )}
+                        <div className="flex items-center gap-2 ml-auto">
+                          {!selectedNote ? (
+                            <button 
+                              onClick={() => {
+                                setSelectedNote({ title: `Draft ${new Date().toLocaleTimeString()}`, content: '', attachments: [], createdAt: new Date() });
+                                setNoteHistory([]);
+                                setRedoStack([]);
+                              }}
+                              className="bg-[#DC2626] text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-[#DC2626]/20 hover:scale-105 active:scale-95 transition-all text-nowrap"
+                            >
+                              <Plus size={14} /> New
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <button onClick={undoNote} disabled={noteHistory.length === 0} className={`p-2 bg-white/5 rounded-xl transition-all ${noteHistory.length === 0 ? 'text-white/5' : 'text-white/40 hover:text-white'}`} title="Undo"><RotateCcw size={16} /></button>
+                              <button onClick={redoNote} disabled={redoStack.length === 0} className={`p-2 bg-white/5 rounded-xl transition-all ${redoStack.length === 0 ? 'text-white/5' : 'text-white/40 hover:text-white'}`} title="Redo" style={{ transform: 'scaleX(-1)' }}><RotateCcw size={16} /></button>
+                              <div className="w-px h-6 bg-white/10 mx-1" />
+                              <button 
+                                onClick={async () => {
+                                  const success = await saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments);
+                                  if (success) {
+                                    setUserNotification("Saved to Vault!");
+                                    setSelectedNote(null);
+                                  } else {
+                                    setUserNotification("Sync failed.");
+                                  }
+                                }} 
+                                className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isSavingNote ? 'bg-zinc-800 text-white/40' : 'bg-green-600 text-white shadow-lg'}`}
+                                disabled={isSavingNote}
+                              >
+                                {isSavingNote ? "..." : <Save size={14} />} 
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                  if (selectedNote) {
+                                    await saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments);
+                                    setUserNotification("Saved to Vault!");
+                                    setSelectedNote(null);
+                                  } else {
+                                    setSelectedNote(null);
+                                  }
+                                }} 
+                                className="p-2 bg-white/5 rounded-xl text-white/40 hover:text-red-500 transition-all"
+                              >
+                                <X size={20} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                            {selectedNote ? (
+                              <div className="flex flex-col flex-1 overflow-hidden">
+                                {/* Formatting Toolbar */}
+                                <div className="flex items-center gap-2 p-2 bg-white/2 border-b border-white/5 overflow-x-auto no-scrollbar z-10 shrink-0">
+                                   <button onClick={() => setNotePreviewMode(!notePreviewMode)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black transition-all ${notePreviewMode ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}>
+                                      {notePreviewMode ? 'EDIT' : 'PREVIEW'}
+                                   </button>
+                                   <div className="w-px h-4 bg-white/10" />
+                                   {!notePreviewMode && (
+                                     <>
+                                       <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-blue-400 transition-all flex items-center gap-2">
+                                          <ImageIcon size={12} /> {isUploadingNoteFile ? '...' : 'INSERT IMAGE'}
+                                          <input type="file" className="hidden" onChange={uploadNoteFile} disabled={isUploadingNoteFile} accept="image/*" />
+                                       </label>
+                                       <div className="w-px h-4 bg-white/10" />
+                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('**', '**'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BOLD</button>
+                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('*', '*'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] italic text-white hover:text-[#DC2626] transition-all">ITALIC</button>
+                                       <div className="w-px h-4 bg-white/10" />
+                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('\n- '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BULLETS</button>
+                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('\n1. '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">NUMBERS</button>
+                                     </>
+                                   )}
+                                </div>
+
+                                <div 
+                                  ref={scrollContainerRef}
+                                  onScroll={handleNoteScroll}
+                                  className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar relative bg-[#0A0F1C]"
+                                >
+                                   {notePreviewMode ? (
+                                     <div className="space-y-6 relative z-10">
+                                       <h1 className="text-2xl font-black text-white uppercase tracking-tighter">{selectedNote.title || 'Untitled Note'}</h1>
+                                       <div className="markdown-body prose prose-invert prose-p:text-white/70 prose-headings:text-white prose-strong:text-[#DC2626] prose-img:rounded-3xl max-w-none text-white/80 text-sm leading-relaxed">
+                                         <MarkdownRenderer content={selectedNote.content || "_No content yet._"} />
+                                       </div>
+                                     </div>
+                                   ) : (
+                                     <>
+                                       <input 
+                                         value={selectedNote.title} 
+                                         onChange={(e) => setSelectedNote({...selectedNote, title: e.target.value})}
+                                         className="bg-transparent border-none text-xl font-black text-white uppercase tracking-tighter outline-none w-full mb-8 placeholder:text-white/10 relative z-10"
+                                         placeholder="Untitled Note..."
+                                       />
+                                       
+                                       <div className="flex-1 pb-32 relative">
+                                          <textarea
+                                            id="note-main-textarea"
+                                            value={selectedNote.content || ''}
+                                            onChange={(e) => handleNoteContentChange(e.target.value)}
+                                            onFocus={(e) => {
+                                              lastFocusedBlock.current = { id: 'main', start: e.target.selectionStart, end: e.target.selectionEnd };
+                                            }}
+                                            onBlur={(e) => {
+                                              lastFocusedBlock.current = { id: 'main', start: e.target.selectionStart, end: e.target.selectionEnd };
+                                            }}
+                                            className="w-full bg-transparent border-none text-white/80 text-sm leading-[1.75rem] outline-none resize-none font-mono placeholder:text-white/5 p-0 min-h-[60vh] pb-20"
+                                            placeholder="Start writing..."
+                                            onInput={(e) => {
+                                              const target = e.target as HTMLTextAreaElement;
+                                              // Stable height update
+                                              target.style.height = 'auto';
+                                              target.style.height = target.scrollHeight + 'px';
+                                            }}
+                                            ref={(el) => {
+                                              if (el) {
+                                                el.style.height = 'auto';
+                                                el.style.height = el.scrollHeight + 'px';
+                                              }
+                                            }}
+                                          />
+                                        </div>
+                                        {/* REMOVED BLOCK MAP */}
+                                        <div className="hidden">
+                                         {noteBlocks.map((block, idx) => (
+                                           <div key={block.id} className="group relative">
+                                             {block.type === 'text' ? (
+                                               <textarea
+                                                 data-block-id={block.id}
+                                                 value={block.content}
+                                                 onChange={(e) => updateBlock(block.id, e.target.value)}
+                                                 onFocus={(e) => {
+                                                   lastFocusedBlock.current = { id: block.id, start: e.target.selectionStart, end: e.target.selectionEnd };
+                                                 }}
+                                                 onBlur={(e) => {
+                                                   lastFocusedBlock.current = { id: block.id, start: e.target.selectionStart, end: e.target.selectionEnd };
+                                                 }}
+                                                 className="w-full bg-transparent border-none text-white/80 text-sm leading-[1.75rem] outline-none resize-none font-mono placeholder:text-white/5 p-0"
+                                                 placeholder={idx === 0 ? "Start typing..." : ""}
+                                                 style={{ height: 'auto' }}
+                                                 onInput={(e) => {
+                                                   const target = e.target as HTMLTextAreaElement;
+                                                   target.style.height = 'auto'; 
+                                                   target.style.height = target.scrollHeight + 'px';
+                                                 }}
+                                                 ref={(el) => {
+                                                   if (el) {
+                                                     el.style.height = 'auto';
+                                                     el.style.height = el.scrollHeight + 'px';
+                                                   }
+                                                 }}
+                                               />
+                                             ) : (
+                                               <div className="relative rounded-2xl overflow-hidden border border-white/10 group/img max-w-2xl mx-auto my-4 shadow-2xl">
+                                                  <img src={block.url} alt={block.alt} className="w-full h-auto block" />
+                                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                                                    <button onClick={() => removeBlock(block.id)} className="p-3 bg-red-600 text-white rounded-full hover:scale-110 transition-all">
+                                                      <Trash2 size={20} />
+                                                    </button>
+                                                  </div>
+                                               </div>
+                                             )}
+                                           </div>
+                                         ))}
+                                       </div>
+                                     </>
+                                   )}
+                                </div>
+
+                                {/* Floating Scroll Button */}
+                                <AnimatePresence>
+                                  {noteScrollPos && (
+                                    <motion.button
+                                      initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.8, y: 20 }}
+                                      onClick={() => scrollToPosition(noteScrollPos)}
+                                      className="absolute bottom-20 right-6 z-50 w-12 h-12 rounded-full bg-[#DC2626] text-white shadow-xl shadow-[#DC2626]/40 flex items-center justify-center border-2 border-white/10 hover:scale-110 active:scale-95 transition-all"
+                                    >
+                                      {noteScrollPos === 'top' ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                                    </motion.button>
+                                  )}
+                                </AnimatePresence>
+
+                                <div className="p-3 border-t border-white/5 bg-white/2 backdrop-blur-md flex items-center justify-between shrink-0">
+                                   <p className="text-[7px] font-bold text-white/20 uppercase tracking-[0.3em]">Markdown Editor Active</p>
+                                </div>
+                              </div>
+                            ) : (
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 custom-scrollbar bg-[#0A0F1C]">
+                           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 pb-20">
+                            {userNotes.length === 0 ? (
+                              <div className="col-span-full py-20 text-center opacity-10 space-y-6">
+                                <FileText size={64} className="mx-auto" />
+                                <p className="text-[10px] font-black uppercase tracking-[0.4em]">Vault Empty</p>
+                              </div>
+                            ) : (
+                              userNotes.map(note => (
+                                <motion.div 
+                                  key={note.id} 
+                                  onClick={() => {
+                                    setSelectedNote(note);
+                                    setNoteHistory([]);
+                                    setRedoStack([]);
+                                  }}
+                                  className={`p-2 rounded-xl border transition-all cursor-pointer relative group overflow-hidden ${theme === 'dark' ? 'bg-[#151B2B] border-white/10 hover:border-[#DC2626]/50 shadow-xl' : 'bg-white border-slate-200 shadow-sm'}`}
+                                >
+                                  {note.attachments?.length > 0 && (
+                                    <div className="absolute top-0 right-0 p-1 text-[5px] font-black text-[#DC2626] bg-[#DC2626]/10 rounded-bl-lg border-l border-b border-white/10 uppercase">
+                                      {note.attachments.length}
+                                    </div>
+                                  )}
+                                  <div className="flex items-start justify-between relative z-10 w-full h-full">
+                                    <div className="space-y-0.5 w-full">
+                                      <h4 className="text-[9px] font-black text-white uppercase tracking-tight line-clamp-1 group-hover:text-[#DC2626] transition-colors">
+                                        {note.title || 'Draft'}
+                                      </h4>
+                                      <p className="text-[7px] text-white/40 line-clamp-2 leading-tight">
+                                        {note.content ? note.content.replace(/[#*`_!\[\]\(\)]/g, '').substring(0, 50) : '...'}
+                                      </p>
+                                      <div className="flex items-center justify-between mt-1 pt-1 border-t border-white/5">
+                                        <p className="text-[6px] font-bold text-white/10 uppercase tracking-widest">{note.updatedAt?.toDate ? note.updatedAt.toDate().toLocaleDateString() : 'Now'}</p>
+                                        <div onClick={(e) => deleteNote(note.id, e)} className="p-1 opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-500 transition-all bg-white/5 rounded-md">
+                                          <Trash2 size={8} />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </motion.div>
                   )}
 
@@ -6842,6 +7627,8 @@ ${session.fullAnalysis}
                         setActiveChatSessionId={setActiveChatSessionId}
                         addToFinishedHistory={addToFinishedHistory}
                         finishedHistory={finishedHistory}
+                        solution={activeAssignmentSolution}
+                        setSolution={setActiveAssignmentSolution}
                       />
                     </motion.div>
                   )}
@@ -6868,7 +7655,11 @@ ${session.fullAnalysis}
                   )}
                   {toolsSubTab === 'faculty' && (
                     <div className="h-full">
-                      <AILibrary theme={theme} setUserNotification={setUserNotification} />
+                      <AILibrary 
+                        theme={theme} 
+                        setUserNotification={setUserNotification} 
+                        onSaveHistory={handleSaveFacultyHistory}
+                      />
                     </div>
                   )}
                   
@@ -6885,7 +7676,7 @@ ${session.fullAnalysis}
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className={`flex flex-1 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-200'} rounded-2xl sm:rounded-3xl border overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0`}>
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className={`flex flex-1 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-200'} rounded-2xl sm:rounded-3xl border overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0 flex-col h-full`}>
               
               {/* Sidebar Drawer */}
               <AnimatePresence>
@@ -6977,7 +7768,7 @@ ${session.fullAnalysis}
                   {/* Removed legacy isLiveActive trigger as it moved to tools */}
                 </AnimatePresence>
                 {/* Chat Header */}
-                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/20 backdrop-blur-md">
+                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/20 backdrop-blur-md sticky top-0 z-20">
                   <div className="flex items-center gap-3">
                     <button onClick={() => setShowChatSidebar(true)} className="p-2 hover:bg-white/5 rounded-xl transition-all"><Menu size={20} className="text-white/60" /></button>
                     <div>
@@ -6997,7 +7788,7 @@ ${session.fullAnalysis}
                 </div>
 
                 {/* Messages Area */}
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2 sm:p-6 space-y-3 sm:space-y-8 scroll-smooth">
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-2 sm:p-6 space-y-3 sm:space-y-8 scroll-smooth custom-scrollbar">
                   <AdUnit slot="7536999840" />
                   {chatHistory.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center px-4">
@@ -7134,7 +7925,7 @@ ${session.fullAnalysis}
                 </div>
 
                 {/* Input Area */}
-                <div className="p-2 sm:p-6 bg-gradient-to-t from-[#0A0F1C] via-[#0A0F1C] to-transparent flex-shrink-0">
+                <div className="p-2 sm:p-6 bg-[#0A0F1C] border-t border-white/5 flex-shrink-0 z-20">
                   <div className="max-w-3xl mx-auto space-y-4">
                     
                     {/* File Preview Area - Moved above input */}
@@ -7600,7 +8391,7 @@ ${session.fullAnalysis}
                   
                   <div className="flex flex-col items-center gap-1 pt-2 opacity-20">
                     <p className="text-[8px] font-black uppercase tracking-[0.4em]">Lecture OS v4.0</p>
-                    <p className="text-[7px] font-bold uppercase tracking-widest">Â© 2026 NSG Studio</p>
+                    <p className="text-[7px] font-bold uppercase tracking-widest">© 2026 NSG Studio</p>
                   </div>
                 </div>
               </div>
@@ -8077,15 +8868,29 @@ ${session.fullAnalysis}
                 </div>
 
                 <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 ${templateEditForm?.id ? 'bg-[#DC2626]/20 text-[#DC2626]' : 'bg-white/5 text-white/10'} rounded-2xl flex items-center justify-center transition-all`}>
-                      <Zap size={24} />
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 ${templateEditForm?.id ? 'bg-[#DC2626]/20 text-[#DC2626]' : 'bg-white/5 text-white/10'} rounded-2xl flex items-center justify-center transition-all`}>
+                        <Zap size={24} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase text-white leading-tight">Broadcast Engine</p>
+                        <p className="text-[8px] font-bold text-white/30 uppercase tracking-[0.2em]">
+                          {templateEditForm?.id ? `Targeting: ${broadcastTarget.toUpperCase()}` : 'Select a template'}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-black uppercase text-white leading-tight">Broadcast Engine</p>
-                      <p className="text-[8px] font-bold text-white/30 uppercase tracking-[0.2em]">
-                        {templateEditForm?.id ? `Target: "${templateEditForm.name}"` : 'Select a template to enable mass send'}
-                      </p>
+                    
+                    <div className="flex items-center gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
+                      {(['all', 'premium', 'free'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setBroadcastTarget(t)}
+                          className={`px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${broadcastTarget === t ? 'bg-[#DC2626] text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                        >
+                          {t}
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <button 
