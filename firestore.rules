@@ -3,7 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 0. Global Safety Net
+    // 0. Global Safety Net - Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
@@ -11,10 +11,6 @@ service cloud.firestore {
     // Phase 3: Primitives & Helpers
     function isSignedIn() {
       return request.auth != null && request.auth.uid != null;
-    }
-
-    function isVerified() {
-      return isSignedIn();
     }
 
     function isOwner(uid) {
@@ -37,25 +33,30 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // Validation Blueprints
+    function isValidUser(data) {
+      return (data.uid is string) && (data.email is string);
+    }
+
     function isValidExam(data) {
-      // Data integrity check. We allow admins to bypass the UID match if needed,
-      // but standard users must match their hostUid
-      return (data.get('id', '') is string) &&
-             (data.get('hostUid', '') is string) &&
+      return (data.get('hostUid', '') is string) &&
+             (data.get('id', '') is string) &&
              (!('status' in data) || data.status in ['active', 'ended', 'none']) &&
              (!('questions' in data) || data.questions is list) &&
              (!('registeredStudents' in data) || data.registeredStudents is list);
     }
 
     // Phase 4: Collection Rules
-    match /blogPosts/{postId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
 
+    // Users Collection
+    // allow list is required for matric number lookup and God Mode search
     match /users/{uid} {
-      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      allow list: if isAdmin();
+      allow get: if true;
+      allow list: if true; 
       allow write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
 
       match /chatSessions/{sessionId} {
@@ -67,45 +68,52 @@ service cloud.firestore {
       match /studyHistory/{historyId} {
         allow read, write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       }
-    }
-
-    match /exams/{examId} {
-      allow read: if true;
-      allow create: if (isAdmin() || (isVerified() && incoming().hostUid == request.auth.uid)) && isValidExam(incoming());
-      allow update: if (isAdmin() || (isVerified() && existing().hostUid == request.auth.uid)) && isValidExam(incoming());
-      allow delete: if (isAdmin() || (isVerified() && existing().hostUid == request.auth.uid));
-      
-      match /results/{resultId} {
-        allow read: if isSignedIn() && (
-          resource.data.uid == request.auth.uid ||
-          resource.data.hostUid == request.auth.uid ||
-          isAdmin()
-        );
-        allow create: if isSignedIn(); 
+      match /usage/{today} {
+        allow read, write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       }
     }
 
+    // Exams & Results
+    match /exams/{examId} {
+      allow read: if true;
+      allow create: if (isAdmin() || (isSignedIn() && incoming().hostUid == request.auth.uid)) && isValidExam(incoming());
+      allow update: if (isAdmin() || (isSignedIn() && existing().hostUid == request.auth.uid)) && isValidExam(incoming());
+      allow delete: if (isAdmin() || (isSignedIn() && existing().hostUid == request.auth.uid));
+      
+      match /results/{resultId} {
+        allow create: if isSignedIn();
+        // Secure list queries by checking resource.data or parent match
+        allow read: if isSignedIn() && (
+          resource.data.uid == request.auth.uid ||
+          resource.data.hostUid == request.auth.uid ||
+          isAdmin() ||
+          get(/databases/$(database)/documents/exams/$(examId)).data.hostUid == request.auth.uid
+        );
+      }
+    }
+
+    // Quizzes
     match /quizzes/{quizId} {
       allow read: if true;
-      allow create: if isSignedIn();
+      allow create, update: if isSignedIn();
+    }
+
+    // Blog & Notifications
+    match /blogPosts/{postId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /notifications/{notifId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isSignedIn(); 
+      allow update, delete: if isAdmin();
     }
 
+    // Config & Infrastructure
     match /config/{configId} {
       allow read: if true;
       allow write: if isAdmin();
-    }
-    
-    function isValidEmailTemplate(data) {
-      return (data.get('name', '') is string && data.get('name', '').size() > 0) &&
-             (data.get('subject', '') is string && data.get('subject', '').size() > 0) &&
-             (data.get('body', '') is string && data.get('body', '').size() > 0) &&
-             (data.get('active', true) is bool) &&
-             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     match /email_templates/{templateId} {
@@ -113,13 +121,22 @@ service cloud.firestore {
     }
     
     match /registeredStudents/{matric} {
-      allow get: if true;
+      allow read: if true; 
       allow write: if isAdmin();
     }
 
+    // Personal Notes
+    match /notes/{noteId} {
+      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && (incoming().uid == request.auth.uid || isAdmin());
+      allow update: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin()) && (incoming().uid == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // Global Scores & Logs
     match /scoreSheet/{resultId} {
-      allow get: if isAdmin();
-      allow create: if true;
+      allow read: if isAdmin();
+      allow create: if true; 
     }
     
     match /test/{docId} {
