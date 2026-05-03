@@ -56,7 +56,12 @@ interface LatinWord {
   context: string;
 }
 
-export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: string) => void }> = ({ theme, setUserNotification }) => {
+export const AILibrary: React.FC<{ 
+  theme: 'dark'; 
+  setUserNotification?: (msg: string) => void;
+  onSaveHistory?: (id: string, title: string, type: string, score?: number, data?: any) => void;
+  checkAndIncrementUsage: (type: string) => Promise<boolean>;
+}> = ({ theme, setUserNotification, onSaveHistory, checkAndIncrementUsage }) => {
   const [activeFaculty, setActiveFaculty] = useState<Faculty>('STEM');
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -263,6 +268,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
   // --- STEM ACTIONS ---
   const generateFormulas = async () => {
     if (!stemTopic) return;
+    
+    const canProceed = await checkAndIncrementUsage('QUIZ');
+    if (!canProceed) return;
+
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
@@ -279,6 +288,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
       const text = result?.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setStemFormulas(JSON.parse(cleanedText));
+      
+      if (onSaveHistory) {
+        onSaveHistory(Math.random().toString(), `${stemTopic} Formulas`, 'faculty', undefined, { type: 'formulas', topic: stemTopic });
+      }
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to generate formulas"}`);
@@ -289,6 +302,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
 
   const solveStemProblem = async () => {
     if (stemFiles.length === 0) return;
+    
+    const canProceed = await checkAndIncrementUsage('ASSIGNMENT');
+    if (!canProceed) return;
+
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
@@ -307,6 +324,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
         ` }] }
       });
       setStemSolution(result?.text || "");
+
+      if (onSaveHistory) {
+        onSaveHistory(Math.random().toString(), `STEM Lab: ${stemFiles[0]?.name || 'Problem'}`, 'faculty', undefined, { type: 'solution', text: result?.text });
+      }
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to analyze problem"}`);
@@ -318,6 +339,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
   // --- LAW ACTIONS ---
   const findLatinMeaning = async () => {
     if (!lawLatinQuery) return;
+    
+    const canProceed = await checkAndIncrementUsage('QUIZ');
+    if (!canProceed) return;
+
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
@@ -330,6 +355,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
       const text = result?.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setLatinWords(JSON.parse(cleanedText));
+
+      if (onSaveHistory) {
+        onSaveHistory(Math.random().toString(), `Latin: ${lawLatinQuery}`, 'faculty', undefined, { type: 'latin', query: lawLatinQuery });
+      }
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to find meaning"}`);
@@ -340,6 +369,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
 
   const findConstitutionSection = async () => {
     if (!constitutionQuery) return;
+    
+    const canProceed = await checkAndIncrementUsage('QUIZ');
+    if (!canProceed) return;
+
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
@@ -349,6 +382,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
         contents: { parts: [{ text: prompt }] }
       });
       setConstitutionResult(result?.text || "");
+
+      if (onSaveHistory) {
+        onSaveHistory(Math.random().toString(), `Law: ${constitutionQuery}`, 'faculty', undefined, { type: 'law', query: constitutionQuery });
+      }
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to find sections"}`);
@@ -360,6 +397,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
   // --- BIZ ACTIONS ---
   const analyzeBizData = async () => {
     if (bizFiles.length === 0) return;
+    
+    const canProceed = await checkAndIncrementUsage('ASSIGNMENT');
+    if (!canProceed) return;
+
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
@@ -377,6 +418,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
         ` }] }
       });
       setBizAnalysis(result?.text || "");
+
+      if (onSaveHistory) {
+        onSaveHistory(Math.random().toString(), `Biz: ${bizFiles[0]?.name || 'Doc'}`, 'faculty', undefined, { type: 'biz', text: result?.text });
+      }
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to analyze data"}`);
@@ -388,6 +433,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
   // --- SOC ACTIONS ---
   const processNewsWriting = async () => {
     if (socFiles.length === 0) return;
+    
+    const canProceed = await checkAndIncrementUsage('ASSIGNMENT');
+    if (!canProceed) return;
+
     setIsAiLoading(true);
     try {
       const ai = getAiInstance();
@@ -407,6 +456,10 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
       const text = result?.text || "";
       const cleanedText = text.replace(/```json|```/g, '').trim();
       setSocNewsResult(JSON.parse(cleanedText));
+
+      if (onSaveHistory) {
+        onSaveHistory(Math.random().toString(), `Journalism: ${socFiles[0]?.name || 'News'}`, 'faculty', undefined, { type: 'news', result: JSON.parse(cleanedText) });
+      }
     } catch (err: any) {
       console.error(err);
       if (setUserNotification) setUserNotification(`AI Error: ${err.message || "Failed to process news"}`);
@@ -1195,7 +1248,7 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
                   </div>
                   <div>
                     <h2 className="text-sm font-black uppercase tracking-tight">Transcribe Tool</h2>
-                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Text ↔ Phonetic Sounds (/IPA/)</p>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Text â†” Phonetic Sounds (/IPA/)</p>
                   </div>
                 </div>
 
@@ -1218,8 +1271,8 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
                         try {
                           const ai = getAiInstance();
                           const prompt = `Convert this text to phonetic (IPA) transcription. 
-                          Every single word sound must be enclosed in forward slashes, e.g. /kaɪnd/. 
-                          Full sentences should look like: /ðɪs/ /ɪz/ /ə/ /test/.
+                          Every single word sound must be enclosed in forward slashes, e.g. /kaÉªnd/. 
+                          Full sentences should look like: /Ã°Éªs/ /Éªz/ /É™/ /test/.
                           Return ONLY the transcribed version.
                           Text: ${transcribeInput}`;
                           const result = await ai.models.generateContent({
@@ -1244,7 +1297,7 @@ export const AILibrary: React.FC<{ theme: 'dark'; setUserNotification?: (msg: st
                         try {
                           const ai = getAiInstance();
                           const prompt = `Convert these phonetic (IPA) sounds back to standard English text. 
-                          Input will be sounds in slashes like /kaɪnd/.
+                          Input will be sounds in slashes like /kaÉªnd/.
                           Return ONLY the English text.
                           Sounds: ${transcribeInput}`;
                           const result = await ai.models.generateContent({
