@@ -378,6 +378,25 @@ const HF_MODELS = {
   IMAGE: "black-forest-labs/FLUX.1-schnell"
 };
 
+const LIMITS = {
+  ASSIGNMENT: {
+    NORMAL: { IMAGES: 1, DAILY: 3 },
+    PREMIUM: { IMAGES: 3, DAILY: 7 }
+  },
+  QUIZ: {
+    NORMAL: { WORDS: 30, DAILY: 3, IMAGES: 1 },
+    PREMIUM: { WORDS: 150, DAILY: 12, IMAGES: 3 }
+  },
+  RECORD: {
+    NORMAL: { DURATION: 30 * 60, DAILY: 3 }, // 30 mins
+    PREMIUM: { DURATION: 120 * 60, DAILY: 30 } // 2 hrs
+  },
+  LIVE_TUTOR: {
+    NORMAL: { DURATION: 5 * 60, DAILY: 3 },
+    PREMIUM: { DURATION: 20 * 60, DAILY: 20 }
+  }
+};
+
 const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "pk_test_14a5b8ee0a06e063a8b0e46fc7e0e76ed66f2746";
 
 interface MediaFile {
@@ -523,8 +542,9 @@ const BlinkingBrain = ({ size = 24, className = "" }: { size?: number, className
   </motion.div>
 );
 
-const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => void, setUserNotification: (msg: string | null) => void, theme: string }) => {
+const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIncrementUsage }: { onClose: () => void, setUserNotification: (msg: string | null) => void, theme: string, isPremium: boolean, checkAndIncrementUsage: any }) => {
   const [isConnecting, setIsConnecting] = useState(true);
+  const [sessionTime, setSessionTime] = useState(0);
   const [isMicOn, setIsMicOn] = useState(true);
   const [videoSource, setVideoSource] = useState<'camera' | 'screen' | 'none'>('none');
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
@@ -550,7 +570,29 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
   const micContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
+    if (isConnecting) return;
+    const timer = setInterval(() => {
+      setSessionTime(prev => {
+        const limits = isPremium ? LIMITS.LIVE_TUTOR.PREMIUM : LIMITS.LIVE_TUTOR.NORMAL;
+        if (prev >= limits.DURATION) {
+          onClose();
+          setUserNotification(`Session limit reached (${limits.DURATION / 60} mins). Please upgrade for more time or try again tomorrow.`);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isPremium, isConnecting]);
+
+  useEffect(() => {
     const startLive = async () => {
+      const canProceed = await checkAndIncrementUsage('LIVE_TUTOR');
+      if (!canProceed) {
+        onClose();
+        return;
+      }
+
       if (!getApiKey()) {
         setUserNotification("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
         onClose();
@@ -702,6 +744,12 @@ const GeminiLive = ({ onClose, setUserNotification, theme }: { onClose: () => vo
       micContextRef.current?.close();
     };
   }, []);
+
+  const formatSessionTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   useEffect(() => {
     if (videoSource !== 'none' && videoRef.current && currentStreamRef.current) {
@@ -1292,7 +1340,7 @@ interface AssignmentSolution {
   summary: string;
 }
 
-const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerativePart, setUserNotification, setChatHistory, setActiveTab, setActiveChatSessionId, addToFinishedHistory, finishedHistory, solution, setSolution }: any) => {
+const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerativePart, setUserNotification, setChatHistory, setActiveTab, setActiveChatSessionId, addToFinishedHistory, finishedHistory, solution, setSolution, checkAndIncrementUsage }: any) => {
   const [images, setImages] = useState<MediaFile[]>([]);
   const [assignmentText, setAssignmentText] = useState("");
   const [isSolving, setIsSolving] = useState(false);
@@ -1310,12 +1358,14 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
   const [isSpeaking, setIsSpeaking] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
+  const limits = isPremium ? LIMITS.ASSIGNMENT.PREMIUM : LIMITS.ASSIGNMENT.NORMAL;
+
   // Auto-scroll to results when they appear
   useEffect(() => {
     if (solution && resultsRef.current) {
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+      }, 1000);
     }
   }, [solution]);
 
@@ -1330,8 +1380,10 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (images.length + files.length > 5) {
-      setUserNotification("You can only upload up to 5 images.");
+    const maxFiles = limits.IMAGES;
+    
+    if (images.length + files.length > maxFiles) {
+      setUserNotification(`Subscription Limit: ${isPremium ? 'Premium' : 'Free'} users can only upload up to ${maxFiles} image(s) for assignment solving.`);
       return;
     }
 
@@ -1535,6 +1587,9 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
       setUserNotification("Please provide assignment content (image or text).");
       return;
     }
+
+    const canProceed = await checkAndIncrementUsage('ASSIGNMENT');
+    if (!canProceed) return;
 
     setIsSolving(true);
     setSolution(null);
@@ -2099,6 +2154,33 @@ export default function App() {
   const [showAnalysisInRecord, setShowAnalysisInRecord] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  const checkAndIncrementUsage = async (type: keyof typeof LIMITS) => {
+    if (!user) {
+      setShowAuthModal(true);
+      return false;
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    const usageRef = doc(db, 'users', user.uid, 'usage', today);
+    const usageSnap = await getDoc(usageRef);
+    
+    const limits = isPremium ? LIMITS[type].PREMIUM : LIMITS[type].NORMAL;
+    const currentCount = usageSnap.exists() ? (usageSnap.data()[type] || 0) : 0;
+
+    if (currentCount >= (limits as any).DAILY) {
+      setUserNotification(`Daily limit reached for ${type}. Upgrade to Premium for higher limits!`);
+      return false;
+    }
+
+    try {
+      await setDoc(usageRef, { [type]: currentCount + 1 }, { merge: true });
+      return true;
+    } catch (e) {
+      console.error("Usage Tracking Error:", e);
+      return true; // Allow operation even if tracking fails temporarily
+    }
+  };
+
   // Auto-close auth modal when user is logged in
   useEffect(() => {
     if (user && showAuthModal) {
@@ -2590,7 +2672,28 @@ export default function App() {
 
   // --- \u{1F4DD} QUIZ STATE ---
   const [quizTopic, setQuizTopic] = useState('');
+  const [quizImages, setQuizImages] = useState<MediaFile[]>([]);
   const [shareQuizLink, setShareQuizLink] = useState<string | null>(null);
+
+  const handleQuizImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const maxImages = isPremium ? LIMITS.QUIZ.PREMIUM.IMAGES : LIMITS.QUIZ.NORMAL.IMAGES;
+    if (quizImages.length + files.length > maxImages) {
+      setUserNotification(`Limit reached: ${isPremium ? 'Premium' : 'Free'} users can only upload ${maxImages} image(s) for quiz generation.`);
+      return;
+    }
+    const mapped = files.map(f => ({
+      id: Math.random().toString(36).substr(2, 11),
+      file: f,
+      preview: URL.createObjectURL(f),
+      type: 'image' as const
+    }));
+    setQuizImages(prev => [...prev, ...mapped]);
+  };
+
+  const removeQuizImage = (id: string) => {
+    setQuizImages(prev => prev.filter(img => img.id !== id));
+  };
   const [quizDifficulty, setQuizDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | 'Professional'>('Medium');
   const [quizQuestionCount, setQuizQuestionCount] = useState(25);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
@@ -4873,6 +4976,9 @@ ${session.fullAnalysis}
         setIsStopping(false);
       }
     } else {
+      const canProceed = await checkAndIncrementUsage('RECORD');
+      if (!canProceed) return;
+
       audioChunksRef.current = [];
       setTranscriptionNotes('');
       const newSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -4938,7 +5044,17 @@ ${session.fullAnalysis}
         recorder.start(1000); // Record in 1s chunks
         setIsRecording(true);
         setRecordingTime(0);
-        timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
+        timerRef.current = setInterval(() => {
+          setRecordingTime(p => {
+            const limits = isPremium ? LIMITS.RECORD.PREMIUM : LIMITS.RECORD.NORMAL;
+            if (p >= limits.DURATION) {
+              handleToggleRecording();
+              setUserNotification(`Time limit reached for your plan (${limits.DURATION / 60} mins). Saving now.`);
+              return p;
+            }
+            return p + 1;
+          });
+        }, 1000);
 
         // Start 5-second transcription interval sending full accumulated audio
         isStopRequested.current = false;
@@ -5006,58 +5122,46 @@ ${session.fullAnalysis}
     try {
       if (blob.size === 0) return;
       setIsTranscribing(true);
-      const aiInstance = getAiInstance();
-      const audioPart = await fileToGenerativePart(blob);
-      
-      const prompt = `
-        Transcribe the ATTACHED audio LITERALLY and ACCURATELY. 
-        
-        RULES:
-        1. Capture EVERY word exactly as spoken. Accuracy is the highest priority.
-        2. Remove ALL verbal fillers (e.g., "um", "uh", "you know", "like", "er").
-        3. If you cannot hear a word or sentence clearly, represent it as [unclear].
-        4. If you hear silence for more than 3 seconds, mark it as [silence].
-        5. Maintain the natural flow and tone of the speaker.
-        6. Clean up technical jargon if it was mispronounced, but keep the literal meaning.
-        
-        FORMATTING:
-        - Output ONLY the literal transcription text.
-        - DO NOT include headers like "# Transcription" or "## Notes".
-        - For ANY mathematical or scientific notation, use LaTeX: $ ... $ for inline and $$ ... $$ for blocks.
-      `;
 
-      const response = await aiInstance.models.generateContentStream({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: { parts: [audioPart, { text: prompt }] }
-      });
-
-      let streamedText = "";
-      for await (const chunk of response) {
-        streamedText += chunk.text || "";
-        if (streamedText.trim()) {
-           const cleaned = streamedText.trim();
-           setTranscriptionNotes(cleaned);
-           transcriptionNotesRef.current = cleaned;
+      const hf = getHfInstance();
+      if (!hf) {
+        // Fallback to Gemini if HF is not configured
+        const aiInstance = getAiInstance();
+        const audioPart = await fileToGenerativePart(blob);
+        const prompt = `Transcribe the attached audio literally and accurately. Output ONLY text. Use LaTeX $...$ for equations.`;
+        const response = await aiInstance.models.generateContent({
+          model: "gemini-3.1-flash-lite-preview",
+          contents: { parts: [audioPart, { text: prompt }] }
+        });
+        const text = response.text || "";
+        if (text.trim()) {
+          setTranscriptionNotes(text.trim());
+          transcriptionNotesRef.current = text.trim();
         }
+        return;
       }
 
-      // Final check/cleanup
-      const finalText = streamedText.trim();
-      const sessionId = currentRecordingSessionIdRef.current;
-      if (finalText && finalText !== " ...") {
-        setTranscriptionNotes(finalText);
-        transcriptionNotesRef.current = finalText;
-        // Auto-save to Firestore if we have a session ID
+      // Use Hugging Face Whisper
+      const transcription = await hf.automaticSpeechRecognition({
+        model: "openai/whisper-large-v3-turbo",
+        data: blob,
+      });
+
+      const text = transcription.text;
+      if (text && text.trim()) {
+        const cleaned = text.trim();
+        setTranscriptionNotes(cleaned);
+        transcriptionNotesRef.current = cleaned;
+        
+        const sessionId = currentRecordingSessionIdRef.current;
         if (user && sessionId) {
-           updateDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), { 
-             notes: finalText,
-             updatedAt: serverTimestamp()
-           }).catch(err => {
-             console.warn("Live transcription sync failed:", err);
-           });
+          updateDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), { 
+            notes: cleaned,
+            updatedAt: serverTimestamp()
+          }).catch(err => {
+            console.warn("Live transcription sync failed:", err);
+          });
         }
-      } else if (finalText === " ...") {
-        setTranscriptionNotes("_....");
       }
     } catch (err) {
       console.error("Transcription Error:", err);
@@ -5759,8 +5863,16 @@ ${session.fullAnalysis}
       setShowAuthModal(true);
       return;
     }
-    if (!quizTopic.trim()) {
-      setUserNotification("Please enter a topic first.");
+
+    const limits = isPremium ? LIMITS.QUIZ.PREMIUM : LIMITS.QUIZ.NORMAL;
+    const wordCount = quizTopic.split(/\s+/).filter(Boolean).length;
+    if (wordCount > limits.WORDS) {
+      setUserNotification(`Prompt limit reached: ${isPremium ? 'Premium' : 'Free'} users can only enter up to ${limits.WORDS} words per prompt.`);
+      return;
+    }
+
+    if (!quizTopic.trim() && quizImages.length === 0) {
+      setUserNotification("Please enter a topic or upload an image first.");
       return;
     }
 
@@ -5769,12 +5881,20 @@ ${session.fullAnalysis}
       return;
     }
 
+    const canProceed = await checkAndIncrementUsage('QUIZ');
+    if (!canProceed) return;
+
     setIsGeneratingQuiz(true);
     setQuizState('idle');
 
     try {
+      const aiInstance = getAiInstance();
+      const imageParts = await Promise.all(quizImages.map(img => fileToGenerativePart(img.file)));
+
       const prompt = `
-        Generate a ${quizQuestionCount}-question multiple choice quiz about "${quizTopic}".
+        Generate a ${quizQuestionCount}-question multiple choice quiz.
+        Topic/Context: "${quizTopic}".
+        ${quizImages.length > 0 ? "Analyze the attached image(s) to generate relevant academic questions." : ""}
         Difficulty Level: ${quizDifficulty}.
         
         CRITICAL: For ALL mathematical expressions, formulas, and scientific notation (like 2^2, powers, roots, scientific notation, etc.), 
@@ -5795,10 +5915,14 @@ ${session.fullAnalysis}
         }
       `;
 
-      const aiInstance = getAiInstance();
+      const contents: any[] = [{ text: prompt }];
+      imageParts.forEach(part => {
+        contents.push({ inlineData: part.inlineData });
+      });
+
       const response = await aiInstance.models.generateContent({
         model: FLASH_MODEL,
-        contents: { parts: [{ text: prompt }] },
+        contents: { parts: contents },
         config: {
           responseMimeType: "application/json",
           thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
@@ -7072,7 +7196,13 @@ ${session.fullAnalysis}
           {/* TOOLS SUB-SECTIONS CONTINUED */}
           {toolsSubTab === 'live' && (
             <motion.div key="live" initial={{opacity:0, scale: 0.95}} animate={{opacity:1, scale: 1}} exit={{opacity: 0}} className="fixed inset-0 z-[100]">
-               <GeminiLive onClose={() => setToolsSubTab('menu')} setUserNotification={setUserNotification} theme={theme} />
+                           <GeminiLive 
+                            onClose={() => setToolsSubTab('menu')} 
+                            setUserNotification={setUserNotification} 
+                            theme={theme}
+                            isPremium={isPremium}
+                            checkAndIncrementUsage={checkAndIncrementUsage}
+                          />
             </motion.div>
           )}
 
@@ -7103,8 +7233,40 @@ ${session.fullAnalysis}
                     ) : (
                       <>
                         <div>
-                          <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Topic</p>
-                          <input type="text" value={quizTopic} onChange={(e) => setQuizTopic(e.target.value)} placeholder="e.g. Quantum Physics, EEE 101..." className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all text-white" />
+                          <div className="flex items-center justify-between mb-2 ml-1">
+                            <p className="text-[10px] font-black text-white/30 uppercase">Topic or Analysis Context</p>
+                            <label className="cursor-pointer group flex items-center gap-1.5 px-2 py-1 bg-[#DC2626]/10 border border-[#DC2626]/20 rounded-lg hover:bg-[#DC2626]/20 transition-all">
+                              <Camera size={10} className="text-[#DC2626]" />
+                              <span className="text-[8px] font-black text-[#DC2626] uppercase">Snap/Upload</span>
+                              <input type="file" className="hidden" accept="image/*" multiple onChange={handleQuizImageUpload} />
+                            </label>
+                          </div>
+                          <div className="relative">
+                            <textarea 
+                              value={quizTopic} 
+                              onChange={(e) => setQuizTopic(e.target.value)} 
+                              placeholder="Describe the topic or ask AI to analyze the images below..." 
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#DC2626]/50 transition-all text-white min-h-[100px] resize-none"
+                            />
+                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                              <p className={`text-[8px] font-black uppercase ${quizTopic.split(/\s+/).filter(Boolean).length > (isPremium ? 150 : 30) ? 'text-red-500' : 'text-white/20'}`}>
+                                {quizTopic.split(/\s+/).filter(Boolean).length} / {isPremium ? 150 : 30} Words
+                              </p>
+                            </div>
+                          </div>
+
+                          {quizImages.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {quizImages.map(img => (
+                                <div key={img.id} className="relative group w-16 h-16 rounded-xl overflow-hidden border border-white/10">
+                                  <img src={img.preview} className="w-full h-full object-cover" />
+                                  <button onClick={() => removeQuizImage(img.id)} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
+                                    <Trash2 size={12} className="text-white" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
