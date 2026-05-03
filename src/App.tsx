@@ -1112,7 +1112,7 @@ const COMMON_COURSES: Course[] = [
   { code: 'BUS 101', name: 'Introduction to Business', description: 'The nature of business, entrepreneurship, organizational structures, and the functional areas of modern business.' }
 ];
 
-const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotification, setQuizTopic, setQuizQuestionCount, setQuizDifficulty, generateQuiz, setToolsSubTab, setQuizState }: any) => {
+const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotification, setQuizTopic, setQuizQuestionCount, setQuizDifficulty, generateQuiz, setToolsSubTab, setQuizState, checkAndIncrementUsage }: any) => {
   const [courseSearch, setCourseSearch] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [suggestedCourses, setSuggestedCourses] = useState<Course[]>([]);
@@ -1122,6 +1122,10 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
 
   const handleSearch = async () => {
     if (!courseSearch.trim()) return;
+
+    const canProceed = await checkAndIncrementUsage('QUIZ'); // Using QUIZ limit for search
+    if (!canProceed) return;
+
     setIsSearching(true);
     setSuggestedCourses([]);
     
@@ -1163,6 +1167,12 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
     setActiveCourseDesc(course.description); // Start with default or existing
 
     try {
+      const canProceed = await checkAndIncrementUsage('QUIZ');
+      if (!canProceed) {
+        setIsGeneratingDesc(false);
+        return;
+      }
+
       // Use Hugging Face for a "deeper" AI generated description as requested
       const hf = getHfInstance();
       const prompt = `Provide a detailed academic description (approx 100 words) for the university course ${course.code}: ${course.name}. Explain what students will learn.`;
@@ -1465,6 +1475,9 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
   };
 
   const analyzeTextWorking = async (stepIdx: number, text: string) => {
+    const canProceed = await checkAndIncrementUsage('ASSIGNMENT');
+    if (!canProceed) return;
+
     setUserWorkings(prev => ({
       ...prev,
       [stepIdx]: { ...prev[stepIdx], isAnalyzing: true, transcript: text }
@@ -1519,6 +1532,9 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
       setUserNotification("Please upload an image of your workings first.");
       return;
     }
+
+    const canProceed = await checkAndIncrementUsage('ASSIGNMENT');
+    if (!canProceed) return;
 
     setUserWorkings(prev => ({
       ...prev,
@@ -2176,7 +2192,7 @@ export default function App() {
       await setDoc(usageRef, { [type]: currentCount + 1 }, { merge: true });
       return true;
     } catch (e) {
-      console.error("Usage Tracking Error:", e);
+      handleFirestoreError(e, FirestoreOperation.WRITE, usageRef.path);
       return true; // Allow operation even if tracking fails temporarily
     }
   };
@@ -5976,6 +5992,9 @@ ${session.fullAnalysis}
       return;
     }
 
+    const canProceed = await checkAndIncrementUsage('QUIZ');
+    if (!canProceed) return;
+
     setIsGeneratingQuiz(true);
     
     try {
@@ -7791,6 +7810,7 @@ ${session.fullAnalysis}
                         finishedHistory={finishedHistory}
                         solution={activeAssignmentSolution}
                         setSolution={setActiveAssignmentSolution}
+                        checkAndIncrementUsage={checkAndIncrementUsage}
                       />
                     </motion.div>
                   )}
@@ -7812,6 +7832,7 @@ ${session.fullAnalysis}
                         setToolsSubTab={setToolsSubTab}
                         quizState={quizState}
                         setQuizState={setQuizState}
+                        checkAndIncrementUsage={checkAndIncrementUsage}
                       />
                     </motion.div>
                   )}
@@ -7821,6 +7842,7 @@ ${session.fullAnalysis}
                         theme={theme} 
                         setUserNotification={setUserNotification} 
                         onSaveHistory={handleSaveFacultyHistory}
+                        checkAndIncrementUsage={checkAndIncrementUsage}
                       />
                     </div>
                   )}
