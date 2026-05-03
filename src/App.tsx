@@ -2127,7 +2127,7 @@ export default function App() {
     localStorage.setItem('nsg_active_tab', activeTab);
   }, [activeTab]);
 
-  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'live' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses' | 'td' | 'notes'>(() => {
+  const [toolsSubTab, setToolsSubTab] = useState<'menu' | 'record' | 'live' | 'quiz' | 'exam' | 'faculty' | 'assignment' | 'courses' | 'td' | 'notebook'>(() => {
     return (localStorage.getItem('nsg_tools_subtab') as any) || 'menu';
   });
 
@@ -2730,7 +2730,7 @@ export default function App() {
     return title;
   };
 
-  // Notes state
+  // Notebook state
   const [userNotes, setUserNotes] = useState<any[]>([]);
   const [selectedNote, setSelectedNote] = useState<any>(null);
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -2738,6 +2738,10 @@ export default function App() {
   const [redoStack, setRedoStack] = useState<string[]>([]);
   const [isUploadingNoteFile, setIsUploadingNoteFile] = useState(false);
   const [notePreviewMode, setNotePreviewMode] = useState(false);
+  const [isPodcastActive, setIsPodcastActive] = useState(false);
+  const [podcastDialogue, setPodcastDialogue] = useState<{ char: 'Omni' | 'Zeal', text: string }[]>([]);
+  const [isGeneratingPodcast, setIsGeneratingPodcast] = useState(false);
+  const [isTeacherMode, setIsTeacherMode] = useState(false);
   const transcriptionNotesRef = useRef('');
 
   // Helper to get unfinished items
@@ -3019,6 +3023,118 @@ export default function App() {
     return new TextEncoder().encode(str).length;
   };
 
+  const handlePodcastInput = async (input: string) => {
+    if (!input.trim() || !user || isGeneratingPodcast) return;
+    
+    const newUserMsg = { char: 'User' as any, text: input };
+    setPodcastDialogue(prev => [...prev, newUserMsg]);
+    setIsGeneratingPodcast(true);
+
+    try {
+      const ai = getAiInstance();
+      const context = selectedNote.content || "";
+      const history = podcastDialogue.map(d => `${d.char}: ${d.text}`).join('\n');
+      
+      let systemPrompt = "";
+      if (isTeacherMode) {
+        systemPrompt = `You are Omni, a brilliant academic teacher. The user is asking about the following source content: "${context}". 
+        Answer professionally, clearly, and like a university professor. Keep it engaging. You are the sole teacher here.
+        Previous history: ${history}`;
+      } else {
+        systemPrompt = `You are two distinct AIs:
+        1. Omni: Structured, calm, highly intelligent academic mentor. USES LIGITIMATE ACADEMIC TONE.
+        2. Zeal: Energetic, curious, student-like AI who loves making connections. USES RADIANT, ENTHUSIASTIC TONE.
+        
+        They are discussing this source content: "${context}". 
+        The user just said: "${input}".
+        
+        RULES:
+        - If the user addresses one specifically (e.g., "Omni...", "Hey Zeal"), ONLY that AI should respond primarily.
+        - If the user asks a general question, they can both chime in with their respective styles.
+        - ALWAYS format as:
+          CHAR: [text]
+        - Keep responses concise but insightful.
+        Previous history: ${history}`;
+      }
+
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: [{ role: 'user', parts: [{ text: systemPrompt + "\nUser Input: " + input }] }]
+      });
+      const text = response.text || "";
+
+      const lines = text.split('\n').filter(l => l.trim());
+      const newEntries: any[] = [];
+      
+      lines.forEach(line => {
+        if (line.startsWith('Omni:') || line.startsWith('OMNI:')) {
+          newEntries.push({ char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, '') });
+        } else if (line.startsWith('Zeal:') || line.startsWith('ZEAL:')) {
+          newEntries.push({ char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, '') });
+        } else {
+          // Default to Omni if in teacher mode, or the last speaker
+          newEntries.push({ char: isTeacherMode ? 'Omni' : 'Omni', text: line });
+        }
+      });
+
+      setPodcastDialogue(prev => [...prev, ...newEntries]);
+    } catch (err) {
+      console.error("Podcast Input Error:", err);
+      setUserNotification("Deep Brain communication failed.");
+    } finally {
+      setIsGeneratingPodcast(false);
+    }
+  };
+
+  const generatePodcastDiscussion = async (sourceContent: string) => {
+    if (!sourceContent || isGeneratingPodcast) return;
+    setIsGeneratingPodcast(true);
+
+    try {
+      const ai = getAiInstance();
+      const prompt = `Act as two AIs, Omni and Zeal. 
+      Omni is a calm, highly intelligent academic mentor. 
+      Zeal is an energetic student who loves connecting ideas and asking 'what if'.
+      
+      Have a 6-turn high-level academic discussion about the following content:
+      "${sourceContent}"
+      
+      Format your response exactly like this:
+      Omni: [text]
+      Zeal: [text]
+      Omni: [text]
+      ... and so on. Make it sound like a real intellectual podcast. Limit to 6 turns total.`;
+
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      });
+      const text = response.text || "";
+
+      const lines = text.split('\n').filter(l => l.trim());
+      const newDialogue: any[] = [];
+
+      lines.forEach(line => {
+        if (line.startsWith('Omni:') || line.startsWith('OMNI:')) {
+          newDialogue.push({ char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, '') });
+        } else if (line.startsWith('Zeal:') || line.startsWith('ZEAL:')) {
+          newDialogue.push({ char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, '') });
+        }
+      });
+
+      if (newDialogue.length > 0) {
+        setPodcastDialogue(newDialogue);
+      } else {
+        setUserNotification("Failed to parse discussion.");
+      }
+    } catch (err) {
+      console.error("Podcast Generation Error:", err);
+      setUserNotification("Deep Brain analysis failed.");
+    } finally {
+      setIsGeneratingPodcast(false);
+    }
+  };
+
   const saveNote = async (content: string, title?: string, noteId?: string, attachments?: any[]) => {
     if (!user) return null;
     
@@ -3164,7 +3280,7 @@ export default function App() {
     }, 50);
   };
 
-  const uploadNoteFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadNoteFile = async (e: React.ChangeEvent<HTMLInputElement>, fileTypeFilter: 'image' | 'audio' | 'doc') => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
     
@@ -3178,6 +3294,11 @@ export default function App() {
         if (file.type.startsWith('image/')) {
           base64 = await compressImage(base64, 800, 800, 0.6);
           finalUrl = await handleCloudinaryUpload(base64) || base64;
+        } else {
+          // For audio and docs, we could use Cloudinary or just keep base64 if small, 
+          // but Cloudinary handles some non-image types too.
+          const uploaded = await handleCloudinaryUpload(base64);
+          if (uploaded) finalUrl = uploaded;
         }
 
         const newAttachment = {
@@ -3189,34 +3310,37 @@ export default function App() {
         
         const updatedAttachments = [...(selectedNote.attachments || []), newAttachment];
         
+        let markdownTag = "";
         if (file.type.startsWith('image/')) {
-          const imageMarkdown = `\n![${file.name}](${finalUrl})\n`;
-          const textarea = document.getElementById('note-main-textarea') as HTMLTextAreaElement;
-          const currentContent = selectedNote.content || '';
-          
-          let updatedContent: string;
-          if (textarea) {
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            updatedContent = currentContent.substring(0, start) + imageMarkdown + currentContent.substring(end);
-          } else {
-            updatedContent = currentContent + imageMarkdown;
-          }
-
-          handleNoteContentChange(updatedContent);
-          setSelectedNote({ ...selectedNote, attachments: updatedAttachments, content: updatedContent });
-          setUserNotification(`Image "${file.name}" inserted.`);
+          markdownTag = `\n![${file.name}](${finalUrl})\n`;
+        } else if (file.type.startsWith('audio/')) {
+          markdownTag = `\n> \u{1F50A} **Audio Source Attached:** [${file.name}](${finalUrl})\n`;
         } else {
-          setSelectedNote({ ...selectedNote, attachments: updatedAttachments });
-          setUserNotification(`File "${file.name}" added to note.`);
+          markdownTag = `\n> \u{1F4D4} **Document Attached:** [${file.name}](${finalUrl})\n`;
         }
+
+        const textarea = document.getElementById('note-main-textarea') as HTMLTextAreaElement;
+        const currentContent = selectedNote.content || '';
+        
+        let updatedContent: string;
+        if (textarea) {
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          updatedContent = currentContent.substring(0, start) + markdownTag + currentContent.substring(end);
+        } else {
+          updatedContent = currentContent + markdownTag;
+        }
+
+        handleNoteContentChange(updatedContent);
+        setSelectedNote({ ...selectedNote, attachments: updatedAttachments, content: updatedContent });
+        setUserNotification(`${file.name} integrated.`);
         
         setIsUploadingNoteFile(false);
       };
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("Upload error:", err);
-      setUserNotification("Failed to upload file.");
+      setUserNotification("Failed to integrate source.");
       setIsUploadingNoteFile(false);
     }
   };
@@ -6557,6 +6681,7 @@ ${session.fullAnalysis}
                       { id: 'faculty', title: 'Faculty Specials', icon: GraduationCap, color: 'from-blue-600 to-indigo-400', desc: 'Department Specific' },
                       { id: 'assignment', title: 'Assignment Solver', icon: BookOpen, color: 'from-purple-600 to-pink-400', desc: 'Step-by-Step AI Solutions' },
                       { id: 'courses', title: 'Courses Tool', icon: BookOpen, color: 'from-emerald-600 to-teal-400', desc: 'Course-Specific Learning' },
+                      { id: 'notebook', title: 'Notebook Tool', icon: FileText, color: 'from-amber-600 to-yellow-400', desc: 'AI-Powered Sources' },
                       { id: 'whatsapp', title: 'Omni on WHATSAPP', icon: WhatsAppIcon, color: 'from-green-600 to-green-400', desc: '+2349064470122' }
                     ].map((tool) => (
                       <button 
@@ -6583,7 +6708,6 @@ ${session.fullAnalysis}
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 text-center">Upcoming Tools</p>
                     <div className="grid grid-cols-2 gap-4 opacity-70">
                       {[
-                        { id: 'notes', title: 'Notes Tool', icon: FileText, color: 'from-amber-600 to-yellow-400', desc: 'Auto-Saved Lectures' },
                         { id: 'td', title: 'TD Tool', icon: BoxSelect, color: 'from-slate-500 to-slate-600', desc: '2D Projection Engine' }
                       ].map((tool) => (
                         <button 
@@ -6960,8 +7084,8 @@ ${session.fullAnalysis}
                     </motion.div>
                   )}
 
-                  {toolsSubTab === 'notes' && (
-                    <motion.div key="notes" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex flex-col bg-[#0A0F1C]">
+                  {toolsSubTab === 'notebook' && (
+                    <motion.div key="notebook" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex flex-col bg-[#0A0F1C]">
                        {/* Header - Flushed to top */}
                        <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0A0F1C]/80 backdrop-blur-md z-20 shrink-0">
                         {!selectedNote && (
@@ -6978,16 +7102,25 @@ ${session.fullAnalysis}
                           {!selectedNote ? (
                             <button 
                               onClick={() => {
-                                setSelectedNote({ title: `Draft ${new Date().toLocaleTimeString()}`, content: '', attachments: [], createdAt: new Date() });
+                                setSelectedNote({ title: `Notebook ${new Date().toLocaleTimeString()}`, content: '', attachments: [], createdAt: new Date() });
                                 setNoteHistory([]);
                                 setRedoStack([]);
+                                setIsPodcastActive(false);
                               }}
                               className="bg-[#DC2626] text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-[#DC2626]/20 hover:scale-105 active:scale-95 transition-all text-nowrap"
                             >
-                              <Plus size={14} /> New
+                              <Plus size={14} /> New Source
                             </button>
                           ) : (
                             <div className="flex items-center gap-2">
+                              {!isPodcastActive && (
+                                <button 
+                                  onClick={() => setIsPodcastActive(true)}
+                                  className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-purple-500/20"
+                                >
+                                  <Mic size={14} /> Deep Brain
+                                </button>
+                              )}
                               <button onClick={undoNote} disabled={noteHistory.length === 0} className={`p-2 bg-white/5 rounded-xl transition-all ${noteHistory.length === 0 ? 'text-white/5' : 'text-white/40 hover:text-white'}`} title="Undo"><RotateCcw size={16} /></button>
                               <button onClick={redoNote} disabled={redoStack.length === 0} className={`p-2 bg-white/5 rounded-xl transition-all ${redoStack.length === 0 ? 'text-white/5' : 'text-white/40 hover:text-white'}`} title="Redo" style={{ transform: 'scaleX(-1)' }}><RotateCcw size={16} /></button>
                               <div className="w-px h-6 bg-white/10 mx-1" />
@@ -6995,7 +7128,7 @@ ${session.fullAnalysis}
                                 onClick={async () => {
                                   const success = await saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments);
                                   if (success) {
-                                    setUserNotification("Saved to Vault!");
+                                    setUserNotification("Saved to Notebook!");
                                     setSelectedNote(null);
                                   } else {
                                     setUserNotification("Sync failed.");
@@ -7010,10 +7143,12 @@ ${session.fullAnalysis}
                                 onClick={async () => {
                                   if (selectedNote) {
                                     await saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments);
-                                    setUserNotification("Saved to Vault!");
+                                    setUserNotification("Saved to Notebook!");
                                     setSelectedNote(null);
+                                    setIsPodcastActive(false);
                                   } else {
                                     setSelectedNote(null);
+                                    setIsPodcastActive(false);
                                   }
                                 }} 
                                 className="p-2 bg-white/5 rounded-xl text-white/40 hover:text-red-500 transition-all"
@@ -7027,141 +7162,244 @@ ${session.fullAnalysis}
 
                             {selectedNote ? (
                               <div className="flex flex-col flex-1 overflow-hidden">
-                                {/* Formatting Toolbar */}
-                                <div className="flex items-center gap-2 p-2 bg-white/2 border-b border-white/5 overflow-x-auto no-scrollbar z-10 shrink-0">
-                                   <button onClick={() => setNotePreviewMode(!notePreviewMode)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black transition-all ${notePreviewMode ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-                                      {notePreviewMode ? 'EDIT' : 'PREVIEW'}
-                                   </button>
-                                   <div className="w-px h-4 bg-white/10" />
-                                   {!notePreviewMode && (
-                                     <>
-                                       <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-blue-400 transition-all flex items-center gap-2">
-                                          <ImageIcon size={12} /> {isUploadingNoteFile ? '...' : 'INSERT IMAGE'}
-                                          <input type="file" className="hidden" onChange={uploadNoteFile} disabled={isUploadingNoteFile} accept="image/*" />
-                                       </label>
-                                       <div className="w-px h-4 bg-white/10" />
-                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('**', '**'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BOLD</button>
-                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('*', '*'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] italic text-white hover:text-[#DC2626] transition-all">ITALIC</button>
-                                       <div className="w-px h-4 bg-white/10" />
-                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('\n- '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BULLETS</button>
-                                       <button onMouseDown={(e) => { e.preventDefault(); insertText('\n1. '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">NUMBERS</button>
-                                     </>
-                                   )}
-                                </div>
-
-                                <div 
-                                  ref={scrollContainerRef}
-                                  onScroll={handleNoteScroll}
-                                  className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar relative bg-[#0A0F1C]"
-                                >
-                                   {notePreviewMode ? (
-                                     <div className="space-y-6 relative z-10">
-                                       <h1 className="text-2xl font-black text-white uppercase tracking-tighter">{selectedNote.title || 'Untitled Note'}</h1>
-                                       <div className="markdown-body prose prose-invert prose-p:text-white/70 prose-headings:text-white prose-strong:text-[#DC2626] prose-img:rounded-3xl max-w-none text-white/80 text-sm leading-relaxed">
-                                         <MarkdownRenderer content={selectedNote.content || "_No content yet._"} />
-                                       </div>
-                                     </div>
-                                   ) : (
-                                     <>
-                                       <input 
-                                         value={selectedNote.title} 
-                                         onChange={(e) => setSelectedNote({...selectedNote, title: e.target.value})}
-                                         className="bg-transparent border-none text-xl font-black text-white uppercase tracking-tighter outline-none w-full mb-8 placeholder:text-white/10 relative z-10"
-                                         placeholder="Untitled Note..."
-                                       />
-                                       
-                                       <div className="flex-1 pb-32 relative">
-                                          <textarea
-                                            id="note-main-textarea"
-                                            value={selectedNote.content || ''}
-                                            onChange={(e) => handleNoteContentChange(e.target.value)}
-                                            onFocus={(e) => {
-                                              lastFocusedBlock.current = { id: 'main', start: e.target.selectionStart, end: e.target.selectionEnd };
-                                            }}
-                                            onBlur={(e) => {
-                                              lastFocusedBlock.current = { id: 'main', start: e.target.selectionStart, end: e.target.selectionEnd };
-                                            }}
-                                            className="w-full bg-transparent border-none text-white/80 text-sm leading-[1.75rem] outline-none resize-none font-mono placeholder:text-white/5 p-0 min-h-[60vh] pb-20"
-                                            placeholder="Start writing..."
-                                            onInput={(e) => {
-                                              const target = e.target as HTMLTextAreaElement;
-                                              // Stable height update
-                                              target.style.height = 'auto';
-                                              target.style.height = target.scrollHeight + 'px';
-                                            }}
-                                            ref={(el) => {
-                                              if (el) {
-                                                el.style.height = 'auto';
-                                                el.style.height = el.scrollHeight + 'px';
+                                {isPodcastActive ? (
+                                  <div className="flex-1 flex flex-col bg-[#050811] overflow-hidden">
+                                    <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                                      <div className="flex items-center gap-4">
+                                        <button onClick={() => setIsPodcastActive(false)} className="text-white/40 hover:text-white"><ArrowLeft size={18} /></button>
+                                        <div>
+                                          <h3 className="text-xs font-black text-white uppercase tracking-widest">Deep Brain: Omni & Zeal</h3>
+                                          <p className="text-[8px] text-white/40 font-bold uppercase">Multi-AI Discussion</p>
+                                        </div>
+                                      </div>
+                                      <button 
+                                        onClick={() => setIsTeacherMode(!isTeacherMode)}
+                                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black transition-all ${isTeacherMode ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white'}`}
+                                      >
+                                        {isTeacherMode ? 'TEACHER MODE ON' : 'ENABLE TEACHER'}
+                                      </button>
+                                    </div>
+                                    
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                                      {podcastDialogue.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6">
+                                          <div className="relative">
+                                            <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full" />
+                                            <div className="relative w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center border-4 border-white/10 shadow-2xl">
+                                              <Mic size={40} className="text-white" />
+                                            </div>
+                                          </div>
+                                          <div className="space-y-2">
+                                            <h4 className="text-lg font-black text-white uppercase tracking-tight">Ready to listen?</h4>
+                                            <p className="text-xs text-white/40 max-w-xs mx-auto">Omni and Zeal will analyze your source content and start a deep discussion about it.</p>
+                                          </div>
+                                          <button 
+                                            onClick={() => generatePodcastDiscussion(selectedNote.content)}
+                                            disabled={isGeneratingPodcast}
+                                            className="px-8 py-4 bg-white text-black font-black rounded-2xl text-[10px] uppercase tracking-widest hover:scale-110 active:scale-95 transition-all disabled:opacity-50"
+                                          >
+                                            {isGeneratingPodcast ? 'Analyzing Content...' : 'Start Podcast'}
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        podcastDialogue.map((d, i) => (
+                                          <motion.div 
+                                            key={i} 
+                                            initial={{ opacity: 0, x: d.char === 'Omni' ? -20 : 20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            className={`flex gap-3 ${d.char === 'Omni' ? 'flex-row' : 'flex-row-reverse'}`}
+                                          >
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border border-white/10 font-black text-[10px] ${d.char === 'Omni' ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                                              {d.char[0]}
+                                            </div>
+                                            <div className={`max-w-[80%] p-3 rounded-2xl text-xs leading-relaxed ${theme === 'dark' ? (d.char === 'Omni' ? 'bg-blue-600/10 text-blue-100 border border-blue-600/20' : 'bg-purple-600/10 text-purple-100 border border-purple-600/20') : 'bg-white border-slate-200'}`}>
+                                              <span className="block text-[8px] font-black uppercase tracking-widest mb-1 opacity-50">{d.char}</span>
+                                              {d.text}
+                                            </div>
+                                          </motion.div>
+                                        ))
+                                      )}
+                                    </div>
+                                    
+                                    <div className="p-4 border-t border-white/5 bg-[#050811]">
+                                      <div className="relative">
+                                        <input 
+                                          id="podcast-chat-input"
+                                          placeholder={isTeacherMode ? "Ask Teacher Omni a question..." : "Ask Omni or Zeal..."}
+                                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-xs text-white outline-none focus:border-blue-500/50 transition-all placeholder:text-white/20"
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              const target = e.target as HTMLInputElement;
+                                              if (target.value.trim()) {
+                                                handlePodcastInput(target.value);
+                                                target.value = '';
+                                              }
+                                            }
+                                          }}
+                                        />
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                                          <button 
+                                            onClick={() => {
+                                              const input = document.getElementById('podcast-chat-input') as HTMLInputElement;
+                                              if (input && input.value.trim()) {
+                                                handlePodcastInput(input.value);
+                                                input.value = '';
                                               }
                                             }}
-                                          />
+                                            className="p-2 text-white/20 hover:text-white transition-all"
+                                          >
+                                            <Send size={16} />
+                                          </button>
                                         </div>
-                                        {/* REMOVED BLOCK MAP */}
-                                        <div className="hidden">
-                                         {noteBlocks.map((block, idx) => (
-                                           <div key={block.id} className="group relative">
-                                             {block.type === 'text' ? (
-                                               <textarea
-                                                 data-block-id={block.id}
-                                                 value={block.content}
-                                                 onChange={(e) => updateBlock(block.id, e.target.value)}
-                                                 onFocus={(e) => {
-                                                   lastFocusedBlock.current = { id: block.id, start: e.target.selectionStart, end: e.target.selectionEnd };
-                                                 }}
-                                                 onBlur={(e) => {
-                                                   lastFocusedBlock.current = { id: block.id, start: e.target.selectionStart, end: e.target.selectionEnd };
-                                                 }}
-                                                 className="w-full bg-transparent border-none text-white/80 text-sm leading-[1.75rem] outline-none resize-none font-mono placeholder:text-white/5 p-0"
-                                                 placeholder={idx === 0 ? "Start typing..." : ""}
-                                                 style={{ height: 'auto' }}
-                                                 onInput={(e) => {
-                                                   const target = e.target as HTMLTextAreaElement;
-                                                   target.style.height = 'auto'; 
-                                                   target.style.height = target.scrollHeight + 'px';
-                                                 }}
-                                                 ref={(el) => {
-                                                   if (el) {
-                                                     el.style.height = 'auto';
-                                                     el.style.height = el.scrollHeight + 'px';
-                                                   }
-                                                 }}
-                                               />
-                                             ) : (
-                                               <div className="relative rounded-2xl overflow-hidden border border-white/10 group/img max-w-2xl mx-auto my-4 shadow-2xl">
-                                                  <img src={block.url} alt={block.alt} className="w-full h-auto block" />
-                                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                                                    <button onClick={() => removeBlock(block.id)} className="p-3 bg-red-600 text-white rounded-full hover:scale-110 transition-all">
-                                                      <Trash2 size={20} />
-                                                    </button>
-                                                  </div>
-                                               </div>
-                                             )}
-                                           </div>
-                                         ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                <div className="flex flex-col flex-1 overflow-hidden">
+                                  {/* Formatting Toolbar */}
+                                  <div className="flex items-center gap-2 p-2 bg-white/2 border-b border-white/5 overflow-x-auto no-scrollbar z-10 shrink-0">
+                                     <button onClick={() => setNotePreviewMode(!notePreviewMode)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black transition-all ${notePreviewMode ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}>
+                                        {notePreviewMode ? 'EDIT' : 'PREVIEW'}
+                                     </button>
+                                     <div className="w-px h-4 bg-white/10" />
+                                     {!notePreviewMode && (
+                                       <>
+                                         <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-blue-400 transition-all flex items-center gap-2">
+                                            <ImageIcon size={12} /> {isUploadingNoteFile ? '...' : 'IMAGE'}
+                                            <input type="file" className="hidden" onChange={(e) => uploadNoteFile(e, 'image')} disabled={isUploadingNoteFile} accept="image/*" />
+                                         </label>
+                                         <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-green-400 transition-all flex items-center gap-2">
+                                            <Mic size={12} /> {isUploadingNoteFile ? '...' : 'AUDIO'}
+                                            <input type="file" className="hidden" onChange={(e) => uploadNoteFile(e, 'audio')} disabled={isUploadingNoteFile} accept="audio/*" />
+                                         </label>
+                                         <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-yellow-400 transition-all flex items-center gap-2">
+                                            <FileText size={12} /> {isUploadingNoteFile ? '...' : 'DOC'}
+                                            <input type="file" className="hidden" onChange={(e) => uploadNoteFile(e, 'doc')} disabled={isUploadingNoteFile} accept=".pdf,.doc,.docx,.txt" />
+                                         </label>
+                                         <div className="w-px h-4 bg-white/10" />
+                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('**', '**'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BOLD</button>
+                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('*', '*'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] italic text-white hover:text-[#DC2626] transition-all">ITALIC</button>
+                                         <div className="w-px h-4 bg-white/10" />
+                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('\n- '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BULLETS</button>
+                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('\n1. '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">NUMBERS</button>
+                                       </>
+                                     )}
+                                  </div>
+
+                                  <div 
+                                    ref={scrollContainerRef}
+                                    onScroll={handleNoteScroll}
+                                    className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar relative bg-[#0A0F1C]"
+                                  >
+                                     {notePreviewMode ? (
+                                       <div className="space-y-6 relative z-10">
+                                         <h1 className="text-2xl font-black text-white uppercase tracking-tighter">{selectedNote.title || 'Untitled Source'}</h1>
+                                         <div className="markdown-body prose prose-invert prose-p:text-white/70 prose-headings:text-white prose-strong:text-[#DC2626] prose-img:rounded-3xl max-w-none text-white/80 text-sm leading-relaxed">
+                                           <MarkdownRenderer content={selectedNote.content || "_No source content yet._"} />
+                                         </div>
                                        </div>
-                                     </>
-                                   )}
-                                </div>
+                                     ) : (
+                                       <>
+                                         <input 
+                                           value={selectedNote.title} 
+                                           onChange={(e) => setSelectedNote({...selectedNote, title: e.target.value})}
+                                           className="bg-transparent border-none text-xl font-black text-white uppercase tracking-tighter outline-none w-full mb-8 placeholder:text-white/10 relative z-10"
+                                           placeholder="Source Title..."
+                                         />
+                                         
+                                         <div className="flex-1 pb-32 relative">
+                                            <textarea
+                                              id="note-main-textarea"
+                                              value={selectedNote.content || ''}
+                                              onChange={(e) => handleNoteContentChange(e.target.value)}
+                                              onFocus={(e) => {
+                                                lastFocusedBlock.current = { id: 'main', start: e.target.selectionStart, end: e.target.selectionEnd };
+                                              }}
+                                              onBlur={(e) => {
+                                                lastFocusedBlock.current = { id: 'main', start: e.target.selectionStart, end: e.target.selectionEnd };
+                                              }}
+                                              className="w-full bg-transparent border-none text-white/80 text-sm leading-[1.75rem] outline-none resize-none font-mono placeholder:text-white/5 p-0 min-h-[60vh] pb-20"
+                                              placeholder="Start writing or typing..."
+                                              onInput={(e) => {
+                                                const target = e.target as HTMLTextAreaElement;
+                                                // Stable height update
+                                                target.style.height = 'auto';
+                                                target.style.height = target.scrollHeight + 'px';
+                                              }}
+                                              ref={(el) => {
+                                                if (el) {
+                                                  el.style.height = 'auto';
+                                                  el.style.height = el.scrollHeight + 'px';
+                                                }
+                                              }}
+                                            />
+                                          </div>
+                                         <div className="hidden">
+                                          {noteBlocks.map((block, idx) => (
+                                            <div key={block.id} className="group relative">
+                                              {block.type === 'text' ? (
+                                                <textarea
+                                                  data-block-id={block.id}
+                                                  value={block.content}
+                                                  onChange={(e) => updateBlock(block.id, e.target.value)}
+                                                  onFocus={(e) => {
+                                                    lastFocusedBlock.current = { id: block.id, start: e.target.selectionStart, end: e.target.selectionEnd };
+                                                  }}
+                                                  onBlur={(e) => {
+                                                    lastFocusedBlock.current = { id: block.id, start: e.target.selectionStart, end: e.target.selectionEnd };
+                                                  }}
+                                                  className="w-full bg-transparent border-none text-white/80 text-sm leading-[1.75rem] outline-none resize-none font-mono placeholder:text-white/5 p-0"
+                                                  placeholder={idx === 0 ? "Start typing..." : ""}
+                                                  style={{ height: 'auto' }}
+                                                  onInput={(e) => {
+                                                    const target = e.target as HTMLTextAreaElement;
+                                                    target.style.height = 'auto'; 
+                                                    target.style.height = target.scrollHeight + 'px';
+                                                  }}
+                                                  ref={(el) => {
+                                                    if (el) {
+                                                      el.style.height = 'auto';
+                                                      el.style.height = el.scrollHeight + 'px';
+                                                    }
+                                                  }}
+                                                />
+                                              ) : (
+                                                <div className="relative rounded-2xl overflow-hidden border border-white/10 group/img max-w-2xl mx-auto my-4 shadow-2xl">
+                                                   <img src={block.url} alt={block.alt} className="w-full h-auto block" />
+                                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                                                     <button onClick={() => removeBlock(block.id)} className="p-3 bg-red-600 text-white rounded-full hover:scale-110 transition-all">
+                                                       <Trash2 size={20} />
+                                                     </button>
+                                                   </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
 
-                                {/* Floating Scroll Button */}
-                                <AnimatePresence>
-                                  {noteScrollPos && (
-                                    <motion.button
-                                      initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                                      exit={{ opacity: 0, scale: 0.8, y: 20 }}
-                                      onClick={() => scrollToPosition(noteScrollPos)}
-                                      className="absolute bottom-20 right-6 z-50 w-12 h-12 rounded-full bg-[#DC2626] text-white shadow-xl shadow-[#DC2626]/40 flex items-center justify-center border-2 border-white/10 hover:scale-110 active:scale-95 transition-all"
-                                    >
-                                      {noteScrollPos === 'top' ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
-                                    </motion.button>
-                                  )}
-                                </AnimatePresence>
+                                  {/* Floating Scroll Button */}
+                                  <AnimatePresence>
+                                    {noteScrollPos && (
+                                      <motion.button
+                                        initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.8, y: 20 }}
+                                        onClick={() => scrollToPosition(noteScrollPos)}
+                                        className="absolute bottom-20 right-6 z-50 w-12 h-12 rounded-full bg-[#DC2626] text-white shadow-xl shadow-[#DC2626]/40 flex items-center justify-center border-2 border-white/10 hover:scale-110 active:scale-95 transition-all"
+                                      >
+                                        {noteScrollPos === 'top' ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                                      </motion.button>
+                                    )}
+                                  </AnimatePresence>
 
-                                <div className="p-3 border-t border-white/5 bg-white/2 backdrop-blur-md flex items-center justify-between shrink-0">
-                                   <p className="text-[7px] font-bold text-white/20 uppercase tracking-[0.3em]">Markdown Editor Active</p>
+                                  <div className="p-3 border-t border-white/5 bg-white/2 backdrop-blur-md flex items-center justify-between shrink-0">
+                                     <p className="text-[7px] font-bold text-white/20 uppercase tracking-[0.3em]">Notebook AI Engine Active</p>
+                                  </div>
                                 </div>
+                                )}
                               </div>
                             ) : (
                         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 custom-scrollbar bg-[#0A0F1C]">
@@ -7169,7 +7407,7 @@ ${session.fullAnalysis}
                             {userNotes.length === 0 ? (
                               <div className="col-span-full py-20 text-center opacity-10 space-y-6">
                                 <FileText size={64} className="mx-auto" />
-                                <p className="text-[10px] font-black uppercase tracking-[0.4em]">Vault Empty</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.4em]">Notebook Empty</p>
                               </div>
                             ) : (
                               userNotes.map(note => (
@@ -7179,6 +7417,7 @@ ${session.fullAnalysis}
                                     setSelectedNote(note);
                                     setNoteHistory([]);
                                     setRedoStack([]);
+                                    setIsPodcastActive(false);
                                   }}
                                   className={`p-2 rounded-xl border transition-all cursor-pointer relative group overflow-hidden ${theme === 'dark' ? 'bg-[#151B2B] border-white/10 hover:border-[#DC2626]/50 shadow-xl' : 'bg-white border-slate-200 shadow-sm'}`}
                                 >
@@ -7190,7 +7429,7 @@ ${session.fullAnalysis}
                                   <div className="flex items-start justify-between relative z-10 w-full h-full">
                                     <div className="space-y-0.5 w-full">
                                       <h4 className="text-[9px] font-black text-white uppercase tracking-tight line-clamp-1 group-hover:text-[#DC2626] transition-colors">
-                                        {note.title || 'Draft'}
+                                        {note.title || 'Untitled Source'}
                                       </h4>
                                       <p className="text-[7px] text-white/40 line-clamp-2 leading-tight">
                                         {note.content ? note.content.replace(/[#*`_!\[\]\(\)]/g, '').substring(0, 50) : '...'}
