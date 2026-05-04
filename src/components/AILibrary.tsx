@@ -254,7 +254,7 @@ export const AILibrary: React.FC<{
       .replace(/ \\\]/g, ' $$');
 
     return (
-      <div className="prose prose-invert prose-xs max-w-none markdown-body">
+      <div className="prose prose-invert prose-xs max-w-none markdown-body select-none">
         <ReactMarkdown 
           remarkPlugins={[remarkGfm, remarkMath]} 
           rehypePlugins={[rehypeKatex]}
@@ -1248,7 +1248,7 @@ export const AILibrary: React.FC<{
                   </div>
                   <div>
                     <h2 className="text-sm font-black uppercase tracking-tight">Transcribe Tool</h2>
-                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Text â†” Phonetic Sounds (/IPA/)</p>
+                    <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Text ↔ Phonetic Sounds (/IPA/)</p>
                   </div>
                 </div>
 
@@ -1271,8 +1271,8 @@ export const AILibrary: React.FC<{
                         try {
                           const ai = getAiInstance();
                           const prompt = `Convert this text to phonetic (IPA) transcription. 
-                          Every single word sound must be enclosed in forward slashes, e.g. /kaÉªnd/. 
-                          Full sentences should look like: /Ã°Éªs/ /Éªz/ /É™/ /test/.
+                          Every single word sound must be enclosed in forward slashes, e.g. /kaɪnd/. 
+                          Full sentences should look like: /ðɪs/ /ɪz/ /ə/ /test/.
                           Return ONLY the transcribed version.
                           Text: ${transcribeInput}`;
                           const result = await ai.models.generateContent({
@@ -1297,7 +1297,7 @@ export const AILibrary: React.FC<{
                         try {
                           const ai = getAiInstance();
                           const prompt = `Convert these phonetic (IPA) sounds back to standard English text. 
-                          Input will be sounds in slashes like /kaÉªnd/.
+                          Input will be sounds in slashes like /kaɪnd/.
                           Return ONLY the English text.
                           Sounds: ${transcribeInput}`;
                           const result = await ai.models.generateContent({
