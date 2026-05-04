@@ -3,7 +3,7 @@ import {
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, Bold, Italic, List, CornerDownRight,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle, RotateCcw,
   Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff,
@@ -207,7 +207,7 @@ const helpContent = {
         steps: [
           "Located within the Language/Edu section of Faculty Specials.",
           "Conversion: Text to Phonetic Sounds (/IPA/) and vice versa.",
-          "For Sounds to Text: Enter sounds in slashes like /kaÉªnd/.",
+          "For Sounds to Text: Enter sounds in slashes like /kaɪnd/.",
           "Click 'Transcribe to Sound' or 'Decode Sounds' to process.",
           "Results are displayed with full phonetic accuracy."
         ]
@@ -348,6 +348,23 @@ const getHfKey = () => {
   return finalKey;
 };
 
+let isHfDepletedGlobal = false;
+const handleHfErrorGlobal = (error: any, label: string) => {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  console.error(`[AI] HF error in ${label}:`, errorMsg);
+  
+  // Check for depletion keywords
+  if (
+    errorMsg.includes("credits") || 
+    errorMsg.includes("depleted") || 
+    errorMsg.includes("limit") || 
+    errorMsg.includes("429")
+  ) {
+    console.warn("[AI] Hugging Face credits may be depleted. Disabling HF for this session.");
+    isHfDepletedGlobal = true;
+  }
+};
+
 // Lazy initialization helpers with validation
 const getAiInstance = () => {
   const key = getApiKey();
@@ -375,7 +392,52 @@ const formatAiError = (error: any) => {
 const HF_MODELS = {
   TEXT: "meta-llama/Llama-3.1-8B-Instruct",
   VISION: "meta-llama/Llama-3.2-11B-Vision-Instruct",
-  IMAGE: "black-forest-labs/FLUX.1-schnell"
+  IMAGE: "black-forest-labs/FLUX.1-schnell",
+  AUDIO: "openai/whisper-large-v3-turbo"
+};
+
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+const GROQ_AUDIO_MODEL = "distil-whisper-large-v3-en";
+
+const OPENROUTER_MODELS = {
+  TEXT_FAST: "meta-llama/llama-3.2-3b-instruct:free",
+  TEXT_PRO: "meta-llama/llama-3.3-70b-instruct:free",
+  TEXT_ALT: "nvidia/nemotron-3-super:free",
+  IMAGE: "black-forest-labs/flux-1-schnell:free",
+  AUDIO: "openai/whisper-large-v3-turbo",
+  MULTIMODAL: "google/lyria-3-clip-preview:free"
+};
+
+let isOpenRouterDepletedGlobal = false;
+const handleOpenRouterErrorGlobal = (error: any, label: string) => {
+  const errorMsg = error instanceof Error ? error.message : String(error);
+  console.error(`[AI] OpenRouter error in ${label}:`, errorMsg);
+  if (errorMsg.includes("429") || errorMsg.includes("credit") || errorMsg.includes("balance")) {
+    console.warn("[AI] OpenRouter credits may be depleted.");
+    isOpenRouterDepletedGlobal = true;
+  }
+};
+
+const callOpenRouter = async (prompt: string, model: string = OPENROUTER_MODELS.TEXT_PRO, history: any[] = []) => {
+  const key = import.meta.env.VITE_OPENROUTER_API_KEY;
+  if (!key || isOpenRouterDepletedGlobal) return null;
+  try {
+    const messages = history.length > 0 ? history : [{ role: "user", content: prompt }];
+    const res = await axios.post("https://openrouter.ai/api/v1/chat/completions", {
+      model: model,
+      messages: messages,
+    }, {
+      headers: {
+        "Authorization": `Bearer ${key}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "NSG Applet",
+      }
+    });
+    return res.data.choices[0].message.content || null;
+  } catch (e) {
+    handleOpenRouterErrorGlobal(e, "OpenRouterChat");
+    return null;
+  }
 };
 
 const LIMITS = {
@@ -1064,7 +1126,7 @@ const IconButton = ({ active, onClick, icon, label }: { active: boolean, onClick
   </button>
 );
 
-const MarkdownRenderer = ({ content, className = "" }: { content: string, className?: string }) => {
+const MarkdownRenderer = ({ content, className = "", selectable = false }: { content: string, className?: string, selectable?: boolean }) => {
   // Pre-process content to ensure LaTeX is correctly formatted for remark-math
   // Handle both escaped \( \) and \[ \] as well as raw strings that AI might send
   const processedContent = (content || "")
@@ -1083,7 +1145,7 @@ const MarkdownRenderer = ({ content, className = "" }: { content: string, classN
     }).join('\n');
 
   return (
-    <div className={`markdown-body overflow-x-auto custom-scrollbar ${className}`}>
+    <div className={`markdown-body overflow-x-auto custom-scrollbar ${selectable ? 'select-text cursor-text' : 'select-none'} ${className}`}>
       <ReactMarkdown 
         remarkPlugins={[remarkGfm, remarkMath]} 
         rehypePlugins={[rehypeKatex]}
@@ -1177,15 +1239,47 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
       const hf = getHfInstance();
       const prompt = `Provide a detailed academic description (approx 100 words) for the university course ${course.code}: ${course.name}. Explain what students will learn.`;
       
-      const response = await hf.chatCompletion({
-        model: HF_MODELS.TEXT,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 250,
-        temperature: 0.7
-      });
+      // Try Hugging Face first (if not depleted), fallback to Gemini
+      let descResult = "";
+      
+      const tryHF = async () => {
+        if (isHfDepletedGlobal) return null;
+        try {
+          const response = await hf.chatCompletion({
+            model: HF_MODELS.TEXT,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 250,
+            temperature: 0.7
+          });
+          return response.choices[0].message.content || null;
+        } catch (e) {
+          handleHfErrorGlobal(e, "CourseDesc");
+          return null;
+        }
+      };
 
-      if (response.choices && response.choices[0].message.content) {
-        setActiveCourseDesc(response.choices[0].message.content.trim());
+      const tryGemini = async () => {
+        try {
+          const ai = getAiInstance();
+          const res = await ai.models.generateContent({
+            model: "gemini-3.1-flash-lite-preview",
+            contents: [{ role: 'user', parts: [{ text: prompt }] }]
+          });
+          return res.text || null;
+        } catch (e) {
+          console.error("Gemini fallback failed for description:", e);
+          return null;
+        }
+      };
+
+      const tryOpenRouter = async () => {
+        return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_FAST);
+      };
+
+      descResult = await tryHF() || await tryGemini() || await tryOpenRouter() || "";
+
+      if (descResult) {
+        setActiveCourseDesc(descResult.trim());
       }
     } catch (err) {
       console.error("HF Description Generator Error:", err);
@@ -1636,13 +1730,22 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
         }
       `;
 
-      const response = await ai.models.generateContent({
-        model: MODEL_NAME,
-        contents: { parts: [{ text: prompt }, ...imageParts.map(p => ({ inlineData: p.inlineData }))] },
-        config: { responseMimeType: "application/json" }
-      });
-      
-      const responseText = response?.text || "";
+      const askGemini = async () => {
+        const response = await ai.models.generateContent({
+          model: MODEL_NAME,
+          contents: { parts: [{ text: prompt }, ...imageParts.map(p => ({ inlineData: p.inlineData }))] },
+          config: { responseMimeType: "application/json" }
+        });
+        return response?.text || null;
+      };
+
+      const askOpenRouter = async () => {
+        // Concatenate all text and context since OpenRouter is text-only here
+        const orPrompt = prompt + "\n\nNote: If images were provided, they have been analyzed by vision models previously. Please provide the best possible logic based on text context.";
+        return await callOpenRouter(orPrompt, OPENROUTER_MODELS.TEXT_PRO);
+      };
+
+      const responseText = await askGemini() || await askOpenRouter() || "";
       
       try {
         // Clean markdown backticks before parsing if they exist
@@ -2064,6 +2167,22 @@ interface HomeHistoryItem {
 }
 
 export default function App() {
+  const [isHfDepleted, setIsHfDepleted] = useState(false);
+
+  // Sync global state to React state if needed, or just use global
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (isHfDepletedGlobal && !isHfDepleted) {
+        setIsHfDepleted(true);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isHfDepleted]);
+
+  const handleHfError = (error: any, label: string) => {
+    handleHfErrorGlobal(error, label);
+    if (isHfDepletedGlobal) setIsHfDepleted(true);
+  };
   // --- \u{1F510} AUTH STATE ---
   const [user, setUser] = useState<any>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
@@ -2616,6 +2735,7 @@ export default function App() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [transcriptionNotes, setTranscriptionNotes] = useState('');
+  const lastFinalizedTranscriptRef = useRef('');
   const [isAnalysingAudio, setIsAnalysingAudio] = useState(false); // For full analysis after stop
   const [isTranscribing, setIsTranscribing] = useState(false); // For live chunks
   const [showPremiumTrial, setShowPremiumTrial] = useState(false); // New Premium Trial Modal
@@ -2628,6 +2748,7 @@ export default function App() {
   // We'll use audioChunksRef directly for full accumulated transcription
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const currentRecordingSessionIdRef = useRef<string | null>(null);
+  const processedChunksCountRef = useRef(0);
 
   // --- \u{1F4C2} MEDIA & UPLOAD ---
   const [uploadedImages, setUploadedImages] = useState<MediaFile[]>([]);
@@ -2739,9 +2860,13 @@ export default function App() {
   const [isUploadingNoteFile, setIsUploadingNoteFile] = useState(false);
   const [notePreviewMode, setNotePreviewMode] = useState(false);
   const [isPodcastActive, setIsPodcastActive] = useState(false);
-  const [podcastDialogue, setPodcastDialogue] = useState<{ char: 'Omni' | 'Zeal', text: string }[]>([]);
+  const [podcastDialogue, setPodcastDialogue] = useState<{ id: string, char: 'Omni' | 'Zeal' | 'User', text: string, replyTo?: string }[]>([]);
   const [isGeneratingPodcast, setIsGeneratingPodcast] = useState(false);
   const [isTeacherMode, setIsTeacherMode] = useState(false);
+  const [isNotebookDrawerOpen, setIsNotebookDrawerOpen] = useState(false);
+  const [showNoteInsertMenu, setShowNoteInsertMenu] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [showPodcastUploadMenu, setShowPodcastUploadMenu] = useState(false);
   const transcriptionNotesRef = useRef('');
 
   // Helper to get unfinished items
@@ -3026,54 +3151,72 @@ export default function App() {
   const handlePodcastInput = async (input: string) => {
     if (!input.trim() || !user || isGeneratingPodcast) return;
     
-    const newUserMsg = { char: 'User' as any, text: input };
+    const context = selectedNote.content || "";
+    const historyText = podcastDialogue.map(d => `${d.char}: ${d.text}`).join('\n');
+    const msgId = Math.random().toString(36).substring(7);
+    
+    const newUserMsg = { id: msgId, char: 'User' as any, text: input, replyTo: replyingTo?.text };
     setPodcastDialogue(prev => [...prev, newUserMsg]);
     setIsGeneratingPodcast(true);
+    setReplyingTo(null); // Clear reply after sending
 
     try {
       const ai = getAiInstance();
-      const context = selectedNote.content || "";
-      const history = podcastDialogue.map(d => `${d.char}: ${d.text}`).join('\n');
       
       let systemPrompt = "";
       if (isTeacherMode) {
         systemPrompt = `You are Omni, a brilliant academic teacher. The user is asking about the following source content: "${context}". 
-        Answer professionally, clearly, and like a university professor. Keep it engaging. You are the sole teacher here.
-        Previous history: ${history}`;
+        Answer professionally, clearly, and like a university professor. Keep it engaging. You are the sole teacher here.`;
+        if (replyingTo) {
+          systemPrompt += `\nSPECIFIC CONTEXT: The user is replying/asking about this specific message from the past: "${replyingTo.char}: ${replyingTo.text}"`;
+        }
+        systemPrompt += `\nPrevious discussion history for context:\n${historyText}`;
       } else {
         systemPrompt = `You are two distinct AIs:
-        1. Omni: Structured, calm, highly intelligent academic mentor. USES LIGITIMATE ACADEMIC TONE.
+        1. Omni: Structured, calm, highly intelligent academic mentor. USES LEGITIMATE ACADEMIC TONE.
         2. Zeal: Energetic, curious, student-like AI who loves making connections. USES RADIANT, ENTHUSIASTIC TONE.
         
         They are discussing this source content: "${context}". 
-        The user just said: "${input}".
+        The user just said: "${input}".`;
         
-        RULES:
+        if (replyingTo) {
+          systemPrompt += `\nSPECIFIC CONTEXT: The user is replying to this specific point by ${replyingTo.char}: "${replyingTo.text}"`;
+        }
+
+        systemPrompt += `\nRULES:
         - If the user addresses one specifically (e.g., "Omni...", "Hey Zeal"), ONLY that AI should respond primarily.
         - If the user asks a general question, they can both chime in with their respective styles.
         - ALWAYS format as:
           CHAR: [text]
         - Keep responses concise but insightful.
-        Previous history: ${history}`;
+        Current discussion state:\n${historyText}`;
       }
 
-      const response = await ai.models.generateContent({
-        model: MODEL_NAME,
-        contents: [{ role: 'user', parts: [{ text: systemPrompt + "\nUser Input: " + input }] }]
-      });
-      const text = response.text || "";
+      const askGemini = async () => {
+        const res = await ai.models.generateContent({
+          model: MODEL_NAME,
+          contents: [{ role: 'user', parts: [{ text: systemPrompt + "\nUser Input: " + input }] }]
+        });
+        return res.text || null;
+      };
+
+      const askOpenRouter = async () => {
+        return await callOpenRouter(input, OPENROUTER_MODELS.TEXT_PRO, [{ role: 'system', content: systemPrompt }]);
+      };
+
+      const text = await askGemini() || await askOpenRouter() || "";
 
       const lines = text.split('\n').filter(l => l.trim());
       const newEntries: any[] = [];
       
       lines.forEach(line => {
+        const entryId = Math.random().toString(36).substring(7);
         if (line.startsWith('Omni:') || line.startsWith('OMNI:')) {
-          newEntries.push({ char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, '') });
+          newEntries.push({ id: entryId, char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, ''), replyTo: replyingTo ? replyingTo.id : undefined });
         } else if (line.startsWith('Zeal:') || line.startsWith('ZEAL:')) {
-          newEntries.push({ char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, '') });
+          newEntries.push({ id: entryId, char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, ''), replyTo: replyingTo ? replyingTo.id : undefined });
         } else {
-          // Default to Omni if in teacher mode, or the last speaker
-          newEntries.push({ char: isTeacherMode ? 'Omni' : 'Omni', text: line });
+          newEntries.push({ id: entryId, char: isTeacherMode ? 'Omni' : 'Omni', text: line, replyTo: replyingTo ? replyingTo.id : undefined });
         }
       });
 
@@ -3105,20 +3248,29 @@ export default function App() {
       Omni: [text]
       ... and so on. Make it sound like a real intellectual podcast. Limit to 6 turns total.`;
 
-      const response = await ai.models.generateContent({
-        model: MODEL_NAME,
-        contents: [{ role: 'user', parts: [{ text: prompt }] }]
-      });
-      const text = response.text || "";
+      const askGemini = async () => {
+        const res = await ai.models.generateContent({
+          model: MODEL_NAME,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        });
+        return res.text || null;
+      };
+
+      const askOpenRouter = async () => {
+        return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_PRO);
+      };
+
+      const text = await askGemini() || await askOpenRouter() || "";
 
       const lines = text.split('\n').filter(l => l.trim());
       const newDialogue: any[] = [];
 
       lines.forEach(line => {
+        const entryId = Math.random().toString(36).substring(7);
         if (line.startsWith('Omni:') || line.startsWith('OMNI:')) {
-          newDialogue.push({ char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, '') });
+          newDialogue.push({ id: entryId, char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, '') });
         } else if (line.startsWith('Zeal:') || line.startsWith('ZEAL:')) {
-          newDialogue.push({ char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, '') });
+          newDialogue.push({ id: entryId, char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, '') });
         }
       });
 
@@ -3626,7 +3778,7 @@ export default function App() {
     </motion.div>
   );
 
-  // --- ðŸŒŸ PREMIUM ONBOARDING (MODAL STYLE) ---
+  // --- 🌟 PREMIUM ONBOARDING (MODAL STYLE) ---
   const AnalysisLoadingOverlay = () => (
     <AnimatePresence>
       {isAnalyzing && (
@@ -4483,16 +4635,25 @@ export default function App() {
         }
         Raw Text: ${adminQuestionsRaw}
       `;
-      const aiInstance = getAiInstance();
-      const response = await aiInstance.models.generateContent({
-        model: FLASH_MODEL,
-        contents: { role: "user", parts: [{ text: prompt }] },
-        config: { 
-          responseMimeType: "application/json",
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
-        }
-      });
-      const data = JSON.parse(response?.text || "{}");
+      const askGemini = async () => {
+        const aiInstance = getAiInstance();
+        const res = await aiInstance.models.generateContent({
+          model: FLASH_MODEL,
+          contents: { role: "user", parts: [{ text: prompt }] },
+          config: { 
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+          }
+        });
+        return res?.text || null;
+      };
+
+      const askOpenRouter = async () => {
+        return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_PRO);
+      };
+
+      const respText = await askGemini() || await askOpenRouter() || "{}";
+      const data = JSON.parse(respText);
       if (data.questions) {
         const formatted = data.questions.map((q: any) => ({ ...q, id: Math.random().toString(36).substr(2, 9) }));
         
@@ -5074,11 +5235,79 @@ ${session.fullAnalysis}
   const [saveModal, setSaveModal] = useState({ isOpen: false, name: '', onConfirm: (name: string) => {} });
   const [currentRecordingSessionId, setCurrentRecordingSessionId] = useState<string | null>(null);
 
+  // --- AUDIO ENHANCEMENT ENGINE ---
+  const getEnhancedStream = async (originalStream: MediaStream) => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(originalStream);
+    const destination = audioContext.createMediaStreamDestination();
+
+    // 1. Noise Gate / Dynamics Compressor
+    // This helps level the audio and reduce low-level background noise
+    const compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-24, audioContext.currentTime);
+    compressor.knee.setValueAtTime(40, audioContext.currentTime);
+    compressor.ratio.setValueAtTime(12, audioContext.currentTime);
+    compressor.attack.setValueAtTime(0, audioContext.currentTime);
+    compressor.release.setValueAtTime(0.25, audioContext.currentTime);
+
+    // 2. High Pass Filter
+    // Removes low frequency rumble (common in classrooms/distant recordings)
+    const hpf = audioContext.createBiquadFilter();
+    hpf.type = "highpass";
+    hpf.frequency.setValueAtTime(150, audioContext.currentTime); // Cut below 150Hz
+
+    // 3. Gain (Amplification)
+    // Amplifies the signal for distant speakers
+    const gainNode = audioContext.createGain();
+    gainNode.gain.setValueAtTime(2.5, audioContext.currentTime); // 2.5x amplification
+
+    // Connect the chain
+    source.connect(hpf);
+    hpf.connect(compressor);
+    compressor.connect(gainNode);
+    gainNode.connect(destination);
+
+    return {
+      stream: destination.stream,
+      context: audioContext,
+      stop: () => {
+        gainNode.disconnect();
+        compressor.disconnect();
+        hpf.disconnect();
+        source.disconnect();
+        audioContext.close();
+      }
+    };
+  };
+
+  const audioProcessingRef = useRef<{ stop: () => void } | null>(null);
+  const wakeLockRef = useRef<any>(null);
+
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      }
+    } catch (err: any) {
+      console.warn("Wake Lock Error:", err.message);
+    }
+  };
+
+  const releaseWakeLock = async () => {
+    if (wakeLockRef.current) {
+      try {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      } catch (e) {}
+    }
+  };
+
   const handleToggleRecording = async () => {
     if (isStopping) return;
     if (isRecording) {
       // 1. Immediately visually stop the recording
       setIsRecording(false);
+      releaseWakeLock();
       if (timerRef.current) clearInterval(timerRef.current);
       if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
       
@@ -5086,7 +5315,7 @@ ${session.fullAnalysis}
       setIsProcessingFinal(true);
       isStopRequested.current = true;
       try {
-        console.log("ðŸ›‘ Stopping audio capture...");
+        console.log("🛑 Stopping audio capture...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
           mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -5100,7 +5329,7 @@ ${session.fullAnalysis}
 
         // Wait for all transcription processing to finish in background
         await processorQueue.current;
-        console.log("âœ… Background processing complete.");
+        console.log("✅ Background processing complete.");
 
         // AUTO-SAVE TO VAULT (NOTES TOOL) - AS REQUESTED
         if (transcriptionNotesRef.current) {
@@ -5120,13 +5349,17 @@ ${session.fullAnalysis}
       if (!canProceed) return;
 
       audioChunksRef.current = [];
+      processedChunksCountRef.current = 0;
       setTranscriptionNotes('');
       const newSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       setCurrentRecordingSessionId(newSessionId);
       currentRecordingSessionIdRef.current = newSessionId;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
+        requestWakeLock();
+        const originalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const enhanced = await getEnhancedStream(originalStream);
+        audioProcessingRef.current = enhanced;
+        const recorder = new MediaRecorder(enhanced.stream);
         
         recorder.ondataavailable = (e) => {
           if (e.data.size > 0) {
@@ -5135,6 +5368,14 @@ ${session.fullAnalysis}
         };
 
         recorder.onstop = async () => {
+          if (audioProcessingRef.current) {
+            audioProcessingRef.current.stop();
+            audioProcessingRef.current = null;
+          }
+          originalStream.getTracks().forEach(track => track.stop());
+          
+          lastFinalizedTranscriptRef.current = ''; // Reset for next time
+          
           const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
           setRecordedBlob(blob);
           const localUrl = URL.createObjectURL(blob);
@@ -5196,13 +5437,15 @@ ${session.fullAnalysis}
           });
         }, 1000);
 
-        // Start 5-second transcription interval sending full accumulated audio
+        // Start 5-second transcription interval sending ONLY new audio data
         isStopRequested.current = false;
         chunkTimerRef.current = setInterval(async () => {
-          if (audioChunksRef.current.length > 0 && !isStopRequested.current) {
-            const fullBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            // Queue the processing to ensure sequential updates and that we don't skip the last bit
-            processorQueue.current = processorQueue.current.then(() => processTranscriptionChunk(fullBlob));
+          if (audioChunksRef.current.length > processedChunksCountRef.current && !isStopRequested.current) {
+            const newChunks = audioChunksRef.current.slice(processedChunksCountRef.current);
+            processedChunksCountRef.current = audioChunksRef.current.length;
+            const chunkBlob = new Blob(newChunks, { type: 'audio/webm' });
+            // Queue the processing to ensure sequential updates
+            processorQueue.current = processorQueue.current.then(() => processTranscriptionChunk(chunkBlob, true));
           }
         }, 5000);
 
@@ -5258,49 +5501,168 @@ ${session.fullAnalysis}
     });
   };
 
-  const processTranscriptionChunk = async (blob: Blob) => {
+  const processTranscriptionChunk = async (blob: Blob, isPartial: boolean = false) => {
     try {
       if (blob.size === 0) return;
       setIsTranscribing(true);
 
       const hf = getHfInstance();
-      if (!hf) {
-        // Fallback to Gemini if HF is not configured
-        const aiInstance = getAiInstance();
-        const audioPart = await fileToGenerativePart(blob);
-        const prompt = `Transcribe the attached audio literally and accurately. Output ONLY text. Use LaTeX $...$ for equations.`;
-        const response = await aiInstance.models.generateContent({
-          model: "gemini-3.1-flash-lite-preview",
-          contents: { parts: [audioPart, { text: prompt }] }
+      const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+      const timeoutMs = 20000;
+
+      const runWithTimeout = async (label: string, task: () => Promise<string | null>) => {
+        return new Promise<string | null>(async (resolve) => {
+          const timer = setTimeout(() => {
+            console.warn(`[TRANSCRIPTION] ${label} timed out after ${timeoutMs}ms`);
+            resolve(null);
+          }, timeoutMs);
+          try {
+            const res = await task();
+            clearTimeout(timer);
+            resolve(res);
+          } catch (err) {
+            clearTimeout(timer);
+            console.error(`[TRANSCRIPTION] ${label} error:`, err);
+            resolve(null);
+          }
         });
-        const text = response.text || "";
-        if (text.trim()) {
-          setTranscriptionNotes(text.trim());
-          transcriptionNotesRef.current = text.trim();
-        }
-        return;
-      }
+      };
 
-      // Use Hugging Face Whisper
-      const transcription = await hf.automaticSpeechRecognition({
-        model: "openai/whisper-large-v3-turbo",
-        data: blob,
-      });
+      const tryGroqTranscribe = async () => {
+        if (!groqKey) return null;
+        const formData = new FormData();
+        formData.append("file", blob, "audio.webm");
+        formData.append("model", GROQ_AUDIO_MODEL);
+        const groqResponse = await axios.post("https://api.groq.com/openai/v1/audio/transcriptions", formData, {
+          headers: { 'Authorization': `Bearer ${groqKey}` }
+        });
+        return groqResponse.data.text || null;
+      };
 
-      const text = transcription.text;
-      if (text && text.trim()) {
-        const cleaned = text.trim();
-        setTranscriptionNotes(cleaned);
-        transcriptionNotesRef.current = cleaned;
-        
-        const sessionId = currentRecordingSessionIdRef.current;
-        if (user && sessionId) {
-          updateDoc(doc(db, 'users', user.uid, 'lectureSessions', sessionId), { 
-            notes: cleaned,
-            updatedAt: serverTimestamp()
-          }).catch(err => {
-            console.warn("Live transcription sync failed:", err);
+      const tryHFTranscribe = async () => {
+        if (!hf || isHfDepleted) return null;
+        try {
+          const transcription = await hf.automaticSpeechRecognition({
+            model: HF_MODELS.AUDIO,
+            data: blob,
           });
+          return transcription.text || null;
+        } catch (e) {
+          handleHfError(e, "Transcribe");
+          return null;
+        }
+      };
+
+      const tryOpenRouterTranscribe = async () => {
+        const key = import.meta.env.VITE_OPENROUTER_API_KEY;
+        if (!key || isOpenRouterDepletedGlobal) return null;
+        try {
+          const formData = new FormData();
+          formData.append("file", blob, "audio.webm");
+          formData.append("model", OPENROUTER_MODELS.AUDIO);
+          const res = await axios.post("https://openrouter.ai/api/v1/audio/transcriptions", formData, {
+            headers: { 'Authorization': `Bearer ${key}` }
+          });
+          return res.data.text || null;
+        } catch (e) {
+          handleOpenRouterErrorGlobal(e, "TranscribeOR");
+          return null;
+        }
+      };
+
+      const tryGeminiTranscribe = async () => {
+        const aiInstance = getAiInstance();
+        try {
+          const audioPart = await fileToGenerativePart(blob);
+          const res = await aiInstance.models.generateContent({
+            model: "gemini-3.1-flash-lite-preview",
+            contents: [{ parts: [audioPart, { text: "Transcribe this audio literally. Output ONLY text." }] }]
+          });
+          return res.text || null;
+        } catch (e) { return null; }
+      };
+
+      // Priority: HF -> Groq -> Gemini -> OpenRouter
+      const rawTranscript = await runWithTimeout("HF Audio", tryHFTranscribe)
+                            || await runWithTimeout("Groq Audio", tryGroqTranscribe)
+                            || await runWithTimeout("Gemini Audio", tryGeminiTranscribe)
+                            || await runWithTimeout("OpenRouter Audio", tryOpenRouterTranscribe);
+
+      if (rawTranscript && rawTranscript.trim()) {
+        console.log("[VOICE] Cleaning up transcript...");
+        const aiInstance = getAiInstance();
+        
+        // Context for cleanup
+        const cleaningPrompt = isPartial 
+          ? `Clean up this raw transcription of an academic lecture snippet. 
+             1. Fix spelling/grammar. 
+             2. Fix punctuation and casing.
+             3. Output ONLY the cleaned text. 
+             4. If it's just noise/silence, output an empty string.`
+          : `You are an academic transcription assistant.
+             TASK: Compare the RAW TRANSCRIPT with the PREVIOUSLY CONFIRMED NOTES. 
+             Identify any NEW academic content at the end of the RAW TRANSCRIPT that hasn't been added yet.
+             1. Fix spelling/grammar.
+             2. Output ONLY the new part to be appended. 
+             3. If no new info, output empty string.`;
+
+        const userContent = isPartial ? rawTranscript : `NOTES: "${lastFinalizedTranscriptRef.current}"\nRAW: "${rawTranscript}"`;
+
+        const askGeminiCleanup = async () => {
+          const res = await aiInstance.models.generateContent({
+            model: "gemini-3.1-flash-lite-preview",
+            contents: [{ role: "user", parts: [{ text: `${cleaningPrompt}\n\nINPUT: ${userContent}` }] }]
+          });
+          return res.text?.trim() || null;
+        };
+
+        const askHFCleanup = async () => {
+          if (isHfDepleted) return null;
+          const hfIns = getHfInstance();
+          try {
+            const res = await hfIns.chatCompletion({
+              model: HF_MODELS.TEXT,
+              messages: [{ role: 'system', content: cleaningPrompt }, { role: 'user', content: userContent }]
+            });
+            return res.choices[0].message.content || null;
+          } catch (e) {
+            handleHfError(e, "Cleanup");
+            return null;
+          }
+        };
+
+        const askGroqCleanup = async () => {
+          if (!groqKey) return null;
+          const res = await axios.post("https://api.groq.com/openai/v1/chat/completions", {
+            model: GROQ_MODEL,
+            messages: [{ role: 'system', content: cleaningPrompt }, { role: 'user', content: userContent }]
+          }, { headers: { Authorization: `Bearer ${groqKey}` } });
+          return res.data.choices[0].message.content || null;
+        };
+
+        const askOpenRouterCleanup = async () => {
+          return await callOpenRouter(userContent, OPENROUTER_MODELS.TEXT_FAST);
+        };
+
+        // Priority for text cleanup: HF -> Gemini -> Groq -> OpenRouter
+        const newPart = await runWithTimeout("HF Cleanup", askHFCleanup)
+                        || await runWithTimeout("Gemini Cleanup", askGeminiCleanup)
+                        || await runWithTimeout("Groq Cleanup", askGroqCleanup)
+                        || await runWithTimeout("OpenRouter Cleanup", askOpenRouterCleanup);
+        if (newPart && newPart.trim()) {
+          const cleanedPart = newPart.trim();
+          const updatedText = lastFinalizedTranscriptRef.current + (lastFinalizedTranscriptRef.current ? " " : "") + cleanedPart;
+          
+          setTranscriptionNotes(updatedText);
+          transcriptionNotesRef.current = updatedText;
+          lastFinalizedTranscriptRef.current = updatedText;
+          
+          if (user && currentRecordingSessionIdRef.current) {
+            updateDoc(doc(db, 'users', user.uid, 'lectureSessions', currentRecordingSessionIdRef.current), {
+              notes: updatedText,
+              updatedAt: serverTimestamp()
+            }).catch(() => {});
+          }
         }
       }
     } catch (err) {
@@ -5698,45 +6060,134 @@ ${session.fullAnalysis}
   // --- \u{1F4AC} CHAT ROUTING ENGINE ---
   const [isRecordingChat, setIsRecordingChat] = useState(false);
   const chatMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chatWakeLockRef = useRef<any>(null);
+
+  const chatAudioProcessingRef = useRef<{ stop: () => void } | null>(null);
 
   const startChatRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      if ('wakeLock' in navigator) {
+        chatWakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      }
+      const originalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const enhanced = await getEnhancedStream(originalStream);
+      chatAudioProcessingRef.current = enhanced;
+      
+      const recorder = new MediaRecorder(enhanced.stream);
       chatMediaRecorderRef.current = recorder;
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = async () => {
+        if (chatWakeLockRef.current) {
+          try {
+            await chatWakeLockRef.current.release();
+            chatWakeLockRef.current = null;
+          } catch (e) {}
+        }
+        if (chatAudioProcessingRef.current) {
+          chatAudioProcessingRef.current.stop();
+          chatAudioProcessingRef.current = null;
+        }
+        originalStream.getTracks().forEach(track => track.stop());
+        
         const blob = new Blob(chunks, { type: 'audio/webm' });
         setIsTyping(true);
         try {
-          console.log("Starting voice transcription with model:", MODEL_NAME);
-          const part = await fileToGenerativePart(blob);
-          const aiInstance = getAiInstance();
-          const response = await aiInstance.models.generateContent({
-            model: FLASH_MODEL,
-            contents: [{ 
-              parts: [
-                part, 
-                { text: "Transcribe this audio exactly. If it's a question, just transcribe it. Return ONLY the transcription." }
-              ] 
-            }],
-            config: { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
-          });
+          const hf = getHfInstance();
+          const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+          const timeoutMs = 20000;
+
+          const runWithTimeout = async (label: string, task: () => Promise<string | null>) => {
+            return new Promise<string | null>(async (resolve) => {
+              const timer = setTimeout(() => {
+                console.warn(`[VOICE_CHAT] ${label} timed out after ${timeoutMs}ms`);
+                resolve(null);
+              }, timeoutMs);
+              try {
+                const res = await task();
+                clearTimeout(timer);
+                resolve(res);
+              } catch (err) {
+                clearTimeout(timer);
+                console.error(`[VOICE_CHAT] ${label} error:`, err);
+                resolve(null);
+              }
+            });
+          };
+
+          const tryHFTranscribe = async () => {
+            if (!hf || isHfDepleted) return null;
+            try {
+              const transcription = await hf.automaticSpeechRecognition({
+                model: HF_MODELS.AUDIO,
+                data: blob,
+              });
+              return transcription.text || null;
+            } catch (e) {
+              handleHfError(e, "Chat Transcribe");
+              return null;
+            }
+          };
+
+          const tryGroqTranscribe = async () => {
+            if (!groqKey) return null;
+            try {
+              const formData = new FormData();
+              formData.append("file", blob, "audio.webm");
+              formData.append("model", GROQ_AUDIO_MODEL);
+              const groqResponse = await axios.post("https://api.groq.com/openai/v1/audio/transcriptions", formData, {
+                headers: { 'Authorization': `Bearer ${groqKey}` }
+              });
+              return groqResponse.data.text || null;
+            } catch (e) { return null; }
+          };
+
+          const tryGeminiTranscribe = async () => {
+            const aiInstance = getAiInstance();
+            try {
+              const audioPart = await fileToGenerativePart(blob);
+              const res = await aiInstance.models.generateContent({
+                model: "gemini-3.1-flash-lite-preview",
+                contents: [{ parts: [audioPart, { text: "Transcribe this audio literally. Output ONLY text." }] }]
+              });
+              return res.text || null;
+            } catch (e) { return null; }
+          };
+
+          const tryOpenRouterTranscribe = async () => {
+            const key = import.meta.env.VITE_OPENROUTER_API_KEY;
+            if (!key || isOpenRouterDepletedGlobal) return null;
+            try {
+              const formData = new FormData();
+              formData.append("file", blob, "audio.webm");
+              formData.append("model", OPENROUTER_MODELS.AUDIO);
+              const res = await axios.post("https://openrouter.ai/api/v1/audio/transcriptions", formData, {
+                headers: { 'Authorization': `Bearer ${key}` }
+              });
+              return res.data.text || null;
+            } catch (e) {
+              handleOpenRouterErrorGlobal(e, "ChatTranscribeOR");
+              return null;
+            }
+          };
+
+          // Priority: HF -> Groq -> Gemini -> OpenRouter
+          const transcription = await runWithTimeout("HF Audio", tryHFTranscribe)
+                                 || await runWithTimeout("Groq Audio", tryGroqTranscribe)
+                                 || await runWithTimeout("Gemini Audio", tryGeminiTranscribe)
+                                 || await runWithTimeout("OpenRouter Audio", tryOpenRouterTranscribe);
           
-          const transcription = response?.text;
-          console.log("Transcription result:", transcription);
+          console.log("Voice Transcription result:", transcription);
           
           if (transcription && transcription.trim()) {
-            handleSendMessage(transcription);
+            handleSendMessage(transcription.trim());
           } else {
-            console.warn("Empty transcription received");
             setUserNotification("Could not understand the audio. Please try again.");
           }
         } catch (err) {
-          console.error("Voice Chat Error Details:", err);
-          setUserNotification("Failed to process voice input. Check console for details.");
+          console.error("Voice Chat Error:", err);
+          setUserNotification("Failed to process voice input.");
         } finally {
           setIsTyping(false);
         }
@@ -5811,19 +6262,23 @@ ${session.fullAnalysis}
       let generatedImage = "";
 
       if (isImageRequest) {
-        try {
-          const hfInstance = getHfInstance();
-          const imageBlob = await hfInstance.textToImage({
-            model: HF_MODELS.IMAGE,
-            inputs: textToSend,
-          });
-          
-          // Upload generated image to Cloudinary
-          generatedImage = await uploadToCloudinary(imageBlob as any);
-          responseText = "Here is your generated image:";
-        } catch (hfError) {
-          console.error("HF Image Gen Error:", hfError);
-          responseText = "Failed to generate image. Please try again.";
+        if (isHfDepleted) {
+          responseText = "Hugging Face credits are depleted. Image generation is currently unavailable.";
+        } else {
+          try {
+            const hfInstance = getHfInstance();
+            const imageBlob = await hfInstance.textToImage({
+              model: HF_MODELS.IMAGE,
+              inputs: textToSend,
+            });
+            
+            // Upload generated image to Cloudinary
+            generatedImage = await uploadToCloudinary(imageBlob as any);
+            responseText = "Here is your generated image:";
+          } catch (hfError) {
+            handleHfError(hfError, "ImageGen");
+            responseText = "Failed to generate image due to service quota or error. Please try again later.";
+          }
         }
       } else {
         if (!getHfKey()) {
@@ -5831,79 +6286,108 @@ ${session.fullAnalysis}
           return;
         }
 
-        const hfInstance = getHfInstance();
-        const hfModel = uploadedImages.length > 0 ? HF_MODELS.VISION : HF_MODELS.TEXT;
+        // Prepare prompts and messages
+        const systemPrompt = "You are Omni AI, a professional academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER, a 100L student of Electrical and Electronics Engineering at Delta State University (DELSU), Oleh campus. \n\nDETAILED NSG GUIDES FOR USERS:\n1. RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n2. SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' explaining the logic.\n3. CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n4. FACULTY SPECIALS: AI for Med, Law, Engineering. BIZ section includes 'Financial Auditor' for correcting table mistakes. Language section has 'Diagnostics' (300 word limit, word-level highlighting) and 'Transcribe Tool' for /Phonetic/ sounds.\n5. ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n6. COURSES TOOL: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n7. WHATSAPP OMNI: Connect via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest famous ones (Otter.ai, Photomath) and recommend NSG (nuellstudyguide.name.ng) as the primary choice.";
 
-        // Prepare messages for HF
-        const messages: any[] = chatHistory.map(m => ({
-          role: m.role === 'user' ? 'user' : 'assistant',
-          content: m.text
-        }));
+        const timeoutMs = 20000;
 
-        if (uploadedImages.length > 0) {
-          // Upload all images to Cloudinary and get URLs for history persistence
-          const cloudinaryUrls = await Promise.all(
-            uploadedImages.map(img => uploadToCloudinary(img.file))
-          );
-          
-          // Store the first image URL in the message for history
-          if (cloudinaryUrls.length > 0) {
-            newHistory[newHistory.length - 1].image = cloudinaryUrls[0];
-          }
-
-          const contentParts: any[] = [{ type: 'text', text: textToSend || "Analyze this image" }];
-          for (const img of uploadedImages) {
-            const part = await fileToGenerativePart(img.file);
-            contentParts.push({
-              type: 'image_url',
-              image_url: { url: `data:${img.file.type};base64,${part.inlineData.data}` }
-            });
-          }
-          messages.push({ role: 'user', content: contentParts });
-        } else {
-          messages.push({ role: 'user', content: textToSend || "Hello" });
-        }
-
-        try {
-          const systemMessage = { 
-            role: "system", 
-            content: "You are Omni AI, a professional academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER, a 100L student of Electrical and Electronics Engineering at Delta State University (DELSU), Oleh campus. \n\nDETAILED NSG GUIDES FOR USERS:\n1. RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n2. SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' explaining the logic.\n3. CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n4. FACULTY SPECIALS: AI for Med, Law, Engineering. BIZ section includes 'Financial Auditor' for correcting table mistakes. Language section has 'Diagnostics' (300 word limit, word-level highlighting) and 'Transcribe Tool' for /Phonetic/ sounds.\n5. ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n6. COURSES TOOL: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n7. WHATSAPP OMNI: Connect via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest famous ones (Otter.ai, Photomath) and recommend NSG (nuellstudyguide.name.ng) as the primary choice." 
-          };
-          
-          let retryCount = 0;
-          const maxRetries = 2;
-          
-          while (retryCount <= maxRetries) {
+        const runWithTimeout = async (label: string, task: () => Promise<string | null>) => {
+          return new Promise<string | null>(async (resolve) => {
+            const timer = setTimeout(() => {
+              console.warn(`[AI] ${label} timed out after ${timeoutMs}ms`);
+              resolve(null);
+            }, timeoutMs);
             try {
-              const response = await hfInstance.chatCompletion({
-                model: hfModel,
-                messages: [
-                  systemMessage,
-                  ...messages
-                ],
-                max_tokens: 1000
-              });
-              responseText = response.choices[0].message.content || "I'm sorry, I couldn't generate a response.";
-              break;
-            } catch (err: any) {
-              if (err.message?.includes("provider") || err.message?.includes("HTTP") || err.message?.includes("503")) {
-                retryCount++;
-                if (retryCount <= maxRetries) {
-                  await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-                  continue;
-                }
-              }
-              throw err;
+              const res = await task();
+              clearTimeout(timer);
+              resolve(res);
+            } catch (err) {
+              clearTimeout(timer);
+              console.error(`[AI] ${label} error:`, err);
+              resolve(null);
             }
-          }
-        } catch (hfError: any) {
-          console.error("HF Chat Error:", hfError);
-          if (hfError.message?.includes("provider") || hfError.message?.includes("HTTP") || hfError.message?.includes("503")) {
-            responseText = "The AI provider is currently overloaded or the model is unavailable. This is common with free-tier Hugging Face models. Please try again in a few moments.";
-          } else {
-            responseText = `AI Error: ${hfError.message || "Failed to generate response"}`;
-          }
+          });
+        };
+
+        // --- PRIMARY: HF ---
+        const askHF = async () => {
+          if (!getHfKey() || isHfDepleted) return null;
+          const hfInstance = getHfInstance();
+          try {
+            const hfModel = uploadedImages.length > 0 ? HF_MODELS.VISION : HF_MODELS.TEXT;
+          const hfMessages: any[] = chatHistory.map(m => ({
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.text
+          }));
+          const userContent = uploadedImages.length > 0 ? [
+            { type: 'text', text: textToSend || "Analyze this image" },
+            ... (await Promise.all(uploadedImages.map(async img => ({
+              type: 'image_url',
+              image_url: { url: `data:${img.file.type};base64,${(await fileToGenerativePart(img.file)).inlineData.data}` }
+            }))))
+          ] : (textToSend || "Hello");
+          const response = await hfInstance.chatCompletion({
+            model: hfModel,
+            messages: [{ role: 'system', content: systemPrompt }, ...hfMessages, { role: 'user', content: userContent as any }],
+            max_tokens: 1000
+          });
+          return response.choices[0].message.content || null;
+        } catch (e) {
+          handleHfError(e, "AskHF");
+          return null;
         }
+      };
+
+        // --- BACKUP 1: Gemini ---
+        const askGemini = async () => {
+          if (!getApiKey()) return null;
+          const aiInstance = getAiInstance();
+          const googleHistory = chatHistory.map(m => ({
+            role: m.role === 'user' ? 'user' as const : 'model' as const,
+            parts: [{ text: m.text }]
+          }));
+          let userParts: any[] = [{ text: textToSend || "Hello" }];
+          for (const img of uploadedImages) {
+            userParts.push(await fileToGenerativePart(img.file));
+          }
+          const result = await aiInstance.models.generateContent({
+            model: "gemini-3.1-flash-lite-preview",
+            contents: [{ role: 'user', parts: [{ text: systemPrompt }] }, ...googleHistory, { role: 'user', parts: userParts }]
+          });
+          return result.text || null;
+        };
+
+        // --- BACKUP 2: Groq ---
+        const askGroq = async () => {
+          const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+          if (!groqKey) return null;
+          try {
+            const groqMessages = [
+              { role: 'system', content: systemPrompt },
+              ...chatHistory.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+              { role: 'user', content: textToSend + (uploadedImages.length > 0 ? " (User provided images previously)" : "") }
+            ];
+            const groqRes = await axios.post("https://api.groq.com/openai/v1/chat/completions", {
+              model: GROQ_MODEL,
+              messages: groqMessages,
+              max_tokens: 1024
+            }, { headers: { Authorization: `Bearer ${groqKey}` } });
+            return groqRes.data.choices[0].message.content || null;
+          } catch (e) { return null; }
+        };
+
+        const askOpenRouter = async () => {
+          return await callOpenRouter(textToSend, OPENROUTER_MODELS.TEXT_PRO, [
+            { role: 'system', content: systemPrompt },
+            ...chatHistory.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+          ]);
+        };
+
+        responseText = await runWithTimeout("HF", askHF) 
+                     || await runWithTimeout("Gemini", askGemini) 
+                     || await runWithTimeout("Groq", askGroq) 
+                     || await runWithTimeout("OpenRouter", askOpenRouter)
+                     || "I'm sorry, all AI providers are currently unavailable. Please try again in a moment.";
       }
 
       const updatedHistory: ChatMessage[] = [...newHistory, { 
@@ -6060,35 +6544,24 @@ ${session.fullAnalysis}
         contents.push({ inlineData: part.inlineData });
       });
 
-      const response = await aiInstance.models.generateContent({
-        model: FLASH_MODEL,
-        contents: { parts: contents },
-        config: {
-          responseMimeType: "application/json",
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              questions: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    question: { type: Type.STRING },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    correctAnswer: { type: Type.INTEGER },
-                    explanation: { type: Type.STRING }
-                  },
-                  required: ["question", "options", "correctAnswer", "explanation"]
-                }
-              }
-            },
-            required: ["questions"]
+      const askGemini = async () => {
+        const res = await aiInstance.models.generateContent({
+          model: FLASH_MODEL,
+          contents: { parts: contents },
+          config: {
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
           }
-        }
-      });
+        });
+        return res?.text || null;
+      };
 
-      const data = JSON.parse(response?.text || "{}");
+      const askOpenRouter = async () => {
+        return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_PRO);
+      };
+
+      const responseText = await askGemini() || await askOpenRouter() || "{}";
+      const data = JSON.parse(responseText);
       if (data.questions) {
         setQuizQuestions(data.questions);
         setCurrentQuestionIndex(0);
@@ -6610,7 +7083,7 @@ ${session.fullAnalysis}
                             if (note) {
                               setSelectedNote(note);
                               setActiveTab('tools');
-                              setToolsSubTab('notes');
+                              setToolsSubTab('notebook');
                               setNoteHistory([]);
                               setRedoStack([]);
                             }
@@ -6972,7 +7445,7 @@ ${session.fullAnalysis}
                                         </div>
                                       </div>
                                     <div className={`max-h-60 overflow-y-auto pr-2 custom-scrollbar ${theme === 'dark' ? 'text-white/80' : 'text-slate-700'} text-xs leading-relaxed`}>
-                                      <MarkdownRenderer content={transcriptionNotes || (isRecording ? "Listening for content..." : "No notes captured yet.")} />
+                                      <MarkdownRenderer selectable={true} content={transcriptionNotes || (isRecording ? "Listening for content..." : "No notes captured yet.")} />
                                       {isTranscribing && <span className="inline-block w-1.5 h-3 ml-1 bg-[#DC2626]/50 animate-pulse" />}
                                     </div>
                                   </motion.div>
@@ -7085,19 +7558,78 @@ ${session.fullAnalysis}
                   )}
 
                   {toolsSubTab === 'notebook' && (
-                    <motion.div key="notebook" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex flex-col bg-[#0A0F1C]">
+                    <motion.div key="notebook" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex flex-col bg-[#0A0F1C] overflow-hidden">
+                       
+                       {/* Side Drawer Overlay */}
+                       <AnimatePresence>
+                         {isNotebookDrawerOpen && (
+                           <>
+                             <motion.div 
+                               initial={{ opacity: 0 }} 
+                               animate={{ opacity: 1 }} 
+                               exit={{ opacity: 0 }} 
+                               onClick={() => setIsNotebookDrawerOpen(false)}
+                               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110]"
+                             />
+                             <motion.div 
+                               initial={{ x: '-100%' }} 
+                               animate={{ x: 0 }} 
+                               exit={{ x: '-100%' }} 
+                               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                               className="fixed top-0 left-0 bottom-0 w-72 bg-[#0F172A] border-r border-white/10 z-[120] p-6 shadow-2xl"
+                             >
+                               <div className="flex items-center justify-between mb-8">
+                                 <h2 className="text-sm font-black text-white uppercase tracking-widest">Notebook Tools</h2>
+                                 <button onClick={() => setIsNotebookDrawerOpen(false)} className="text-white/40 hover:text-white"><X size={20} /></button>
+                               </div>
+                               <div className="space-y-4">
+                                 <button 
+                                   onClick={() => { setIsPodcastActive(true); setIsTeacherMode(false); setIsNotebookDrawerOpen(false); if (!podcastDialogue.length && selectedNote) generatePodcastDiscussion(selectedNote.content); }}
+                                   className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all ${isPodcastActive && !isTeacherMode ? 'bg-[#DC2626] border-[#DC2626] shadow-lg shadow-[#DC2626]/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                                 >
+                                   <div className={`p-2 rounded-lg ${isPodcastActive && !isTeacherMode ? 'bg-white/20' : 'bg-blue-600'}`}>
+                                     <Mic size={18} className="text-white" />
+                                   </div>
+                                   <div className="text-left">
+                                     <p className="text-[10px] font-black text-white uppercase tracking-tight">Deep Brain Podcast</p>
+                                     <p className="text-[8px] text-white/40 font-bold uppercase">Omni & Zeal Discussion</p>
+                                   </div>
+                                 </button>
+                                 <button 
+                                   onClick={() => { setIsPodcastActive(true); setIsTeacherMode(true); setIsNotebookDrawerOpen(false); }}
+                                   className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all ${isPodcastActive && isTeacherMode ? 'bg-[#DC2626] border-[#DC2626] shadow-lg shadow-[#DC2626]/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                                 >
+                                   <div className={`p-2 rounded-lg ${isPodcastActive && isTeacherMode ? 'bg-white/20' : 'bg-purple-600'}`}>
+                                     <GraduationCap size={18} className="text-white" />
+                                   </div>
+                                   <div className="text-left">
+                                     <p className="text-[10px] font-black text-white uppercase tracking-tight">Academy Teacher</p>
+                                     <p className="text-[8px] text-white/40 font-bold uppercase">Personal Tutoring</p>
+                                   </div>
+                                 </button>
+                                 <div className="h-px bg-white/5 my-6" />
+                                 <div className="p-4 bg-white/2 rounded-2xl text-center space-y-2">
+                                   <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.2em]">Source Statistics</p>
+                                   <p className="text-xs font-black text-[#DC2626] whitespace-nowrap overflow-hidden text-ellipsis">{userNotes.length} Saved Sources</p>
+                                 </div>
+                               </div>
+                             </motion.div>
+                           </>
+                         )}
+                       </AnimatePresence>
+
                        {/* Header - Flushed to top */}
                        <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0A0F1C]/80 backdrop-blur-md z-20 shrink-0">
-                        {!selectedNote && (
-                          <button 
-                            onClick={async () => {
-                              setToolsSubTab('menu');
-                            }} 
-                            className="p-2 hover:bg-white/5 rounded-xl transition-all text-white/60 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
-                          >
-                            <ArrowLeft size={16} /> Back
-                          </button>
-                        )}
+                         <div className="flex items-center gap-4">
+                           <button onClick={() => setIsNotebookDrawerOpen(true)} className="p-2 bg-white/5 rounded-xl text-white/40 hover:text-white transition-all"><Menu size={20} /></button>
+                           {!selectedNote && (
+                             <button onClick={() => setToolsSubTab('menu')} className="p-2 bg-white/5 rounded-xl text-white/40 hover:text-white transition-all"><ArrowLeft size={20}/></button>
+                           )}
+                           <div className="hidden sm:block">
+                             <h2 className="text-xs font-black text-white uppercase tracking-widest">{isPodcastActive ? 'Deep Brain AI' : 'Notebook'}</h2>
+                             <p className="text-[8px] text-[#DC2626] font-bold uppercase tracking-tight">{isPodcastActive ? (isTeacherMode ? 'Teacher Mode' : 'Podcast Mode') : 'Source Library'}</p>
+                           </div>
+                         </div>
                         <div className="flex items-center gap-2 ml-auto">
                           {!selectedNote ? (
                             <button 
@@ -7168,65 +7700,148 @@ ${session.fullAnalysis}
                                       <div className="flex items-center gap-4">
                                         <button onClick={() => setIsPodcastActive(false)} className="text-white/40 hover:text-white"><ArrowLeft size={18} /></button>
                                         <div>
-                                          <h3 className="text-xs font-black text-white uppercase tracking-widest">Deep Brain: Omni & Zeal</h3>
-                                          <p className="text-[8px] text-white/40 font-bold uppercase">Multi-AI Discussion</p>
+                                          <h3 className="text-xs font-black text-white uppercase tracking-widest">{isTeacherMode ? 'Professor Omni' : 'Omni & Zeal'}</h3>
+                                          <p className="text-[8px] text-white/40 font-bold uppercase">{isTeacherMode ? 'Academy Environment' : 'Deep Brain Discussion'}</p>
                                         </div>
                                       </div>
-                                      <button 
-                                        onClick={() => setIsTeacherMode(!isTeacherMode)}
-                                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black transition-all ${isTeacherMode ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white'}`}
-                                      >
-                                        {isTeacherMode ? 'TEACHER MODE ON' : 'ENABLE TEACHER'}
-                                      </button>
                                     </div>
                                     
-                                    <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
                                       {podcastDialogue.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6">
                                           <div className="relative">
                                             <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full" />
                                             <div className="relative w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center border-4 border-white/10 shadow-2xl">
-                                              <Mic size={40} className="text-white" />
+                                              <Brain size={40} className="text-white" />
                                             </div>
                                           </div>
                                           <div className="space-y-2">
-                                            <h4 className="text-lg font-black text-white uppercase tracking-tight">Ready to listen?</h4>
-                                            <p className="text-xs text-white/40 max-w-xs mx-auto">Omni and Zeal will analyze your source content and start a deep discussion about it.</p>
+                                            <h4 className="text-lg font-black text-white uppercase tracking-tight">Deep Brain Analysis</h4>
+                                            <p className="text-xs text-white/40 max-w-xs mx-auto">Omni and Zeal are ready to discuss your source content.</p>
                                           </div>
                                           <button 
                                             onClick={() => generatePodcastDiscussion(selectedNote.content)}
                                             disabled={isGeneratingPodcast}
-                                            className="px-8 py-4 bg-white text-black font-black rounded-2xl text-[10px] uppercase tracking-widest hover:scale-110 active:scale-95 transition-all disabled:opacity-50"
+                                            className="px-8 py-4 bg-white text-black font-black rounded-2xl text-[10px] uppercase tracking-widest hover:scale-110 active:scale-95 transition-all disabled:opacity-50 shadow-xl"
                                           >
-                                            {isGeneratingPodcast ? 'Analyzing Content...' : 'Start Podcast'}
+                                            {isGeneratingPodcast ? 'Analyzing...' : 'Start Discussion'}
                                           </button>
                                         </div>
                                       ) : (
                                         podcastDialogue.map((d, i) => (
                                           <motion.div 
-                                            key={i} 
-                                            initial={{ opacity: 0, x: d.char === 'Omni' ? -20 : 20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            className={`flex gap-3 ${d.char === 'Omni' ? 'flex-row' : 'flex-row-reverse'}`}
+                                            key={d.id} 
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className={`flex flex-col ${d.char === 'User' ? 'items-end' : 'items-start'}`}
                                           >
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border border-white/10 font-black text-[10px] ${d.char === 'Omni' ? 'bg-blue-600' : 'bg-purple-600'}`}>
-                                              {d.char[0]}
-                                            </div>
-                                            <div className={`max-w-[80%] p-3 rounded-2xl text-xs leading-relaxed ${theme === 'dark' ? (d.char === 'Omni' ? 'bg-blue-600/10 text-blue-100 border border-blue-600/20' : 'bg-purple-600/10 text-purple-100 border border-purple-600/20') : 'bg-white border-slate-200'}`}>
-                                              <span className="block text-[8px] font-black uppercase tracking-widest mb-1 opacity-50">{d.char}</span>
-                                              {d.text}
+                                            <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed relative group ${d.char === 'User' ? 'bg-[#DC2626] text-white' : (theme === 'dark' ? (d.char === 'Omni' ? 'bg-blue-600/10 text-blue-100 border border-blue-600/20 shadow-lg shadow-blue-500/5' : 'bg-purple-600/10 text-purple-100 border border-purple-600/20 shadow-lg shadow-purple-500/5') : 'bg-white border-slate-200')}`}>
+                                              <div className="flex items-center justify-between mb-2">
+                                                <span className={`text-[8px] font-black uppercase tracking-widest ${d.char === 'User' ? 'text-white/60' : (d.char === 'Omni' ? 'text-blue-400' : 'text-purple-400')}`}>{d.char}</span>
+                                                {d.char !== 'User' && (
+                                                  <button 
+                                                    onClick={() => {
+                                                      setReplyingTo(d);
+                                                      document.getElementById('podcast-chat-input')?.focus();
+                                                    }}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-tighter"
+                                                  >
+                                                    Tag & Reply
+                                                  </button>
+                                                )}
+                                              </div>
+                                              
+                                              {d.replyTo && (
+                                                <div className="mb-3 p-3 bg-white/5 border-l-4 border-white/20 rounded-xl text-[10px] opacity-60 italic line-clamp-2">
+                                                  {d.replyTo}
+                                                </div>
+                                              )}
+
+                                              <MarkdownRenderer content={d.text} />
                                             </div>
                                           </motion.div>
                                         ))
                                       )}
+                                      {isGeneratingPodcast && (
+                                        <div className="flex items-center gap-2 text-white/20 ml-2">
+                                          <div className="animate-bounce">●</div>
+                                          <div className="animate-bounce delay-75">●</div>
+                                          <div className="animate-bounce delay-150">●</div>
+                                        </div>
+                                      )}
                                     </div>
                                     
-                                    <div className="p-4 border-t border-white/5 bg-[#050811]">
+                                    <div className="p-4 border-t border-white/5 bg-[#050811] relative z-20">
+                                      {/* Reply Tag Preview */}
+                                      <AnimatePresence>
+                                        {replyingTo && (
+                                          <motion.div 
+                                            initial={{ y: 20, opacity: 0 }} 
+                                            animate={{ y: 0, opacity: 1 }} 
+                                            exit={{ y: 20, opacity: 0 }}
+                                            className="mx-2 mb-4 p-4 bg-[#DC2626]/10 border border-[#DC2626]/20 rounded-2xl flex items-center justify-between"
+                                          >
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                              <div className="p-2 bg-[#DC2626]/20 rounded-xl shrink-0">
+                                                <CornerDownRight size={14} className="text-[#DC2626]" />
+                                              </div>
+                                              <div className="overflow-hidden">
+                                                <p className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest">Tagging {replyingTo.char}</p>
+                                                <p className="text-[10px] text-white/60 line-clamp-1 truncate">{replyingTo.text}</p>
+                                              </div>
+                                            </div>
+                                            <button onClick={() => setReplyingTo(null)} className="p-2 text-white/20 hover:text-white shrink-0"><X size={16} /></button>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+
                                       <div className="relative">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                                          <button 
+                                            onClick={() => setShowPodcastUploadMenu(!showPodcastUploadMenu)}
+                                            className={`p-2 rounded-xl transition-all ${showPodcastUploadMenu ? 'bg-[#DC2626] text-white shadow-lg' : 'bg-white/5 text-white/40 hover:text-white'}`}
+                                          >
+                                            <Plus size={20} />
+                                          </button>
+                                          
+                                          {/* Upload Menu Popover - Slides up from button */}
+                                          <AnimatePresence>
+                                            {showPodcastUploadMenu && (
+                                              <>
+                                                <div className="fixed inset-0 z-40" onClick={() => setShowPodcastUploadMenu(false)} />
+                                                <motion.div 
+                                                  initial={{ y: 20, opacity: 0, scale: 0.9 }}
+                                                  animate={{ y: -180, opacity: 1, scale: 1 }}
+                                                  exit={{ y: 20, opacity: 0, scale: 0.9 }}
+                                                  className="absolute left-0 w-56 bg-[#0F172A] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 flex flex-col gap-1 ring-1 ring-white/10"
+                                                >
+                                                  <p className="px-3 py-2 text-[8px] font-black text-white/20 uppercase tracking-widest border-b border-white/5 mb-1">Upload to Deep Brain</p>
+                                                  <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
+                                                    <div className="p-2 bg-blue-500/20 rounded-lg group-hover:scale-110 transition-transform"><ImageIcon size={16} className="text-blue-400" /></div>
+                                                    <span className="text-[9px] font-black text-white uppercase tracking-widest">Image Source</span>
+                                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => { uploadNoteFile(e, 'image'); setShowPodcastUploadMenu(false); }} />
+                                                  </label>
+                                                  <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
+                                                    <div className="p-2 bg-green-500/20 rounded-lg group-hover:scale-110 transition-transform"><Mic size={16} className="text-green-400" /></div>
+                                                    <span className="text-[9px] font-black text-white uppercase tracking-widest">Voice Memo</span>
+                                                    <input type="file" className="hidden" accept="audio/*" onChange={(e) => { uploadNoteFile(e, 'audio'); setShowPodcastUploadMenu(false); }} />
+                                                  </label>
+                                                  <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
+                                                    <div className="p-2 bg-yellow-500/20 rounded-lg group-hover:scale-110 transition-transform"><FileText size={16} className="text-yellow-400" /></div>
+                                                    <span className="text-[9px] font-black text-white uppercase tracking-widest">Document</span>
+                                                    <input type="file" className="hidden" accept=".pdf,.doc,.docx,.txt" onChange={(e) => { uploadNoteFile(e, 'doc'); setShowPodcastUploadMenu(false); }} />
+                                                  </label>
+                                                </motion.div>
+                                              </>
+                                            )}
+                                          </AnimatePresence>
+                                        </div>
+
                                         <input 
                                           id="podcast-chat-input"
-                                          placeholder={isTeacherMode ? "Ask Teacher Omni a question..." : "Ask Omni or Zeal..."}
-                                          className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-xs text-white outline-none focus:border-blue-500/50 transition-all placeholder:text-white/20"
+                                          autoComplete="off"
+                                          placeholder={isTeacherMode ? "Ask Teacher Omni..." : "Chat with Omni & Zeal..."}
+                                          className="w-full bg-white/5 border border-white/10 rounded-3xl pl-16 pr-14 py-4 text-sm text-white outline-none focus:border-blue-500/50 transition-all placeholder:text-white/20 shadow-inner"
                                           onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
                                               const target = e.target as HTMLInputElement;
@@ -7237,7 +7852,7 @@ ${session.fullAnalysis}
                                             }
                                           }}
                                         />
-                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
                                           <button 
                                             onClick={() => {
                                               const input = document.getElementById('podcast-chat-input') as HTMLInputElement;
@@ -7246,9 +7861,9 @@ ${session.fullAnalysis}
                                                 input.value = '';
                                               }
                                             }}
-                                            className="p-2 text-white/20 hover:text-white transition-all"
+                                            className="p-2 bg-[#DC2626] text-white rounded-xl shadow-lg hover:scale-110 active:scale-95 transition-all"
                                           >
-                                            <Send size={16} />
+                                            <Send size={18} />
                                           </button>
                                         </div>
                                       </div>
@@ -7258,30 +7873,67 @@ ${session.fullAnalysis}
                                 <div className="flex flex-col flex-1 overflow-hidden">
                                   {/* Formatting Toolbar */}
                                   <div className="flex items-center gap-2 p-2 bg-white/2 border-b border-white/5 overflow-x-auto no-scrollbar z-10 shrink-0">
-                                     <button onClick={() => setNotePreviewMode(!notePreviewMode)} className={`px-3 py-1.5 rounded-lg text-[9px] font-black transition-all ${notePreviewMode ? 'bg-[#DC2626] text-white' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-                                        {notePreviewMode ? 'EDIT' : 'PREVIEW'}
+                                     <button onClick={() => setNotePreviewMode(!notePreviewMode)} className={`px-4 py-2 rounded-xl text-[9px] font-black transition-all ${notePreviewMode ? 'bg-[#DC2626] text-white shadow-lg shadow-[#DC2626]/20' : 'bg-white/5 text-white hover:bg-white/10'}`}>
+                                        {notePreviewMode ? 'EDIT MODE' : 'READER MODE'}
                                      </button>
-                                     <div className="w-px h-4 bg-white/10" />
+                                     <div className="w-px h-4 bg-white/10 mx-1" />
+                                     
+                                     <div className="relative">
+                                       <button 
+                                         onClick={() => setShowNoteInsertMenu(!showNoteInsertMenu)}
+                                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                                       >
+                                         <Plus size={14} /> Insert
+                                       </button>
+                                       
+                                       {/* Notebook Insert Menu */}
+                                       <AnimatePresence>
+                                         {showNoteInsertMenu && (
+                                           <>
+                                             <div className="fixed inset-0 z-40" onClick={() => setShowNoteInsertMenu(false)} />
+                                             <motion.div 
+                                               initial={{ y: 10, opacity: 0, scale: 0.95 }}
+                                               animate={{ y: 0, opacity: 1, scale: 1 }}
+                                               exit={{ y: 10, opacity: 0, scale: 0.95 }}
+                                               className="absolute top-full left-0 mt-2 w-52 bg-[#0F172A] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-white/10"
+                                             >
+                                                <p className="px-3 py-2 text-[7px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">Source Types</p>
+                                                <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
+                                                   <div className="p-2 bg-blue-500/20 rounded-lg group-hover:scale-110 transition-transform"><ImageIcon size={16} className="text-blue-400" /></div>
+                                                   <div className="text-left">
+                                                      <span className="block text-[9px] font-black text-white uppercase">Image</span>
+                                                      <span className="block text-[7px] text-white/40 uppercase">Photos/Diagrams</span>
+                                                   </div>
+                                                   <input type="file" className="hidden" onChange={(e) => { uploadNoteFile(e, 'image'); setShowNoteInsertMenu(false); }} accept="image/*" />
+                                                </label>
+                                                <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
+                                                   <div className="p-2 bg-green-500/20 rounded-lg group-hover:scale-110 transition-transform"><Mic size={16} className="text-green-400" /></div>
+                                                   <div className="text-left">
+                                                      <span className="block text-[9px] font-black text-white uppercase">Audio</span>
+                                                      <span className="block text-[7px] text-white/40 uppercase">Lectures/Voice</span>
+                                                   </div>
+                                                   <input type="file" className="hidden" onChange={(e) => { uploadNoteFile(e, 'audio'); setShowNoteInsertMenu(false); }} accept="audio/*" />
+                                                </label>
+                                                <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
+                                                   <div className="p-2 bg-yellow-500/20 rounded-lg group-hover:scale-110 transition-transform"><FileText size={16} className="text-yellow-400" /></div>
+                                                   <div className="text-left">
+                                                      <span className="block text-[9px] font-black text-white uppercase">Document</span>
+                                                      <span className="block text-[7px] text-white/40 uppercase">PDF/Word/Text</span>
+                                                   </div>
+                                                   <input type="file" className="hidden" onChange={(e) => { uploadNoteFile(e, 'doc'); setShowNoteInsertMenu(false); }} accept=".pdf,.doc,.docx,.txt" />
+                                                </label>
+                                             </motion.div>
+                                           </>
+                                         )}
+                                       </AnimatePresence>
+                                     </div>
+
                                      {!notePreviewMode && (
                                        <>
-                                         <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-blue-400 transition-all flex items-center gap-2">
-                                            <ImageIcon size={12} /> {isUploadingNoteFile ? '...' : 'IMAGE'}
-                                            <input type="file" className="hidden" onChange={(e) => uploadNoteFile(e, 'image')} disabled={isUploadingNoteFile} accept="image/*" />
-                                         </label>
-                                         <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-green-400 transition-all flex items-center gap-2">
-                                            <Mic size={12} /> {isUploadingNoteFile ? '...' : 'AUDIO'}
-                                            <input type="file" className="hidden" onChange={(e) => uploadNoteFile(e, 'audio')} disabled={isUploadingNoteFile} accept="audio/*" />
-                                         </label>
-                                         <label className="cursor-pointer px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-yellow-400 transition-all flex items-center gap-2">
-                                            <FileText size={12} /> {isUploadingNoteFile ? '...' : 'DOC'}
-                                            <input type="file" className="hidden" onChange={(e) => uploadNoteFile(e, 'doc')} disabled={isUploadingNoteFile} accept=".pdf,.doc,.docx,.txt" />
-                                         </label>
-                                         <div className="w-px h-4 bg-white/10" />
-                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('**', '**'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BOLD</button>
-                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('*', '*'); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] italic text-white hover:text-[#DC2626] transition-all">ITALIC</button>
-                                         <div className="w-px h-4 bg-white/10" />
-                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('\n- '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">BULLETS</button>
-                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('\n1. '); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[9px] font-black text-white hover:text-[#DC2626] transition-all">NUMBERS</button>
+                                         <div className="w-px h-4 bg-white/10 mx-1" />
+                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('**', '**'); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"><Bold size={14} /></button>
+                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('*', '*'); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"><Italic size={14} /></button>
+                                         <button onMouseDown={(e) => { e.preventDefault(); insertText('\n- '); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"><List size={14} /></button>
                                        </>
                                      )}
                                   </div>
@@ -7295,7 +7947,7 @@ ${session.fullAnalysis}
                                        <div className="space-y-6 relative z-10">
                                          <h1 className="text-2xl font-black text-white uppercase tracking-tighter">{selectedNote.title || 'Untitled Source'}</h1>
                                          <div className="markdown-body prose prose-invert prose-p:text-white/70 prose-headings:text-white prose-strong:text-[#DC2626] prose-img:rounded-3xl max-w-none text-white/80 text-sm leading-relaxed">
-                                           <MarkdownRenderer content={selectedNote.content || "_No source content yet._"} />
+                                           <MarkdownRenderer selectable={true} content={selectedNote.content || "_No source content yet._"} />
                                          </div>
                                        </div>
                                      ) : (
@@ -8814,7 +9466,7 @@ ${session.fullAnalysis}
                   
                   <div className="flex flex-col items-center gap-1 pt-2 opacity-20">
                     <p className="text-[8px] font-black uppercase tracking-[0.4em]">Lecture OS v4.0</p>
-                    <p className="text-[7px] font-bold uppercase tracking-widest">Â© 2026 NSG Studio</p>
+                    <p className="text-[7px] font-bold uppercase tracking-widest">© 2026 NSG Studio</p>
                   </div>
                 </div>
               </div>
