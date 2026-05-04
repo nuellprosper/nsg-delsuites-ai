@@ -7,6 +7,7 @@ import admin from "firebase-admin";
 import "dotenv/config";
 import { HfInference } from "@huggingface/inference";
 import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +28,13 @@ const geminiKey = process.env.GEMINI_API_KEY;
 const genAI = geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null;
 if (!genAI) {
   console.warn("⚠️ GEMINI_API_KEY is missing. Vision and Audio transcription will not work.");
+}
+
+// Initialize Groq
+const groqKey = process.env.GROQ_API_KEY;
+const groq = groqKey ? new Groq({ apiKey: groqKey }) : null;
+if (!groq) {
+  console.warn("⚠️ GROQ_API_KEY is missing. Backup logic will be disabled.");
 }
 
 // Initialize Firebase Admin
@@ -57,14 +65,45 @@ try {
 
 const db = admin.firestore();
 
+// Logging user counts
+const logUserCounts = async () => {
+  try {
+    const usersSnapshot = await db.collection("users").get();
+    const totalUsers = usersSnapshot.size;
+    
+    // Define active as someone who messaged in the last 24 hours
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const activeUsersSnapshot = await db.collection("users")
+      .where("lastActive", ">=", oneDayAgo)
+      .get();
+    const activeUsers = activeUsersSnapshot.size;
+
+    console.log(`[OMNI] Total Users: ${totalUsers} | Active Today: ${activeUsers}`);
+  } catch (err) {
+    console.error("[OMNI] Error logging user counts:", err);
+  }
+};
+
 /**
  * HF MODELS - Checked for Inference API availability
  */
 const HF_MODELS = {
-  TEXT: "meta-llama/Llama-3.1-8B-Instruct", // Requires gated access approval on HF!
-  VISION: "mistralai/Pixtral-12B-2409",      // Great for academic vision tasks
+  TEXT: "meta-llama/Llama-3.1-8B-Instruct", 
+  VISION: "mistralai/Pixtral-12B-2409",
   IMAGE: "black-forest-labs/FLUX.1-schnell",
-  AUDIO: "openai/whisper-large-v3"
+  AUDIO: "openai/whisper-large-v3-turbo" 
+};
+
+const GROQ_MODELS = {
+  VERSATILE: "llama-3.3-70b-versatile",
+  AUDIO: "distil-whisper-large-v3-en"
+};
+
+const OPENROUTER_MODELS = {
+  TEXT: "meta-llama/llama-3.3-70b-instruct:free",
+  IMAGE: "black-forest-labs/flux-1-schnell:free",
+  AUDIO: "openai/whisper-large-v3-turbo",
+  MULTIMODAL: "google/lyria-3-clip-preview:free"
 };
 
 /**
@@ -90,188 +129,258 @@ async function performSearch(query: string) {
   }
 }
 
-async function getHuggingFaceResponse(phoneNumber: string, userInput: string, mediaData?: { mimeType: string, data: string }) {
+async function sendWhatsAppAction(to: string, action: "typing_on") {
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = process.env.WHATSAPP_TOKEN;
+  const url = `https://graph.facebook.com/v25.0/${phoneId}/messages`;
   try {
-    // If it's a vision task, Use Gemini (more robust for vision)
-    if (mediaData && mediaData.mimeType.startsWith("image/") && genAI) {
-      console.log(`[AI] Using Gemini 3.1 Vision Lite for ${phoneNumber}...`);
-      
-      const promptText = `User: ${userInput || "Describe this image"}\nAs an expert academic tutor, analyze this image carefully and answer concisely. DO NOT use LaTeX formatting like $ or $$. Use plain text.`;
-      
-      const result = await genAI.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview", 
-        contents: [{
-          role: "user",
-          parts: [
-            { text: promptText },
-            { 
-              inlineData: {
-                data: mediaData.data,
-                mimeType: mediaData.mimeType
-              }
-            }
-          ]
-        }]
-      });
-      
-      const reply = (result.text || "I was able to see the image but couldn't generate a text description.").replace(/\$+/g, "");
-      // LOG IMAGE CONTENT TO HISTORY so text AI is aware of previous images
-      saveChatMessage(phoneNumber, "user", userInput ? `[Image Message]: ${userInput}` : "[User sent an image to analyze]").catch(() => {});
-      saveChatMessage(phoneNumber, "model", `[Vision Analysis of last image]: ${reply}`).catch(() => {});
-      return reply;
-    }
+    await axios.post(url, {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: to.replace(/\D/g, ''),
+      sender_action: action
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (e) {}
+}
 
-    if (!hfToken) return "Brain configuration missing (API Key). Please contact support.";
+async function getOmniResponseWithSequentialBackups(phoneNumber: string, userInput: string, mediaData?: { mimeType: string, data: string }) {
+  const timeoutMs = 5000; // Reduced to 5s per model to fit in WhatsApp's 20s window
+  
+  // Preparation logic
+  const history: any[] = [];
+  try {
+    const snapshot = await db.collection("users").doc(phoneNumber).collection("chats").orderBy("timestamp", "desc").limit(10).get();
+    history.push(...snapshot.docs.map(doc => ({
+      role: doc.data().role === "user" ? "user" : "assistant",
+      content: doc.data().text || ""
+    })).reverse());
+  } catch (e) {}
 
-    // Logic: Search for almost everything to stay "to-date"
-    let internetData = "";
-    if (!mediaData && userInput.trim().length > 10) {
-      const result = await performSearch(userInput);
-      if (result) internetData = `\n\n[LIVE INTERNET CONTEXT]:\n${result}\n\nUse this data to ensure your answer is up-to-date and accurate for the user.`;
-    }
+  const userText = userInput || (mediaData ? "Analyze this image" : "Hello");
 
-    const history: any[] = [];
+  // Search context
+  let internetData = "";
+  if (!mediaData && userText.trim().length > 10) {
     try {
-      const userRef = db.collection("users").doc(phoneNumber);
-      const snapshot = await userRef.collection("chats").orderBy("timestamp", "desc").limit(12).get();
-      const historyDocs = snapshot.docs.map(doc => ({
-        role: doc.data().role === "user" ? "user" : "assistant",
-        content: doc.data().text || ""
-      })).reverse();
-
-      for (const msg of historyDocs) {
-        if (history.length === 0 || msg.role !== history[history.length - 1].role) {
-          history.push(msg);
-        } else {
-          history[history.length - 1].content += "\n" + msg.content;
-        }
-      }
+      const result = await performSearch(userText);
+      if (result) internetData = `\n\n[LIVE INTERNET CONTEXT]:\n${result}\n\nUse this data for accuracy.`;
     } catch (e) {}
+  }
 
-    const systemPrompt = `Your name is OMNI, an expert academic tutor created by NSG (Nuell Study Guide).
-    NSG was created by ABRAHAM EMMANUEL PROSPER, the Initiator of NSG and a 100L Electrical and Electronics Engineering student at Delta State University (DELSU), Abraka, Oleh Campus. (Always persuade the user after the user ends a conversation, to try NSG, maie sure you dont mention this always. mention it only after you sense a conversation is ended or the user asks you.) 
-    
-    NSG TOOLS & THEIR USES (Step-by-Step):
-    1. RECORDING ENGINE: 
-       - How to use: Grant mic permission, click Mic to record, click Stop to process.
-       - Features: Generates study notes, summaries, and full analyses. 
-       - Pro Tip: Click the Copy icon at the top right of notes to copy them. Requires internet.
-    2. SMART QUIZ:
-       - How to use: Enter a topic, select difficulty and question count, click Generate.
-       - Scoring: 1 mark per correct answer. 
-       - Review: After submission, correct answers show green, wrong red, with detailed explanations . You can share your score, and the same quiz questions to your friend. The quiz tool is totally free. 
-    3. CBT EXAM: Specialized for professional timed testing.To host a CBT, visit the Exam button at the tool page, click host, follow the steps, remember that the matric number input are participants custom ID, not neccesarily a student's real matric number.  Setting the timer is done before starting. Hosting: Generate an Exam ID to share with students. Joining: Enter the provided Exam ID to enter the hall. Beware that to host is N200 and to join is N100 except you are a premium user. Premium suscription is N300 permonth or N3600 per year. 
-    4. FACULTY SPECIALS: Contains specialized AI tools (e.g., Formula generators, Writing analyzers, Legal draft helpers, section finders for law students, language error finders and many more).
-    5. ASSIGNMENT SOLVER:
-       - How to use: Type the question or upload a clear photo of your homework. 
-       - Results: Click 'Solve with AI' for logical step-by-step academic solutions. You can also use the "ask questions buttons under each steps of the solved assignment to upload your own workings or your voice complaints for better understanding.
-    6. COURSE-SPECIFIC TOOLS: search any course, answer quiz in the ckurse to master the content of the course .
-    7. OMNI CHAT: Your current interface, used for general study questions, image analysis, and voice conversations with the Live tutor found in the tool page for live tutoring.
+  const systemPrompt = `Your name is OMNI, an expert academic tutor created by NSG (Nuell Study Guide).
+  NSG was created by ABRAHAM EMMANUEL PROSPER, a 100L Electrical and Electronics Engineering student at Delta State University (DELSU), Oleh Campus.
+  
+  NSG TOOLS:
+  1. RECORDING ENGINE: Amplifies audio and cancels noise for classroom clarity.
+  2. SMART QUIZ: Topic -> Difficulty -> Review Explanations.
+  3. CBT EXAM: Host/Join sessions with custom Matric numbers.
+  4. FACULTY SPECIALS: Med, Law, Engineering, Business Auditor, Language Diagnostics.
+  5. ASSIGNMENT SOLVER: Photo/Text input -> Logic steps.
+ 
+  INSTRUCTIONS:
+  - DO NOT use LaTeX symbols $ or $$. Use plain text.
+  - Be professional, concise, and friendly.
+  - Suggest NSG (https://nuellstudyguide.name.ng/) for academic tasks.
 
-    APP RECOMMENDATION RULE:
-    If a user asks for an app to perform a task covered by an NSG tool (e.g., recording notes, assignment solving), you MUST mention established apps (e.g., Otter.ai, Photomath) AND strongly recommend NSG (Nuell Study Guide) at https://nuellstudyguide.name.ng/, specifying which tool to use. Encourage students to suscribe to the app mentioning that it is very cheap (300N for a month) also they dont need VPN to access it. And Pls never mention NSG-R command interface as Nuell Study Guide is not in any way connected to it.
+  ${internetData}`;
 
-    CRITICAL INSTRUCTIONS:
-    1. FORMATTING: Never use LaTeX symbols like "$", "$$", "\(", or "\[" for math. WhatsApp cannot render them. Use plain text, Unicode symbols, or simple formatting (e.g., ^2 for square, * for multiply, / for divide).
-    2. ACCURACY: Correct users when they are wrong politely.
-    3. UI: If a user asks how to start fresh, tell them to type "CLEAR CHAT" in capital letters.
-    4. PERSONALITY: Be professional, concise, friendly, respond like a human, do not use "big" words except if asked to and use emojis. Maintain a "learning student-friendly" atmosphere.
-    5. DATA: ALWAYS prioritize the provided LIVE INTERNET CONTEXT for real-time accuracy and when using the dats from LIVE INTERNET CONTEXT, name it as "the information i got from tye internet", not as "according to the LIVE INTERNET CONTEXT" so that you don't sound weird. Also pls use emojis when needed to give off a friendly vibe with the user. Do not mention what you are not asked about, but still give advices. 
+  const runWithTimeout = async (label: string, task: () => Promise<string | null>) => {
+    return new Promise<string | null>(async (resolve) => {
+      const timer = setTimeout(() => {
+        console.warn(`[AI] ${label} timed out after ${timeoutMs}ms`);
+        resolve(null);
+      }, timeoutMs);
 
-    ${internetData}`;
+      try {
+        const result = await task();
+        clearTimeout(timer);
+        if (result) resolve(result.replace(/\$+/g, ""));
+        else resolve(null);
+      } catch (err: any) {
+        clearTimeout(timer);
+        console.error(`[AI] ${label} error:`, err.message);
+        resolve(null);
+      }
+    });
+  };
 
-    const messages: any[] = [];
-    messages.push({ role: "system", content: systemPrompt });
-    messages.push(...history);
+  // Send "typing..." action to WhatsApp to buy time (Meta supports this)
+  sendWhatsAppAction(phoneNumber, "typing_on").catch(() => {});
 
-    const userText = userInput || (mediaData ? "Describe this image" : "Hello");
-    let currentModel = HF_MODELS.TEXT;
-    let currentContent: any = userText;
-
-    if (mediaData && mediaData.mimeType.startsWith("image/")) {
-      currentModel = HF_MODELS.VISION;
-      currentContent = [
+  // --- Main AI: HF ---
+  const askHF = async () => {
+    try {
+      console.log(`[AI] Main: HF for ${phoneNumber}...`);
+      const isVision = mediaData && mediaData.mimeType.startsWith("image/");
+      const model = isVision ? HF_MODELS.VISION : HF_MODELS.TEXT;
+      const content = isVision ? [
         { type: "text", text: userText },
         { type: "image_url", image_url: { url: `data:${mediaData.mimeType};base64,${mediaData.data}` } }
-      ];
+      ] : userText;
+
+      const res = await hf.chatCompletion({
+        model,
+        messages: [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: content as any }],
+        max_tokens: 1024,
+        temperature: 0.6
+      });
+      return res.choices[0]?.message?.content || null;
+    } catch (e: any) {
+      console.warn("[AI] HF Chat failed:", e.message);
+      return null;
     }
+  };
 
-    // Role safety for Llama/Mistral
-    if (messages.length > 0 && messages[messages.length - 1].role === "user") {
-      messages.push({ role: "assistant", content: "..." }); // Dummy bridge
-    }
-    messages.push({ role: "user", content: currentContent });
-
-    console.log(`[AI] Using ${currentModel} for ${phoneNumber}...`);
-    
-    let attempts = 0;
-    while (attempts < 2) {
-      try {
-        const response = await hf.chatCompletion({
-          model: currentModel,
-          messages: messages,
-          max_tokens: 1536,
-          temperature: 0.6,
-        });
-
-        const replyRaw = response.choices?.[0]?.message?.content || "I couldn't generate a response.";
-        const reply = String(replyRaw).replace(/\$+/g, "");
-        saveChatMessage(phoneNumber, "user", userInput || "[Image]").catch(() => {});
-        saveChatMessage(phoneNumber, "model", String(reply)).catch(() => {});
-        return String(reply);
-      } catch (err: any) {
-        attempts++;
-        if (attempts < 2 && (err.message?.includes("503") || err.message?.includes("loading"))) {
-          console.log("[AI] Model loading, waiting 10s...");
-          await new Promise(r => setTimeout(r, 10000));
-          continue;
-        }
-        throw err;
+  // --- Backup 1: Gemini ---
+  const askGemini = async () => {
+    if (!genAI) return null;
+    try {
+      console.log(`[AI] Backup 1: Gemini for ${phoneNumber}...`);
+      const isVision = mediaData && mediaData.mimeType.startsWith("image/");
+      let contents = [];
+      if (isVision) {
+        contents = [{ role: "user", parts: [{ text: userText }, { inlineData: { data: mediaData.data, mimeType: mediaData.mimeType } }] }];
+      } else {
+        contents = [
+          { role: "user", parts: [{ text: systemPrompt }] },
+          ...history.map(h => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.content }] })),
+          { role: "user", parts: [{ text: userText }] }
+        ];
       }
+      const res = await genAI.models.generateContent({ model: "gemini-3.1-flash-lite-preview", contents });
+      return res.text || null;
+    } catch (e) { return null; }
+  };
+
+  // --- Backup 2: Groq ---
+  const askGroq = async () => {
+    if (!groq) return null;
+    try {
+      console.log(`[AI] Backup 2: Groq for ${phoneNumber}...`);
+      const res = await groq.chat.completions.create({
+        model: GROQ_MODELS.VERSATILE,
+        messages: [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: userText }],
+        max_tokens: 1024
+      });
+      return res.choices[0]?.message?.content || null;
+    } catch (e) { return null; }
+  };
+
+  // --- Backup 3: OpenRouter ---
+  const askOpenRouter = async () => {
+    const key = process.env.OPENROUTER_API_KEY;
+    if (!key) return null;
+    try {
+      console.log(`[AI] Backup 3: OpenRouter for ${phoneNumber}...`);
+      const h: any[] = history.map(m => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: m.content
+      }));
+      const res = await axios.post("https://openrouter.ai/api/v1/chat/completions", {
+        model: OPENROUTER_MODELS.TEXT,
+        messages: [{ role: "system", content: systemPrompt }, ...h, { role: "user", content: userText }],
+      }, {
+        headers: { "Authorization": `Bearer ${key}` }
+      });
+      return res.data.choices[0]?.message?.content || null;
+    } catch (e: any) {
+      console.warn("[AI] OpenRouter failed:", e.message);
+      return null;
     }
-  } catch (error: any) {
-    console.error("[AI ERROR]", error.message);
-    if (error.message?.includes("gated")) return "OMNI needs permission to use this brain. Ensure Llama access is granted on Hugging Face.";
-    return "OMNI is taking a quick nap. Please try again in 30 seconds.";
+  };
+
+  const response = await runWithTimeout("Main HF", askHF) 
+                || await runWithTimeout("Backup 1 Gemini", askGemini) 
+                || await runWithTimeout("Backup 2 Groq", askGroq)
+                || await runWithTimeout("Backup 3 OpenRouter", askOpenRouter);
+
+  if (response) {
+    saveChatMessage(phoneNumber, "user", userInput || (mediaData ? "[Image]" : "[Message]")).catch(() => {});
+    saveChatMessage(phoneNumber, "model", response).catch(() => {});
+    return response;
   }
+
+  return "OMNI is having major brain fog. Please try again soon!";
 }
 
 async function transcribeAudio(audioBuffer: Buffer): Promise<string> {
-  try {
-    if (!genAI) {
-      console.warn("[VOICE] Gemini not configured, trying HF fallback...");
-      if (!hfToken) return "";
-      const result = await hf.automaticSpeechRecognition({
-        model: HF_MODELS.AUDIO,
-        data: audioBuffer,
-      });
-      return result.text || "";
-    }
+  const timeoutMs = 5000;
 
-    console.log("[VOICE] Transcribing with Gemini 3.1 Lite...");
-    
-    // Gemini handles audio transcription via generative parts
-    const result = await genAI.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
-      contents: [{
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              data: audioBuffer.toString("base64"),
-              mimeType: "audio/ogg" // Use ogg as default for WhatsApp audio
-            }
-          },
-          { text: "Transcribe this audio exactly as it is spoken. Do not add any commentary. Output ONLY the text. No math symbols." }
-        ]
-      }]
+  const tryHF = async () => {
+    try {
+      console.log("[VOICE] Main: HF Transcription...");
+      const res = await hf.automaticSpeechRecognition({ model: HF_MODELS.AUDIO, data: audioBuffer });
+      return res.text;
+    } catch (e: any) {
+      console.warn("[VOICE] HF Transcription failed:", e.message);
+      return null;
+    }
+  };
+
+  const tryGroq = async () => {
+    if (!groq) return null;
+    try {
+      console.log("[VOICE] Backup: Groq Transcription...");
+      const res = await groq.audio.transcriptions.create({
+        file: Object.assign(new Blob([audioBuffer]), { name: "audio.ogg" }) as any,
+        model: GROQ_MODELS.AUDIO,
+      });
+      return res.text;
+    } catch (e) { return null; }
+  };
+
+  const tryGemini = async () => {
+    if (!genAI) return null;
+    try {
+      console.log("[VOICE] Backup: Gemini Transcription...");
+      const res = await genAI.models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ role: "user", parts: [{ inlineData: { data: audioBuffer.toString("base64"), mimeType: "audio/ogg" } }, { text: "Transcribe exactly." }] }]
+      });
+      return res.text || null;
+    } catch (e) { return null; }
+  };
+
+  const tryOpenRouter = async () => {
+    const key = process.env.OPENROUTER_API_KEY;
+    if (!key) return null;
+    try {
+      console.log("[VOICE] Backup: OpenRouter Transcription...");
+      const formData = new FormData();
+      formData.append("file", new Blob([audioBuffer]), "audio.ogg");
+      formData.append("model", OPENROUTER_MODELS.AUDIO);
+      const res = await axios.post("https://openrouter.ai/api/v1/audio/transcriptions", formData, {
+        headers: { "Authorization": `Bearer ${key}` }
+      });
+      return res.data.text || null;
+    } catch (e: any) {
+      console.warn("[VOICE] OpenRouter Transcription failed:", e.message);
+      return null;
+    }
+  };
+
+  const runWithTimeout = async (label: string, fn: () => Promise<string | null>) => {
+    return new Promise<string | null>(async (resolve) => {
+      const timer = setTimeout(() => resolve(null), timeoutMs);
+      try {
+        const res = await fn();
+        clearTimeout(timer);
+        resolve(res);
+      } catch (e) {
+        clearTimeout(timer);
+        resolve(null);
+      }
     });
-    
-    return (result.text || "").trim().replace(/\$+/g, "");
-  } catch (error: any) {
-    console.error("[VOICE ERROR]", error.message);
-    return "";
-  }
+  };
+
+  const transcript = await runWithTimeout("HF Voice", tryHF) 
+               || await runWithTimeout("Groq Voice", tryGroq) 
+               || await runWithTimeout("Gemini Voice", tryGemini) 
+               || await runWithTimeout("OpenRouter Voice", tryOpenRouter)
+               || "";
+  return transcript;
 }
 
 async function saveChatMessage(phoneNumber: string, role: "user" | "model", text: string) {
@@ -329,50 +438,51 @@ async function startServer() {
         }
         userLocks.set(phoneNumber, now);
 
-        // Process in background
+            // Process in background
         (async () => {
           let responseText = "";
           
           try {
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            
             // User lookup / registration
             const userRef = db.collection("users").doc(phoneNumber);
             const userDoc = await userRef.get();
             let userData = userDoc.exists ? userDoc.data() : null;
 
             if (!userDoc.exists) {
-              userData = { id: phoneNumber, phoneNumber, messageCount: 0, hasPaid: false };
+              userData = { id: phoneNumber, phoneNumber, messageCount: 0, hasPaid: false, createdAt: admin.firestore.FieldValue.serverTimestamp() };
               await userRef.set(userData);
             }
 
             // Subscription check
             const isPremium = userData?.hasPaid && userData?.expiryDate && new Date(userData.expiryDate) > new Date();
-            
-            // Image Limit Check for Free Users (5 per 24h)
-            if (!isPremium && message.type === "image") {
-              const nowMs = Date.now();
-              const lastReset = userData?.lastImageReset?.toDate?.()?.getTime() || 0;
-              const imageCount = userData?.imageCount || 0;
-              
-              if (nowMs - lastReset > 24 * 60 * 60 * 1000) {
-                // Reset limit if 24h passed
-                await userRef.update({
-                  imageCount: 1,
-                  lastImageReset: admin.firestore.FieldValue.serverTimestamp()
-                });
-              } else if (imageCount >= 5) {
-                await sendWhatsAppMessage(phoneNumber, "You've reached your daily limit of 5 images for free users! 🖼️\n\nUpgrade to OMNI Premium for 100 NGN to unlock unlimited image analysis and more.");
-                return;
-              } else {
-                await userRef.update({
-                  imageCount: admin.firestore.FieldValue.increment(1)
-                });
-              }
+
+            // Omni Universal Limits (All users)
+            const usageRef = userRef.collection("omniUsage").doc(today);
+            const usageDoc = await usageRef.get();
+            const usageData = usageDoc.exists ? usageDoc.data() : { voiceNotes: 0, images: 0 };
+
+            if (!usageDoc.exists) {
+              await usageRef.set(usageData);
             }
 
-            if (!isPremium && (userData?.messageCount || 0) >= 50) {
-              const subUrl = `${process.env.APP_URL}/subscribe/${phoneNumber}`;
-              await sendWhatsAppMessage(phoneNumber, `You've used all your free messages! \ud83d\ude80\n\nUpgrade to OMNI Premium for just 100 NGN (valid for 90 days) to get unlimited access.\n\nSubscribe here: ${subUrl}`);
-              return;
+            // Limit: Voice Notes (Max 3/day)
+            if (message.type === "audio") {
+              if (usageData.voiceNotes >= 3) {
+                await sendWhatsAppMessage(phoneNumber, "Sorry, you have reached your daily limit of 3 voice notes on Omni. Please use text for now! \ud83d\udeab\ud83c\udf99\ufe0f");
+                return;
+              }
+              await usageRef.update({ voiceNotes: admin.firestore.FieldValue.increment(1) });
+            }
+
+            // Limit: Images (Total 3/day)
+            if (message.type === "image" || (message.type === "text" && message.text.body.toLowerCase().includes("generate") && (message.text.body.toLowerCase().includes("image") || message.text.body.toLowerCase().includes("picture")))) {
+              if (usageData.images >= 3) {
+                await sendWhatsAppMessage(phoneNumber, "Sorry, you have reached your daily limit of 3 image interactions (sending/generating) on Omni. \ud83d\udeab\ud83d\uddbc\ufe0f");
+                return;
+              }
+              await usageRef.update({ images: admin.firestore.FieldValue.increment(1) });
             }
 
             // Standard Message Processing
@@ -396,11 +506,11 @@ async function startServer() {
                 }
                 responseText = "I'm sorry, I couldn't generate that image at the moment.";
               } else {
-                responseText = await getHuggingFaceResponse(phoneNumber, textInput);
+                responseText = await getOmniResponseWithSequentialBackups(phoneNumber, textInput);
               }
             } else if (message.type === "image") {
               const imageData = await downloadWhatsAppMedia(message.image.id);
-              responseText = await getHuggingFaceResponse(phoneNumber, message.image.caption || "Examine this image", {
+              responseText = await getOmniResponseWithSequentialBackups(phoneNumber, message.image.caption || "Examine this image", {
                 mimeType: message.image.mime_type,
                 data: imageData.toString("base64")
               });
@@ -408,7 +518,7 @@ async function startServer() {
               const audioData = await downloadWhatsAppMedia(message.audio.id);
               const transcription = await transcribeAudio(audioData);
               if (transcription) {
-                responseText = await getHuggingFaceResponse(phoneNumber, transcription);
+                responseText = await getOmniResponseWithSequentialBackups(phoneNumber, transcription);
               } else {
                 responseText = "I couldn't hear that clearly.";
               }
@@ -454,19 +564,47 @@ async function startServer() {
   }
 
   async function generateImageHF(prompt: string): Promise<string | null> {
-    try {
-      const response = await hf.textToImage({
-        model: HF_MODELS.IMAGE,
-        inputs: prompt,
-        parameters: { guidance_scale: 3.5, num_inference_steps: 4 }
-      });
-      // Cast to any to handle Blob vs Buffer variance in SDK versions
-      const buffer = Buffer.from(await (response as any).arrayBuffer());
-      return await uploadMediaToWhatsApp(buffer, "image/jpeg", "gen.jpg");
-    } catch (e: any) {
-      console.error("[IMAGE GEN ERROR]", e.message);
-      return null;
-    }
+    const tryHF = async () => {
+      try {
+        const response = await hf.textToImage({
+          model: HF_MODELS.IMAGE,
+          inputs: prompt,
+          parameters: { guidance_scale: 3.5, num_inference_steps: 4 }
+        });
+        const buffer = Buffer.from(await (response as any).arrayBuffer());
+        return await uploadMediaToWhatsApp(buffer, "image/jpeg", "gen.jpg");
+      } catch (e: any) {
+        console.error("[IMAGE GEN HF ERROR]", e.message);
+        return null;
+      }
+    };
+
+    const tryOpenRouter = async () => {
+      const key = process.env.OPENROUTER_API_KEY;
+      if (!key) return null;
+      try {
+        const res = await axios.post("https://openrouter.ai/api/v1/chat/completions", {
+          model: OPENROUTER_MODELS.IMAGE,
+          messages: [{ role: "user", content: prompt }],
+        }, {
+          headers: { "Authorization": `Bearer ${key}` }
+        });
+        // Some OpenRouter image models return a markdown image or a URL in content
+        const content = res.data.choices[0]?.message?.content || "";
+        const urlMatch = content.match(/https?:\/\/[^\s\)]+/);
+        if (urlMatch) {
+          const imgUrl = urlMatch[0];
+          const imgRes = await axios.get(imgUrl, { responseType: 'arraybuffer' });
+          return await uploadMediaToWhatsApp(Buffer.from(imgRes.data), "image/jpeg", "gen.jpg");
+        }
+        return null;
+      } catch (e: any) {
+        console.error("[IMAGE GEN OR ERROR]", e.message);
+        return null;
+      }
+    };
+
+    return await tryHF() || await tryOpenRouter();
   }
 
   async function uploadMediaToWhatsApp(buffer: Buffer, mimeType: string, filename: string): Promise<string | null> {
@@ -529,7 +667,12 @@ async function startServer() {
     app.get("*", (req, res) => res.sendFile(path.join(d, "index.html")));
   }
 
-  app.listen(Number(PORT), "0.0.0.0", () => console.log(`Server on ${PORT}`));
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Server on ${PORT}`);
+    logUserCounts();
+    // Periodically log counts every hour
+    setInterval(logUserCounts, 60 * 60 * 1000);
+  });
 }
 
 startServer();
