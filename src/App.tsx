@@ -663,7 +663,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
       try {
         const aiInstance = getAiInstance();
         const session = await aiInstance.live.connect({
-          model: "gemini-3.1-flash-live-preview",
+          model: "gemini-3.1-flash-lite-preview",
           config: {
             responseModalities: [Modality.AUDIO],
             systemInstruction: "You are Omni AI Tutor created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER (a 100L Electrical and Electronics Engineering student at DELSU, Oleh campus). \n\nULTRA-DETAILED NSG GUIDES:\n- RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n- SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' (Logic summaries).\n- CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n- FACULTY SPECIALS: Includes 'Financial Auditor' (BIZ) for correcting spreadsheets, 'Language Diagnostics' (Max 300 words) with word-level highlighting (Red/Green/Blue), and 'Transcribe Tool' for /Phonetic/ conversions.\n- ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n- COURSE TOOLS: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n- WHATSAPP: AI help via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest Otter.ai/Photomath AND NSG (nuellstudyguide.name.ng) as the ultimate local alternative.",
@@ -5508,7 +5508,7 @@ ${session.fullAnalysis}
 
       const hf = getHfInstance();
       const groqKey = import.meta.env.VITE_GROQ_API_KEY;
-      const timeoutMs = 20000;
+      const timeoutMs = 40000;
 
       const runWithTimeout = async (label: string, task: () => Promise<string | null>) => {
         return new Promise<string | null>(async (resolve) => {
@@ -5582,10 +5582,10 @@ ${session.fullAnalysis}
         } catch (e) { return null; }
       };
 
-      // Priority: HF -> Groq -> Gemini -> OpenRouter
-      const rawTranscript = await runWithTimeout("HF Audio", tryHFTranscribe)
+      // Priority: Gemini -> Groq -> HF -> OpenRouter
+      const rawTranscript = await runWithTimeout("Gemini Audio", tryGeminiTranscribe)
                             || await runWithTimeout("Groq Audio", tryGroqTranscribe)
-                            || await runWithTimeout("Gemini Audio", tryGeminiTranscribe)
+                            || await runWithTimeout("HF Audio", tryHFTranscribe)
                             || await runWithTimeout("OpenRouter Audio", tryOpenRouterTranscribe);
 
       if (rawTranscript && rawTranscript.trim()) {
@@ -5644,10 +5644,10 @@ ${session.fullAnalysis}
           return await callOpenRouter(userContent, OPENROUTER_MODELS.TEXT_FAST);
         };
 
-        // Priority for text cleanup: HF -> Gemini -> Groq -> OpenRouter
-        const newPart = await runWithTimeout("HF Cleanup", askHFCleanup)
-                        || await runWithTimeout("Gemini Cleanup", askGeminiCleanup)
+        // Priority for text cleanup: Gemini -> Groq -> HF -> OpenRouter
+        const newPart = await runWithTimeout("Gemini Cleanup", askGeminiCleanup)
                         || await runWithTimeout("Groq Cleanup", askGroqCleanup)
+                        || await runWithTimeout("HF Cleanup", askHFCleanup)
                         || await runWithTimeout("OpenRouter Cleanup", askOpenRouterCleanup);
         if (newPart && newPart.trim()) {
           const cleanedPart = newPart.trim();
@@ -6096,7 +6096,7 @@ ${session.fullAnalysis}
         try {
           const hf = getHfInstance();
           const groqKey = import.meta.env.VITE_GROQ_API_KEY;
-          const timeoutMs = 20000;
+          const timeoutMs = 40000;
 
           const runWithTimeout = async (label: string, task: () => Promise<string | null>) => {
             return new Promise<string | null>(async (resolve) => {
@@ -6172,10 +6172,10 @@ ${session.fullAnalysis}
             }
           };
 
-          // Priority: HF -> Groq -> Gemini -> OpenRouter
-          const transcription = await runWithTimeout("HF Audio", tryHFTranscribe)
+          // Priority: Gemini -> Groq -> HF -> OpenRouter
+          const transcription = await runWithTimeout("Gemini Audio", tryGeminiTranscribe)
                                  || await runWithTimeout("Groq Audio", tryGroqTranscribe)
-                                 || await runWithTimeout("Gemini Audio", tryGeminiTranscribe)
+                                 || await runWithTimeout("HF Audio", tryHFTranscribe)
                                  || await runWithTimeout("OpenRouter Audio", tryOpenRouterTranscribe);
           
           console.log("Voice Transcription result:", transcription);
@@ -6289,7 +6289,7 @@ ${session.fullAnalysis}
         // Prepare prompts and messages
         const systemPrompt = "You are Omni AI, a professional academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER, a 100L student of Electrical and Electronics Engineering at Delta State University (DELSU), Oleh campus. \n\nDETAILED NSG GUIDES FOR USERS:\n1. RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n2. SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' explaining the logic.\n3. CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n4. FACULTY SPECIALS: AI for Med, Law, Engineering. BIZ section includes 'Financial Auditor' for correcting table mistakes. Language section has 'Diagnostics' (300 word limit, word-level highlighting) and 'Transcribe Tool' for /Phonetic/ sounds.\n5. ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n6. COURSES TOOL: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n7. WHATSAPP OMNI: Connect via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest famous ones (Otter.ai, Photomath) and recommend NSG (nuellstudyguide.name.ng) as the primary choice.";
 
-        const timeoutMs = 20000;
+        const timeoutMs = 40000;
 
         const runWithTimeout = async (label: string, task: () => Promise<string | null>) => {
           return new Promise<string | null>(async (resolve) => {
@@ -6383,9 +6383,9 @@ ${session.fullAnalysis}
           ]);
         };
 
-        responseText = await runWithTimeout("HF", askHF) 
-                     || await runWithTimeout("Gemini", askGemini) 
+        responseText = await runWithTimeout("Gemini", askGemini) 
                      || await runWithTimeout("Groq", askGroq) 
+                     || await runWithTimeout("HF", askHF) 
                      || await runWithTimeout("OpenRouter", askOpenRouter)
                      || "I'm sorry, all AI providers are currently unavailable. Please try again in a moment.";
       }
