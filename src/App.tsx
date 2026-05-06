@@ -378,8 +378,8 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3.1-flash-lite-preview";
-const FLASH_MODEL = "gemini-3.1-flash-lite-preview";
+const MODEL_NAME = "gemini-3.1-flash-live-preview";
+const FLASH_MODEL = "gemini-3.1-flash-live-preview";
 
 const formatAiError = (error: any) => {
   const message = error.message || "Unknown error";
@@ -687,7 +687,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
       try {
         const aiInstance = getAiInstance();
         const session = await aiInstance.live.connect({
-          model: "gemini-3.1-flash-lite-preview",
+          model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
             systemInstruction: "You are Omni AI Tutor created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER (a 100L Electrical and Electronics Engineering student at DELSU, Oleh campus). \n\nULTRA-DETAILED NSG GUIDES:\n- RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n- SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' (Logic summaries).\n- CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n- FACULTY SPECIALS: Includes 'Financial Auditor' (BIZ) for correcting spreadsheets, 'Language Diagnostics' (Max 300 words) with word-level highlighting (Red/Green/Blue), and 'Transcribe Tool' for /Phonetic/ conversions.\n- ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n- COURSE TOOLS: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n- WHATSAPP: AI help via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest Otter.ai/Photomath AND NSG (nuellstudyguide.name.ng) as the ultimate local alternative.",
@@ -824,10 +824,14 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
     return () => {
       sessionRef.current?.close();
       stopAllAudio();
-      audioContextRef.current?.close();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => {});
+      }
       currentStreamRef.current?.getTracks().forEach(track => track.stop());
       micStreamRef.current?.getTracks().forEach(track => track.stop());
-      micContextRef.current?.close();
+      if (micContextRef.current && micContextRef.current.state !== 'closed') {
+        micContextRef.current.close().catch(() => {});
+      }
     };
   }, []);
 
@@ -1001,10 +1005,10 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(track => track.stop());
       }
-      if (audioContextRef.current) {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close().catch(() => {});
       }
-      if (micContextRef.current) {
+      if (micContextRef.current && micContextRef.current.state !== 'closed') {
         micContextRef.current.close().catch(() => {});
       }
     } catch (e) {
@@ -1286,7 +1290,7 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
         try {
           const ai = getAiInstance();
           const res = await ai.models.generateContent({
-            model: "gemini-3.1-flash-lite-preview",
+            model: "gemini-3.1-flash-live-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }]
           });
           return res.text || null;
@@ -5319,7 +5323,9 @@ ${session.fullAnalysis}
         compressor.disconnect();
         hpf.disconnect();
         source.disconnect();
-        audioContext.close();
+        if (audioContext.state !== 'closed') {
+          audioContext.close().catch(() => {});
+        }
       }
     };
   };
@@ -5619,7 +5625,7 @@ ${session.fullAnalysis}
         try {
           const audioPart = await fileToGenerativePart(blob);
           const res = await aiInstance.models.generateContent({
-            model: "gemini-3.1-flash-lite-preview",
+            model: "gemini-3.1-flash-live-preview",
             contents: [{ parts: [audioPart, { text: "Transcribe this audio literally. Output ONLY text." }] }]
           });
           return res.text || null;
@@ -5654,7 +5660,7 @@ ${session.fullAnalysis}
 
         const askGeminiCleanup = async () => {
           const res = await aiInstance.models.generateContent({
-            model: "gemini-3.1-flash-lite-preview",
+            model: "gemini-3.1-flash-live-preview",
             contents: [{ role: "user", parts: [{ text: `${cleaningPrompt}\n\nINPUT: ${userContent}` }] }]
           });
           return res.text?.trim() || null;
@@ -6197,7 +6203,7 @@ ${session.fullAnalysis}
             try {
               const audioPart = await fileToGenerativePart(blob);
               const res = await aiInstance.models.generateContent({
-                model: "gemini-3.1-flash-lite-preview",
+                model: "gemini-3.1-flash-live-preview",
                 contents: [{ parts: [audioPart, { text: "Transcribe this audio literally. Output ONLY text." }] }]
               });
               return res.text || null;
@@ -6400,7 +6406,7 @@ ${session.fullAnalysis}
             userParts.push(await fileToGenerativePart(img.file));
           }
           const result = await aiInstance.models.generateContent({
-            model: "gemini-3.1-flash-lite-preview",
+            model: "gemini-3.1-flash-live-preview",
             contents: [{ role: 'user', parts: [{ text: systemPrompt }] }, ...googleHistory, { role: 'user', parts: userParts }]
           });
           return result.text || null;
