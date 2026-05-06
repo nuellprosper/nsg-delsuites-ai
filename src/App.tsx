@@ -378,8 +378,8 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3.1-flash-live-preview";
-const FLASH_MODEL = "gemini-3.1-flash-live-preview";
+const MODEL_NAME = "gemini-3.1-flash-lite-preview";
+const FLASH_MODEL = "gemini-3.1-flash-lite-preview";
 
 const formatAiError = (error: any) => {
   const message = error.message || "Unknown error";
@@ -1290,7 +1290,7 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
         try {
           const ai = getAiInstance();
           const res = await ai.models.generateContent({
-            model: "gemini-3.1-flash-live-preview",
+            model: "gemini-3.1-flash-lite-preview",
             contents: [{ role: 'user', parts: [{ text: prompt }] }]
           });
           return res.text || null;
@@ -5625,7 +5625,7 @@ ${session.fullAnalysis}
         try {
           const audioPart = await fileToGenerativePart(blob);
           const res = await aiInstance.models.generateContent({
-            model: "gemini-3.1-flash-live-preview",
+            model: "gemini-3.1-flash-lite-preview",
             contents: [{ parts: [audioPart, { text: "Transcribe this audio literally. Output ONLY text." }] }]
           });
           return res.text || null;
@@ -5660,7 +5660,7 @@ ${session.fullAnalysis}
 
         const askGeminiCleanup = async () => {
           const res = await aiInstance.models.generateContent({
-            model: "gemini-3.1-flash-live-preview",
+            model: "gemini-3.1-flash-lite-preview",
             contents: [{ role: "user", parts: [{ text: `${cleaningPrompt}\n\nINPUT: ${userContent}` }] }]
           });
           return res.text?.trim() || null;
@@ -6203,7 +6203,7 @@ ${session.fullAnalysis}
             try {
               const audioPart = await fileToGenerativePart(blob);
               const res = await aiInstance.models.generateContent({
-                model: "gemini-3.1-flash-live-preview",
+                model: "gemini-3.1-flash-lite-preview",
                 contents: [{ parts: [audioPart, { text: "Transcribe this audio literally. Output ONLY text." }] }]
               });
               return res.text || null;
@@ -6406,7 +6406,7 @@ ${session.fullAnalysis}
             userParts.push(await fileToGenerativePart(img.file));
           }
           const result = await aiInstance.models.generateContent({
-            model: "gemini-3.1-flash-live-preview",
+            model: "gemini-3.1-flash-lite-preview",
             contents: [{ role: 'user', parts: [{ text: systemPrompt }] }, ...googleHistory, { role: 'user', parts: userParts }]
           });
           return result.text || null;
