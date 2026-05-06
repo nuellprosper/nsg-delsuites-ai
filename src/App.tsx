@@ -6563,6 +6563,11 @@ ${session.fullAnalysis}
       return;
     }
 
+    if (quizQuestionCount <= 0) {
+      setUserNotification("Please enter a valid number of questions.");
+      return;
+    }
+
     if (!getApiKey()) {
       setUserNotification("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment.");
       return;
@@ -6656,6 +6661,11 @@ ${session.fullAnalysis}
       return;
     }
 
+    if (quizQuestionCount <= 0) {
+      setUserNotification("Please enter a valid number of questions.");
+      return;
+    }
+
     const canProceed = await checkAndIncrementUsage('QUIZ');
     if (!canProceed) return;
 
@@ -6663,7 +6673,7 @@ ${session.fullAnalysis}
     
     try {
       const prompt = `
-        Generate a ${quizQuestionCount > 25 ? quizQuestionCount : 50}-question professional multiple choice examination about "${quizTopic}".
+        Generate a ${quizQuestionCount}-question professional multiple choice examination about "${quizTopic}".
         Difficulty Level: ${quizDifficulty}.
         
         CRITICAL: For ALL mathematical expressions, formulas, and scientific notation, 
@@ -8249,12 +8259,31 @@ ${session.fullAnalysis}
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <p className="text-[10px] font-black text-white/30 uppercase mb-2 ml-1">Questions</p>
-                            <div className="flex flex-wrap gap-2">
-                              {[15, 25, 50, 100].map(count => (
+                            <div className="flex flex-wrap gap-2 items-center">
+                              {[15, 25, 50].map(count => (
                                 <button key={count} onClick={() => setQuizQuestionCount(count)} className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${quizQuestionCount === count ? 'bg-[#DC2626] border-[#DC2626] text-white' : 'bg-white/5 border-white/10 text-white/40'}`}>
                                   {count}
                                 </button>
                               ))}
+                              <div className="flex items-center gap-1.5 ml-1">
+                                <p className="text-[8px] font-bold text-white/20 uppercase">Custom:</p>
+                                <input 
+                                  type="number" 
+                                  min="1"
+                                  max="200"
+                                  value={![15, 25, 50].includes(quizQuestionCount) ? quizQuestionCount : ''} 
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if(!isNaN(val)) setQuizQuestionCount(val);
+                                    else if (e.target.value === '') setQuizQuestionCount(0); // Allow clearing to type
+                                  }}
+                                  onBlur={(e) => {
+                                    if(!e.target.value || parseInt(e.target.value) <= 0) setQuizQuestionCount(25);
+                                  }}
+                                  className={`w-14 px-2 py-1.5 rounded-xl bg-white/5 border text-white text-[10px] font-bold outline-none transition-all ${![15, 25, 50].includes(quizQuestionCount) && quizQuestionCount !== 0 ? 'border-[#DC2626] bg-[#DC2626]/10' : 'border-white/10'}`}
+                                  placeholder="No."
+                                />
+                              </div>
                             </div>
                           </div>
                           <div>
