@@ -8312,7 +8312,9 @@ ${session.fullAnalysis}
                   <div className={`flex items-center justify-between ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-4 rounded-2xl border shadow-sm`}>
                     <button onClick={() => setQuizState('idle')} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase"><ArrowLeft size={14} /> Back</button>
                     <div className="text-center"><p className="text-[10px] font-black text-white/30 uppercase">Progress</p><p className="text-sm font-black text-[#DC2626]">{currentQuestionIndex + 1} / {quizQuestions.length}</p></div>
-                    <div className="w-10"></div>
+                    <button onClick={shareQuiz} className="text-white/40 hover:text-[#DC2626] flex items-center gap-1 text-xs font-bold uppercase">
+                      <Share2 size={14} /> Share
+                    </button>
                   </div>
 
                   {/* Quiz Question Navigation */}
