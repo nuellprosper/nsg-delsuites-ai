@@ -400,15 +400,18 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GROQ_AUDIO_MODEL = "distil-whisper-large-v3-en";
 
 const OPENROUTER_MODELS = {
-  TEXT_FAST: "meta-llama/llama-3.2-3b-instruct:free",
-  TEXT_PRO: "meta-llama/llama-3.3-70b-instruct:free",
+  TEXT_FAST: "google/gemma-2-9b-it:free",
+  TEXT_PRO: "google/gemma-4-31b-it:free",
   TEXT_ALT: "nvidia/nemotron-3-super:free",
   IMAGE: "black-forest-labs/flux-1-schnell:free",
   AUDIO: "openai/whisper-large-v3-turbo",
   MULTIMODAL: "google/lyria-3-clip-preview:free"
 };
 
+const TOGETHER_MODEL = "google/gemma-4-31b-it";
+
 let isOpenRouterDepletedGlobal = false;
+let isTogetherDepletedGlobal = false;
 const handleOpenRouterErrorGlobal = (error: any, label: string) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
   console.error(`[AI] OpenRouter error in ${label}:`, errorMsg);
@@ -436,6 +439,27 @@ const callOpenRouter = async (prompt: string, model: string = OPENROUTER_MODELS.
     return res.data.choices[0].message.content || null;
   } catch (e) {
     handleOpenRouterErrorGlobal(e, "OpenRouterChat");
+    return null;
+  }
+};
+
+const callTogetherAI = async (prompt: string, history: any[] = []) => {
+  const key = import.meta.env.VITE_TOGETHER_API_KEY;
+  if (!key || isTogetherDepletedGlobal) return null;
+  try {
+    const messages = history.length > 0 ? history : [{ role: "user", content: prompt }];
+    const res = await axios.post("https://api.together.xyz/v1/chat/completions", {
+      model: TOGETHER_MODEL,
+      messages: messages,
+    }, {
+      headers: {
+        "Authorization": `Bearer ${key}`
+      }
+    });
+    return res.data.choices[0].message.content || null;
+  } catch (e: any) {
+    console.error("[TOGETHER ERROR]", e.message);
+    if (e.message.includes("429") || e.message.includes("credit")) isTogetherDepletedGlobal = true;
     return null;
   }
 };
@@ -1276,7 +1300,11 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
         return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_FAST);
       };
 
-      descResult = await tryHF() || await tryGemini() || await tryOpenRouter() || "";
+      const tryTogether = async () => {
+        return await callTogetherAI(prompt);
+      };
+
+      descResult = await tryHF() || await tryGemini() || await tryTogether() || await tryOpenRouter() || "";
 
       if (descResult) {
         setActiveCourseDesc(descResult.trim());
@@ -1745,7 +1773,11 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
         return await callOpenRouter(orPrompt, OPENROUTER_MODELS.TEXT_PRO);
       };
 
-      const responseText = await askGemini() || await askOpenRouter() || "";
+      const askTogether = async () => {
+        return await callTogetherAI(prompt);
+      };
+
+      const responseText = await askGemini() || await askTogether() || await askOpenRouter() || "";
       
       try {
         // Clean markdown backticks before parsing if they exist
@@ -3204,7 +3236,11 @@ export default function App() {
         return await callOpenRouter(input, OPENROUTER_MODELS.TEXT_PRO, [{ role: 'system', content: systemPrompt }]);
       };
 
-      const text = await askGemini() || await askOpenRouter() || "";
+      const askTogether = async () => {
+        return await callTogetherAI(input, [{ role: 'system', content: systemPrompt }]);
+      };
+
+      const text = await askGemini() || await askTogether() || await askOpenRouter() || "";
 
       const lines = text.split('\n').filter(l => l.trim());
       const newEntries: any[] = [];
@@ -3260,7 +3296,11 @@ export default function App() {
         return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_PRO);
       };
 
-      const text = await askGemini() || await askOpenRouter() || "";
+      const askTogether = async () => {
+        return await callTogetherAI(prompt);
+      };
+
+      const text = await askGemini() || await askTogether() || await askOpenRouter() || "";
 
       const lines = text.split('\n').filter(l => l.trim());
       const newDialogue: any[] = [];
@@ -4652,7 +4692,11 @@ export default function App() {
         return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_PRO);
       };
 
-      const respText = await askGemini() || await askOpenRouter() || "{}";
+      const askTogether = async () => {
+        return await callTogetherAI(prompt);
+      };
+
+      const respText = await askGemini() || await askTogether() || await askOpenRouter() || "{}";
       const data = JSON.parse(respText);
       if (data.questions) {
         const formatted = data.questions.map((q: any) => ({ ...q, id: Math.random().toString(36).substr(2, 9) }));
@@ -5644,9 +5688,14 @@ ${session.fullAnalysis}
           return await callOpenRouter(userContent, OPENROUTER_MODELS.TEXT_FAST);
         };
 
-        // Priority for text cleanup: Gemini -> Groq -> HF -> OpenRouter
+        const askTogetherCleanup = async () => {
+          return await callTogetherAI(userContent);
+        };
+
+        // Priority for text cleanup: Gemini -> Groq -> Together -> HF -> OpenRouter
         const newPart = await runWithTimeout("Gemini Cleanup", askGeminiCleanup)
                         || await runWithTimeout("Groq Cleanup", askGroqCleanup)
+                        || await runWithTimeout("Together Cleanup", askTogetherCleanup)
                         || await runWithTimeout("HF Cleanup", askHFCleanup)
                         || await runWithTimeout("OpenRouter Cleanup", askOpenRouterCleanup);
         if (newPart && newPart.trim()) {
@@ -6383,8 +6432,16 @@ ${session.fullAnalysis}
           ]);
         };
 
+        const askTogether = async () => {
+          return await callTogetherAI(textToSend, [
+            { role: 'system', content: systemPrompt },
+            ...chatHistory.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+          ]);
+        };
+
         responseText = await runWithTimeout("Gemini", askGemini) 
                      || await runWithTimeout("Groq", askGroq) 
+                     || await runWithTimeout("Together", askTogether)
                      || await runWithTimeout("HF", askHF) 
                      || await runWithTimeout("OpenRouter", askOpenRouter)
                      || "I'm sorry, all AI providers are currently unavailable. Please try again in a moment.";
@@ -6560,7 +6617,11 @@ ${session.fullAnalysis}
         return await callOpenRouter(prompt, OPENROUTER_MODELS.TEXT_PRO);
       };
 
-      const responseText = await askGemini() || await askOpenRouter() || "{}";
+      const askTogether = async () => {
+        return await callTogetherAI(prompt);
+      };
+
+      const responseText = await askGemini() || await askTogether() || await askOpenRouter() || "{}";
       const data = JSON.parse(responseText);
       if (data.questions) {
         setQuizQuestions(data.questions);
