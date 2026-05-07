@@ -20,8 +20,7 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == "nuellkelechi@gmail.com" ||
-        (request.method != 'list' && 
-         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') == 'admin')
       );
     }
@@ -40,27 +39,27 @@ service cloud.firestore {
     }
 
     function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+      return id is string && id.size() <= 256 && id.matches('^[a-zA-Z0-9_\\-\\.]+$'); 
     }
 
     // --- Validation Blueprints ---
 
     function isValidUser(data) {
-      return isValString(data.uid, 128) && 
-             isValString(data.email, 255) &&
-             data.uid == request.auth.uid &&
+      return isValString(data.uid, 256) && 
+             isValString(data.email, 512) &&
+             (data.uid == request.auth.uid || isAdmin()) &&
              (!('role' in data) || data.role in ['admin', 'student']);
     }
 
     function isValidNote(data) {
-      return isValString(data.uid, 128) &&
-             data.uid == request.auth.uid &&
-             isValString(data.content, 100000);
+      return isValString(data.uid, 256) &&
+             (data.uid == request.auth.uid || isAdmin()) &&
+             (!('content' in data) || isValString(data.content, 200000));
     }
 
     function isValidExam(data) {
-      return isValString(data.hostUid, 128) &&
-             isValString(data.title, 255) &&
+      return isValString(data.hostUid, 256) && 
+             (!('title' in data) || isValString(data.title, 1024)) &&
              (data.hostUid == request.auth.uid || isAdmin());
     }
 
@@ -100,9 +99,9 @@ service cloud.firestore {
     // Exams & Results (Nested)
     match /exams/{examId} {
       allow read: if true;
-      allow create: if isAdmin() && isValidExam(incoming());
+      allow create: if isSignedIn() && isValidExam(incoming());
       allow update: if (isAdmin() || (isSignedIn() && existing().hostUid == request.auth.uid)) && isValidExam(incoming());
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && existing().hostUid == request.auth.uid);
 
       match /results/{resultId} {
         allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || resource.data.hostUid == request.auth.uid || isAdmin());
@@ -126,6 +125,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Quizzes (Shared)
+    match /quizzes/{quizId} {
+      allow read: if true;
+      allow create: if isSignedIn() && (incoming().sharedBy == request.auth.uid || isAdmin());
+      allow update: if isAdmin() || (isSignedIn() && existing().sharedBy == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && existing().sharedBy == request.auth.uid);
+    }
+
     // User Sub-collections (Private)
     match /users/{uid}/lectureSessions/{sessionId} {
       allow read, write: if isOwner(uid) || isAdmin();
@@ -134,6 +141,9 @@ service cloud.firestore {
       allow read, write: if isOwner(uid) || isAdmin();
     }
     match /users/{uid}/studyHistory/{historyId} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+    match /users/{uid}/usage/{usageId} {
       allow read, write: if isOwner(uid) || isAdmin();
     }
 
