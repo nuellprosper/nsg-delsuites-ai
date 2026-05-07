@@ -4,6 +4,7 @@ import path from "path";
 import axios from "axios";
 import { fileURLToPath } from "url";
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 import "dotenv/config";
 import { HfInference } from "@huggingface/inference";
 import { GoogleGenAI } from "@google/genai";
@@ -30,7 +31,7 @@ if (serviceAccount) {
 } else {
   adminApp = admin.initializeApp({ projectId: firebaseConfig.projectId });
 }
-const db = admin.firestore();
+const db = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId || undefined);
 
 // Initialize AI SDKs
 const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
@@ -259,10 +260,30 @@ async function startServer() {
         const duration = plan === 'monthly' ? 30 : 365;
         const newUntil = new Date();
         newUntil.setDate(newUntil.getDate() + duration);
-        await db.collection('users').doc(uid).update({ premiumUntil: admin.firestore.Timestamp.fromDate(newUntil) });
+        await db.collection('users').doc(uid).update({ 
+          premiumUntil: admin.firestore.Timestamp.fromDate(newUntil) 
+        });
         res.json({ status: "success", premiumUntil: newUntil.toISOString() });
       } else { res.json({ status: "failed" }); }
     } catch (error) { res.status(500).json({ error: "Verification failed" }); }
+  });
+
+  // User Lookup by Matric (for CBT login)
+  app.get("/api/lookup-user", async (req, res) => {
+    const { matric } = req.query;
+    if (!matric) return res.status(400).json({ error: "Matric required" });
+    try {
+      const q = await db.collection("users").where("matric", "==", matric).limit(1).get();
+      if (q.empty) {
+        // Try matricNumber too
+        const qAlt = await db.collection("users").where("matricNumber", "==", matric).limit(1).get();
+        if (qAlt.empty) return res.status(404).json({ error: "User not found" });
+        return res.json({ email: qAlt.docs[0].data().email });
+      }
+      res.json({ email: q.docs[0].data().email });
+    } catch (e) {
+      res.status(500).json({ error: "Server error" });
+    }
   });
 
   // Vite middleware
