@@ -57,6 +57,10 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
 
   // --- Email Setup ---
   const transporter = nodemailer.createTransport({
@@ -283,6 +287,61 @@ async function startServer() {
       res.json({ email: q.docs[0].data().email });
     } catch (e) {
       res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // Email endpoints
+  app.post("/api/send-welcome-email", async (req, res) => {
+    const { email, name } = req.body;
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: `Welcome to NSG, ${name}!`,
+        html: `<h1>Welcome to NSG!</h1><p>Hi ${name}, thank you for joining NSG. Start your academic journey with OMNI today!</p>`
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Welcome email error:", error);
+      res.status(500).json({ error: "Failed to send email" });
+    }
+  });
+
+  app.post("/api/send-premium-thank-you", async (req, res) => {
+    const { email, name, plan } = req.body;
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: `Thank You for Going Premium!`,
+        html: `<h1>Premium Activated!</h1><p>Hi ${name}, thank you for subscribing to the ${plan} plan.</p>`
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Premium email error:", error);
+      res.status(500).json({ error: "Failed to send email" });
+    }
+  });
+
+  app.post("/api/admin/broadcast-list", async (req, res) => {
+    const { secret, recipients, subjectTemplate, bodyTemplate } = req.body;
+    if (secret !== 'GOD_MODE') return res.status(403).json({ error: "Unauthorized" });
+    
+    let sentCount = 0;
+    try {
+      for (const user of recipients) {
+        const body = bodyTemplate.replace(/{{name}}/g, user.name);
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: user.email,
+          subject: subjectTemplate,
+          html: body
+        });
+        sentCount++;
+      }
+      res.json({ success: true, count: sentCount });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message, count: sentCount });
     }
   });
 
