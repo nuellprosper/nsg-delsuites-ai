@@ -2597,6 +2597,7 @@ export default function App() {
 
   // --- LISTEN FOR GLOBAL NOTIFICATIONS ---
   useEffect(() => {
+    if (!user) return;
     const q = query(collection(db, 'notifications'), orderBy('timestamp', 'desc'), limit(1));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
@@ -2617,9 +2618,12 @@ export default function App() {
           }
         }
       });
-    }, (err) => console.error("Notifications Listener Error:", err));
+    }, (err) => {
+      // Avoid spamming error for unauthenticated state which might happen during transition
+      if (user) handleFirestoreError(err, FirestoreOperation.LIST, 'notifications');
+    });
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   const handleAddPost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4078,7 +4082,7 @@ export default function App() {
             
             if (data.status === 'deleted') {
               if (currentUser.email === "nuellkelechi@gmail.com") {
-                updateDoc(userDocRef, { status: 'active' });
+                updateDoc(userDocRef, { status: 'active' }).catch(e => handleFirestoreError(e, FirestoreOperation.UPDATE, `users/${currentUser.uid}`));
               } else {
                 signOut(auth);
                 setUserNotification("Your account has been deactivated.");
@@ -4098,7 +4102,7 @@ export default function App() {
               bypassTakingPayment: false,
               bypassAllPayments: false
             };
-            setDoc(userDocRef, userData);
+            setDoc(userDocRef, userData).catch(e => handleFirestoreError(e, FirestoreOperation.CREATE, `users/${currentUser.uid}`));
           }
           setIsAuthLoading(false);
         }, (error) => {
@@ -4440,26 +4444,22 @@ export default function App() {
         
         if (!isLikelyEmail) {
           try {
-            // Treat as matric login
-            const q = query(collection(db, 'users'), where('matric', '==', authEmail.trim()));
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-              loginEmail = snapshot.docs[0].data().email;
+            // Use server-side proxy for matric lookup to avoid unauthenticated Firestore list permissions
+            const res = await axios.get(`/api/lookup-user?matric=${encodeURIComponent(authEmail.trim())}`);
+            if (res.data.email) {
+              loginEmail = res.data.email;
             } else {
-              // Also try 'matricNumber' field as it might vary
-              const qAlt = query(collection(db, 'users'), where('matricNumber', '==', authEmail.trim()));
-              const snapAlt = await getDocs(qAlt);
-              if (!snapAlt.empty) {
-                loginEmail = snapAlt.docs[0].data().email;
-              } else {
-                setUserNotification("Matric number not found. Please use your registered email.");
-                setIsAuthLoading(false);
-                return;
-              }
+              setUserNotification("Matric number not found. Please use your registered email.");
+              setIsAuthLoading(false);
+              return;
             }
           } catch (err: any) {
-            console.error(err);
-            setUserNotification("Error verifying matric number.");
+            console.error("Lookup Error:", err);
+            if (err.response?.status === 404) {
+              setUserNotification("Matric number not found.");
+            } else {
+              setUserNotification("Error verifying matric number on server.");
+            }
             setIsAuthLoading(false);
             return;
           }
