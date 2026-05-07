@@ -20,7 +20,8 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.email == "nuellkelechi@gmail.com" ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (request.method != 'list' && 
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') == 'admin')
       );
     }
@@ -33,81 +34,107 @@ service cloud.firestore {
       return resource.data;
     }
 
+    // Helper to validate string and size
+    function isValString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
     function isValidId(id) { 
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
     }
 
-    // Validation Blueprints
+    // --- Validation Blueprints ---
+
     function isValidUser(data) {
-      return (data.uid is string) && (data.email is string);
+      return isValString(data.uid, 128) && 
+             isValString(data.email, 255) &&
+             data.uid == request.auth.uid &&
+             (!('role' in data) || data.role in ['admin', 'student']);
+    }
+
+    function isValidNote(data) {
+      return isValString(data.uid, 128) &&
+             data.uid == request.auth.uid &&
+             isValString(data.content, 100000);
     }
 
     function isValidExam(data) {
-      return (data.get('hostUid', '') is string) &&
-             (data.get('id', '') is string) &&
-             (!('status' in data) || data.status in ['active', 'ended', 'none']) &&
-             (!('questions' in data) || data.questions is list) &&
-             (!('registeredStudents' in data) || data.registeredStudents is list);
+      return isValString(data.hostUid, 128) &&
+             isValString(data.title, 255) &&
+             (data.hostUid == request.auth.uid || isAdmin());
     }
 
-    // Phase 4: Collection Rules
+    function isValidResult(data) {
+      return isValString(data.uid, 128) &&
+             data.uid == request.auth.uid &&
+             data.score is int &&
+             data.total is int &&
+             data.score <= data.total;
+    }
+
+    // --- Collection Rules ---
 
     // Users Collection
-    // allow list is required for matric number lookup and God Mode search
     match /users/{uid} {
-      allow get: if true;
-      allow list: if true; 
-      allow write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-
-      match /chatSessions/{sessionId} {
-        allow read, write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      }
-      match /lectureSessions/{sessionId} {
-        allow read, write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      }
-      match /studyHistory/{historyId} {
-        allow read, write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      }
-      match /usage/{today} {
-        allow read, write: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      }
+      allow get: if isSignedIn();
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isOwner(uid) && isValidUser(incoming());
+      allow update: if (isOwner(uid) || isAdmin()) && isValidUser(incoming()) && (
+        // Action: Profile Update
+        (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'university', 'level', 'department', 'faculty', 'dob', 'matric', 'matricNumber', 'updatedAt', 'fullName', 'status', 'premiumUntil', 'bypassHostingPayment', 'bypassTakingPayment', 'bypassAllPayments'])) ||
+        // Action: Admin Role Update
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role']))
+      );
     }
 
-    // Exams & Results
+    // Notes Collection
+    match /notes/{noteId} {
+      allow get: if isSignedIn() && (existing().uid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidNote(incoming());
+      allow update: if isSignedIn() && existing().uid == request.auth.uid && isValidNote(incoming()) &&
+                   incoming().uid == existing().uid;
+      allow delete: if isSignedIn() && (existing().uid == request.auth.uid || isAdmin());
+    }
+
+    // Exams & Results (Nested)
     match /exams/{examId} {
       allow read: if true;
-      allow create: if (isAdmin() || (isSignedIn() && incoming().hostUid == request.auth.uid)) && isValidExam(incoming());
+      allow create: if isAdmin() && isValidExam(incoming());
       allow update: if (isAdmin() || (isSignedIn() && existing().hostUid == request.auth.uid)) && isValidExam(incoming());
-      allow delete: if (isAdmin() || (isSignedIn() && existing().hostUid == request.auth.uid));
-      
+      allow delete: if isAdmin();
+
       match /results/{resultId} {
-        allow create: if isSignedIn();
-        // Secure list queries by checking resource.data or parent match
-        allow read: if isSignedIn() && (
-          resource.data.uid == request.auth.uid ||
-          resource.data.hostUid == request.auth.uid ||
-          isAdmin() ||
-          get(/databases/$(database)/documents/exams/$(examId)).data.hostUid == request.auth.uid
-        );
+        allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || resource.data.hostUid == request.auth.uid || isAdmin());
+        allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || resource.data.hostUid == request.auth.uid || isAdmin());
+        allow create: if isSignedIn() && isValidResult(incoming());
+        allow update, delete: if isAdmin();
       }
     }
 
-    // Quizzes
-    match /quizzes/{quizId} {
-      allow read: if true;
-      allow create, update: if isSignedIn();
-    }
-
-    // Blog & Notifications
+    // Blog Posts
     match /blogPosts/{postId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
+    // Notifications
     match /notifications/{notifId} {
-      allow read: if true;
-      allow create: if isSignedIn(); 
-      allow update, delete: if isAdmin();
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // User Sub-collections (Private)
+    match /users/{uid}/lectureSessions/{sessionId} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+    match /users/{uid}/chatSessions/{sessionId} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+    match /users/{uid}/studyHistory/{historyId} {
+      allow read, write: if isOwner(uid) || isAdmin();
     }
 
     // Config & Infrastructure
@@ -119,26 +146,8 @@ service cloud.firestore {
     match /email_templates/{templateId} {
       allow read, write: if isAdmin();
     }
-    
-    match /registeredStudents/{matric} {
-      allow read: if true; 
-      allow write: if isAdmin();
-    }
 
-    // Personal Notes
-    match /notes/{noteId} {
-      allow read: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && (incoming().uid == request.auth.uid || isAdmin());
-      allow update: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin()) && (incoming().uid == request.auth.uid || isAdmin());
-      allow delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
-    }
-
-    // Global Scores & Logs
-    match /scoreSheet/{resultId} {
-      allow read: if isAdmin();
-      allow create: if true; 
-    }
-    
+    // Test document
     match /test/{docId} {
       allow get: if true;
     }
