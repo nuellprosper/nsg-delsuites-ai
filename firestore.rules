@@ -21,7 +21,7 @@ service cloud.firestore {
       return isSignedIn() && (
         request.auth.token.email == "nuellkelechi@gmail.com" ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') == 'admin')
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
 
@@ -45,9 +45,8 @@ service cloud.firestore {
     // --- Validation Blueprints ---
 
     function isValidUser(data) {
-      return isValString(data.uid, 256) && 
-             isValString(data.email, 512) &&
-             (data.uid == request.auth.uid || isAdmin()) &&
+      return (!('uid' in data) || isValString(data.uid, 256)) && 
+             (!('email' in data) || isValString(data.email, 512)) &&
              (!('role' in data) || data.role in ['admin', 'student']);
     }
 
@@ -128,9 +127,9 @@ service cloud.firestore {
     // Quizzes (Shared)
     match /quizzes/{quizId} {
       allow read: if true;
-      allow create: if isSignedIn() && (incoming().sharedBy == request.auth.uid || isAdmin());
-      allow update: if isAdmin() || (isSignedIn() && existing().sharedBy == request.auth.uid);
-      allow delete: if isAdmin() || (isSignedIn() && existing().sharedBy == request.auth.uid);
+      allow create: if isSignedIn() && (incoming().createdBy == request.auth.uid || isAdmin());
+      allow update: if isAdmin() || (isSignedIn() && existing().createdBy == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && existing().createdBy == request.auth.uid);
     }
 
     // User Sub-collections (Private)
