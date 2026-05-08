@@ -2881,15 +2881,34 @@ export default function App() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [userQuizAnswers, setUserQuizAnswers] = useState<number[]>([]);
+  const [currentQuizId, setCurrentQuizId] = useState<string | null>(null);
 
-  const truncateTitle = (title: string, wordLimit: number = 10) => {
+  const truncateTitle = (title: string, charLimit: number = 12) => {
     if (!title) return '';
-    const words = title.split(/\s+/);
-    if (words.length > wordLimit) {
-      return words.slice(0, wordLimit).join(' ') + '...';
+    if (title.length > charLimit) {
+      return title.substring(0, charLimit) + '...';
     }
     return title;
   };
+
+  // Sync quiz progress to local storage
+  useEffect(() => {
+    if (quizState === 'active' && quizQuestions.length > 0) {
+      const progressData = {
+        quizQuestions,
+        currentQuestionIndex,
+        quizScore,
+        userQuizAnswers,
+        quizTopic,
+        quizDifficulty,
+        quizQuestionCount,
+        currentQuizId
+      };
+      
+      const key = currentQuizId ? `nsg_quiz_progress_${currentQuizId}` : 'nsg_current_quiz_progress';
+      localStorage.setItem(key, JSON.stringify(progressData));
+    }
+  }, [quizState, currentQuestionIndex, quizScore, userQuizAnswers, quizQuestions, quizTopic, currentQuizId]);
 
   // Notebook state
   const [userNotes, setUserNotes] = useState<any[]>([]);
@@ -4124,6 +4143,27 @@ export default function App() {
     const quizId = urlParams.get('quizId');
     if (quizId) {
       loadSharedQuiz(quizId);
+    } else {
+      // Check for local unsaved quiz progress
+      const localProgress = localStorage.getItem('nsg_current_quiz_progress');
+      if (localProgress) {
+        try {
+          const p = JSON.parse(localProgress);
+          setQuizQuestions(p.quizQuestions);
+          setQuizTopic(p.quizTopic);
+          setCurrentQuestionIndex(p.currentQuestionIndex);
+          setQuizScore(p.quizScore);
+          setUserQuizAnswers(p.userQuizAnswers || []);
+          setQuizDifficulty(p.quizDifficulty || 'Medium');
+          setQuizQuestionCount(p.quizQuestionCount || p.quizQuestions.length);
+          setCurrentQuizId(p.currentQuizId);
+          setQuizState('active');
+          setActiveTab('tools');
+          setToolsSubTab('quiz');
+        } catch (e) {
+          console.error("Failed to restore local quiz progress:", e);
+        }
+      }
     }
 
     const examId = urlParams.get('examId');
@@ -6504,8 +6544,44 @@ ${session.fullAnalysis}
       const quizDoc = await getDoc(doc(db, 'quizzes', quizId));
       if (quizDoc.exists()) {
         const data = quizDoc.data();
+        
+        // Auto Capture: Add to history immediately when opened
+        const historyId = `quiz-${quizId}`;
+        const historyItem: HomeHistoryItem = {
+          id: historyId,
+          title: data.topic || 'Shared Quiz',
+          type: 'quiz',
+          timestamp: Date.now(),
+          progress: 0
+        };
+        addToFinishedHistory(historyItem);
+
+        // Check for local progress
+        const savedProgress = localStorage.getItem(`nsg_quiz_progress_${quizId}`);
+        if (savedProgress) {
+          try {
+            const p = JSON.parse(savedProgress);
+            setQuizQuestions(p.quizQuestions);
+            setQuizTopic(p.quizTopic);
+            setCurrentQuestionIndex(p.currentQuestionIndex);
+            setQuizScore(p.quizScore);
+            setUserQuizAnswers(p.userQuizAnswers || []);
+            setQuizDifficulty(p.quizDifficulty || 'Medium');
+            setQuizQuestionCount(p.quizQuestionCount || p.quizQuestions.length);
+            setCurrentQuizId(quizId);
+            setQuizState('active');
+            setActiveTab('tools');
+            setToolsSubTab('quiz');
+            return; // Exit after loading progress
+          } catch (pe) {
+            console.error("Failed to load saved quiz progress:", pe);
+          }
+        }
+
+        // Default load if no progress
         setQuizQuestions(data.questions);
         setQuizTopic(data.topic);
+        setCurrentQuizId(quizId);
         setQuizState('active');
         setActiveTab('tools');
         setToolsSubTab('quiz');
@@ -6513,6 +6589,7 @@ ${session.fullAnalysis}
         setQuizScore(0);
         setIsAnswered(false);
         setSelectedOption(null);
+        setUserQuizAnswers([]);
       }
     } catch (error) {
       console.error("Error loading shared quiz:", error);
@@ -6642,6 +6719,17 @@ ${session.fullAnalysis}
         setQuizState('active');
         setSelectedOption(null);
         setIsAnswered(false);
+        setCurrentQuizId(`gen-${Date.now()}`);
+
+        // Auto Capture: Add to history immediately when generated
+        const historyItem: HomeHistoryItem = {
+          id: `gen-${Date.now()}`,
+          title: quizTopic || 'Generated Quiz',
+          type: 'quiz',
+          timestamp: Date.now(),
+          progress: 0
+        };
+        addToFinishedHistory(historyItem);
       }
     } catch (error) {
       console.error("Quiz Generation Error:", error);
@@ -6772,8 +6860,11 @@ ${session.fullAnalysis}
       
       setQuizScore(finalScore);
       setQuizState('finished');
+      
+      const historyId = currentQuizId ? (currentQuizId.startsWith('quiz-') ? currentQuizId : `quiz-${currentQuizId}`) : `quiz-fin-${Date.now()}`;
+      
       addToFinishedHistory({
-        id: `quiz-fin-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        id: historyId,
         title: quizTopic || 'Quiz Result',
         type: 'quiz',
         progress: 100,
@@ -6782,6 +6873,10 @@ ${session.fullAnalysis}
         score: finalScore,
         total: quizQuestions.length
       });
+
+      // Clear literal progress
+      const key = currentQuizId ? `nsg_quiz_progress_${currentQuizId}` : 'nsg_current_quiz_progress';
+      localStorage.removeItem(key);
     }
   };
 
