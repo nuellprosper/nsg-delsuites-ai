@@ -2200,6 +2200,7 @@ interface HomeHistoryItem {
   total?: number;
   timestamp?: number;
   data?: any; // To store solution or other relevant metadata
+  answers?: number[];
 }
 
 export default function App() {
@@ -2950,10 +2951,10 @@ export default function App() {
   });
   
   const homeHistoryFull = [
-    ...unfinishedQuizzes.map(i => ({ ...i, timestamp: Date.now() + 1000 })), // Current items at very top
-    ...recordingsHistory, 
-    ...notesHistory, 
-    ...finishedHistory.map(h => ({ ...h, title: truncateTitle(h.title), timestamp: h.timestamp || new Date(h.date || 0).getTime() }))
+    ...unfinishedQuizzes.map(i => ({ ...i, title: truncateTitle(i.title, 12), timestamp: Date.now() + 1000 })), // Current items at very top
+    ...recordingsHistory.map(i => ({ ...i, title: truncateTitle(i.title, 12) })), 
+    ...notesHistory.map(i => ({ ...i, title: truncateTitle(i.title, 12) })), 
+    ...finishedHistory.map(h => ({ ...h, title: truncateTitle(h.title, 12), timestamp: h.timestamp || new Date(h.date || 0).getTime() }))
   ];
 
   const homeHistory = homeHistoryFull.filter((item, index, self) => 
@@ -6712,6 +6713,7 @@ ${session.fullAnalysis}
       const responseText = await askGemini() || await askTogether() || await askOpenRouter() || "{}";
       const data = JSON.parse(responseText);
       if (data.questions) {
+        const genId = `gen-${Date.now()}`;
         setQuizQuestions(data.questions);
         setCurrentQuestionIndex(0);
         setQuizScore(0);
@@ -6719,11 +6721,11 @@ ${session.fullAnalysis}
         setQuizState('active');
         setSelectedOption(null);
         setIsAnswered(false);
-        setCurrentQuizId(`gen-${Date.now()}`);
+        setCurrentQuizId(genId);
 
         // Auto Capture: Add to history immediately when generated
         const historyItem: HomeHistoryItem = {
-          id: `gen-${Date.now()}`,
+          id: genId,
           title: quizTopic || 'Generated Quiz',
           type: 'quiz',
           timestamp: Date.now(),
@@ -6871,7 +6873,8 @@ ${session.fullAnalysis}
         date: new Date().toLocaleDateString(),
         timestamp: Date.now(),
         score: finalScore,
-        total: quizQuestions.length
+        total: quizQuestions.length,
+        answers: userQuizAnswers
       });
 
       // Clear literal progress
@@ -7222,13 +7225,58 @@ ${session.fullAnalysis}
                     {homeHistory.map((item) => (
                       <div 
                         key={item.id}
-                        onClick={() => {
+                        onClick={async () => {
                           if (item.type === 'quiz') {
                             setActiveTab('tools');
                             setToolsSubTab('quiz');
+                            
+                            // Load quiz data if it's a specific quiz ID
+                            let targetQuizId = '';
+                            if (item.id.startsWith('quiz-')) {
+                              targetQuizId = item.id.replace('quiz-', '');
+                              if (targetQuizId.startsWith('fin-')) targetQuizId = ''; // Not a persistent quiz link
+                            }
+
+                            if (targetQuizId) {
+                                // This will handle both "active progress" and "viewing finished results" 
+                                // by ensuring we have the right questions.
+                                await loadSharedQuiz(targetQuizId);
+                                
+                                // If it was a finished item, set the finished state after loading questions
+                                if (item.score !== undefined) {
+                                  setQuizState('finished');
+                                  setQuizScore(item.score);
+                                  if (item.answers) {
+                                    setUserQuizAnswers(item.answers);
+                                  }
+                                }
+                                return;
+                            }
+
                             if (item.score !== undefined) {
                               setQuizState('finished');
                               setQuizScore(item.score);
+                              if (item.answers) setUserQuizAnswers(item.answers);
+                              // Note: If no targetQuizId, it might show old questions if not careful
+                            } else {
+                              // Check for general current quiz progress if no score
+                              const localProgress = localStorage.getItem('nsg_current_quiz_progress');
+                              if (localProgress) {
+                                try {
+                                  const p = JSON.parse(localProgress);
+                                  setQuizQuestions(p.quizQuestions);
+                                  setQuizTopic(p.quizTopic);
+                                  setCurrentQuestionIndex(p.currentQuestionIndex);
+                                  setQuizScore(p.quizScore);
+                                  setUserQuizAnswers(p.userQuizAnswers || []);
+                                  setQuizDifficulty(p.quizDifficulty || 'Medium');
+                                  setQuizQuestionCount(p.quizQuestionCount || p.quizQuestions.length);
+                                  setCurrentQuizId(p.currentQuizId);
+                                  setQuizState('active');
+                                } catch (e) {
+                                  console.error("Failed to restore history quiz progress:", e);
+                                }
+                              }
                             }
                           } else if (item.type === 'exam') {
                             setActiveTab('tools');
