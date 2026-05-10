@@ -94,8 +94,13 @@ export function handleFirestoreError(error: unknown, operationType: FirestoreOpe
     console.error('CRITICAL: Firestore Quota Exceeded. The app will have limited functionality until the quota resets.');
   }
 
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  const safeErrInfo = JSON.parse(JSON.stringify(errInfo, (key, value) => {
+    if (key === 'src' || key === 'target') return undefined; // Common circular refs in some envs
+    return value;
+  }));
+
+  console.error('Firestore Error: ', safeErrInfo);
+  throw new Error(JSON.stringify(safeErrInfo));
 }
 
 // Test connection
@@ -111,7 +116,7 @@ async function testConnection() {
       return; // Silent bypass for quota as it's a known state
     }
     
-    console.error("Firestore connection test failed:", error);
+    console.error("Firestore connection test failed:", error instanceof Error ? error.message : String(error));
     if(errorMsg.includes('the client is offline')) {
       console.error("Please check your Firebase configuration. This often happens if the database ID or project ID is incorrect, or if the database is not provisioned in your region.");
     }
