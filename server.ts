@@ -356,7 +356,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`NSG Omni Server running on http://localhost:${PORT}`);
+    console.log(`NSG Server running on http://localhost:${PORT}`);
   });
 }
 
