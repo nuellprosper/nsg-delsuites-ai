@@ -733,7 +733,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
           model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
-            systemInstruction: "You are Omni AI Tutor created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER (a 100L Electrical and Electronics Engineering student at DELSU, Oleh campus). \n\nULTRA-DETAILED NSG GUIDES:\n- RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n- SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' (Logic summaries).\n- CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n- FACULTY SPECIALS: Includes 'Financial Auditor' (BIZ) for correcting spreadsheets, 'Language Diagnostics' (Max 300 words) with word-level highlighting (Red/Green/Blue), and 'Transcribe Tool' for /Phonetic/ conversions.\n- ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n- COURSE TOOLS: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n- WHATSAPP: AI help via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest Otter.ai/Photomath AND NSG (nuellstudyguide.name.ng) as the ultimate local alternative.",
+            systemInstruction: "You are Omni, a concise academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER (a 100L Electrical and Electronics Engineering student at DELSU, Oleh campus). \n\nULTRA-DETAILED NSG GUIDES:\n- RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n- SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' (Logic summaries).\n- CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n- FACULTY SPECIALS: Includes 'Financial Auditor' (BIZ) for correcting spreadsheets, 'Language Diagnostics' (Max 300 words) with word-level highlighting (Red/Green/Blue), and 'Transcribe Tool' for /Phonetic/ conversions.\n- ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n- COURSE TOOLS: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n- WHATSAPP: AI help via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest Otter.ai/Photomath AND NSG (nuellstudyguide.name.ng) as the ultimate local alternative.",
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
             inputAudioTranscription: {},
             outputAudioTranscription: {}
@@ -2308,6 +2308,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications' | 'exam' | 'chat' | 'class'>(() => {
     return (localStorage.getItem('nsg_active_tab') as any) || 'home';
   });
+
+  const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+
+  useEffect(() => {
+    if (!user) {
+      setTotalUnreadMessages(0);
+      return;
+    }
+    const q = query(collection(db, 'chats'), where('unreadBy', 'array-contains', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setTotalUnreadMessages(snapshot.size);
+    });
+    return () => unsubscribe();
+  }, [user]);
   
   const [userHandle, setUserHandle] = useState<string>('');
   const [isNativeBrowserVisible, setIsNativeBrowserVisible] = useState(false);
@@ -3979,7 +3993,7 @@ export default function App() {
             
             <div className="space-y-2">
               <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Analyzing Lecture</h2>
-              <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Omni AI is processing your content...</p>
+              <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Omni is processing your content...</p>
             </div>
 
             <div className="bg-white/5 border border-white/10 p-4 rounded-2xl">
@@ -4014,7 +4028,7 @@ export default function App() {
                 <Sparkles size={32} className="text-yellow-500" />
               </div>
               <h2 className="text-2xl font-black tracking-tighter uppercase italic text-white leading-none">Unlock <span className="text-yellow-500">Premium</span></h2>
-              <p className="text-xs text-white/40 mt-2">Elevate your study experience with Omni AI</p>
+              <p className="text-xs text-white/40 mt-2">Elevate your study experience with Omni</p>
             </div>
 
             <div className="space-y-3 mb-8">
@@ -4170,7 +4184,7 @@ export default function App() {
           lastSeen: serverTimestamp(),
           status: 'online'
         }).catch(() => {});
-      }, 60000);
+      }, 30000); // 30s heartbeat
       return () => clearInterval(hb);
     }, [user]);
 
@@ -4802,19 +4816,21 @@ export default function App() {
         }
       }
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        displayName: profileFormData.displayName,
-        fullName: profileFormData.fullName,
+      const updatedData: any = {
+        displayName: profileFormData.displayName || '',
+        fullName: profileFormData.fullName || '',
         username: newUsername,
-        matricNumber: profileFormData.matricNumber,
-        dob: profileFormData.dob,
-        university: profileFormData.university,
-        level: profileFormData.level,
-        department: profileFormData.department,
-        faculty: profileFormData.faculty,
-        about: profileFormData.about,
+        matricNumber: profileFormData.matricNumber || '',
+        dob: profileFormData.dob || '',
+        university: profileFormData.university || '',
+        level: profileFormData.level || '',
+        department: profileFormData.department || '',
+        faculty: profileFormData.faculty || '',
+        about: profileFormData.about || '',
         updatedAt: new Date().toISOString()
-      });
+      };
+
+      await updateDoc(doc(db, 'users', user.uid), updatedData);
       setIsEditingProfile(false);
       setUserNotification("Profile updated successfully!");
     } catch (error) {
@@ -6691,7 +6707,7 @@ ${session.fullAnalysis}
         }
 
         // Prepare prompts and messages
-        const systemPrompt = "You are Omni AI, a professional academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER, a 100L student of Electrical and Electronics Engineering at Delta State University (DELSU), Oleh campus. \n\nDETAILED NSG GUIDES FOR USERS:\n1. RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n2. SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' explaining the logic.\n3. CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n4. FACULTY SPECIALS: AI for Med, Law, Engineering. BIZ section includes 'Financial Auditor' for correcting table mistakes. Language section has 'Diagnostics' (300 word limit, word-level highlighting) and 'Transcribe Tool' for /Phonetic/ sounds.\n5. ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n6. COURSES TOOL: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n7. WHATSAPP OMNI: Connect via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest famous ones (Otter.ai, Photomath) and recommend NSG (nuellstudyguide.name.ng) as the primary choice.";
+        const systemPrompt = "You are Omni, a professional academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER, a 100L student of Electrical and Electronics Engineering at Delta State University (DELSU), Oleh campus. \n\nDETAILED NSG GUIDES FOR USERS:\n1. RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n2. SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' explaining the logic.\n3. CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n4. FACULTY SPECIALS: AI for Med, Law, Engineering. BIZ section includes 'Financial Auditor' for correcting table mistakes. Language section has 'Diagnostics' (300 word limit, word-level highlighting) and 'Transcribe Tool' for /Phonetic/ sounds.\n5. ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n6. COURSES TOOL: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n7. WHATSAPP OMNI: Connect via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest famous ones (Otter.ai, Photomath) and recommend NSG (nuellstudyguide.name.ng) as the primary choice.";
 
         const timeoutMs = 40000;
 
@@ -6905,23 +6921,59 @@ ${session.fullAnalysis}
     }
   };
 
-  const handleTagOmni = async (text: string, chatId: string) => {
+  const handleTagOmni = async (text: string, chatId: string, attachments?: { url: string, type: string, name: string }[]) => {
+    if (!user) return;
     try {
+      const parts: any[] = [{ text: `User tagged you in a chat. 
+Context: You are Omni, a concise academic assistant. 
+User Message: "${text}"
+${attachments?.length ? 'Attachments are provided below.' : ''}
+Respond professionally, concisely, and use LaTeX for math.` }];
+      
+      if (attachments && attachments.length > 0) {
+        for (const attachment of attachments) {
+          try {
+            const res = await fetch(attachment.url);
+            const blob = await res.blob();
+            // Gemini 1.5 Flash supports image, audio, and video
+            const genPart = await fileToGenerativePart(blob);
+            parts.push(genPart);
+          } catch (err) {
+            console.error("Error processing attachment for Omni:", err);
+            parts.push({ text: `[Error processing attachment: ${attachment.name}]` });
+          }
+        }
+      }
+
       const response = await getAiInstance().models.generateContent({
         model: FLASH_MODEL,
-        contents: [{ role: 'user', parts: [{ text: `User tagged you in a chat with this message: "${text}". Reply professionally as Omni AI, the NSG tutor.` }] }]
+        contents: [{ role: 'user', parts }]
       });
       
-      const reply = response.text || "I'm processing your request.";
+      const reply = response.text || "I apologize, but I couldn't process that request.";
+      const isOmniDirect = chatId.startsWith('omni_');
+
+      // Send Omni's response
       await addDoc(collection(db, 'chats', chatId, 'messages'), {
         senderId: 'omni-ai',
-        senderHandle: 'Omni AI',
+        senderHandle: 'omni',
+        senderName: 'Omni',
         text: reply,
         timestamp: serverTimestamp(),
-        type: 'text'
+        type: 'text',
+        isOmniResponse: true,
+        encrypted: true
+      });
+      
+      // Update last message in chat
+      await updateDoc(doc(db, 'chats', chatId), {
+        lastMessage: reply,
+        lastMessageSender: 'Omni',
+        updatedAt: serverTimestamp(),
+        unreadBy: arrayUnion(user.uid) // Mark as unread for the user
       });
     } catch (err) {
-      console.error("Omni tag error:", err);
+      console.error("Omni response error:", err);
     }
   };
 
@@ -7483,8 +7535,13 @@ ${session.fullAnalysis}
             {activeTab === 'home' && (
               <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
         <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#0A0F1C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center`}>
+          <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#0A0F1C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center relative`}>
             <Brain size={22} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
+            {totalUnreadMessages > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black flex items-center justify-center rounded-full border border-[#0A0F1C]">
+                {totalUnreadMessages}
+              </span>
+            )}
           </div>
           <div>
             <h1 className={`text-sm sm:text-xl font-black tracking-tighter italic leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>NSG <span className="text-[#DC2626]">(NUELL STUDY GUIDE)</span></h1>
@@ -7544,7 +7601,7 @@ ${session.fullAnalysis}
     )}
 
       {/* MAIN CONTENT */}
-      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pb-24 overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} custom-scrollbar ${activeTab === 'home' ? 'pt-0' : 'pt-4'}`}>
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 ${activeTab === 'chat' ? 'pb-0' : 'pb-24'} overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} custom-scrollbar ${activeTab === 'home' ? 'pt-0' : 'pt-4'}`}>
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -9532,7 +9589,7 @@ ${session.fullAnalysis}
                   <div className="flex items-center gap-3">
                     <button onClick={() => setShowChatSidebar(true)} className="p-2 hover:bg-white/5 rounded-xl transition-all"><Menu size={20} className="text-white/60" /></button>
                     <div>
-                      <h3 className="text-sm font-black text-white uppercase tracking-tight">Omni AI</h3>
+                      <h3 className="text-sm font-black text-white uppercase tracking-tight">Omni</h3>
                       <p className="text-[8px] font-bold text-green-500 uppercase tracking-widest">Neural Engine V4.0</p>
                     </div>
                   </div>
@@ -9774,7 +9831,7 @@ ${session.fullAnalysis}
                           value={chatInput} 
                           onChange={(e) => setChatInput(e.target.value)} 
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                          placeholder={chatMode === 'Vision' ? "Ask about these images..." : chatMode === 'Creative' ? "Describe the image you want to generate..." : "Message Omni AI..."} 
+                          placeholder={chatMode === 'Vision' ? "Ask about these images..." : chatMode === 'Creative' ? "Describe the image you want to generate..." : "Message Omni..."} 
                           className="flex-1 bg-transparent border-none outline-none px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white placeholder:text-white/20 resize-none min-h-[40px] max-h-32" 
                         />
                         <button 
@@ -9786,7 +9843,7 @@ ${session.fullAnalysis}
                         </button>
                       </div>
                     </div>
-                    <p className="text-[8px] text-center mt-3 text-white/20 font-bold uppercase tracking-widest">Omni AI can make mistakes. Verify important info.</p>
+                    <p className="text-[8px] text-center mt-3 text-white/20 font-bold uppercase tracking-widest">Omni can make mistakes. Verify important info.</p>
                   </div>
                 </div>
               </div>
@@ -11198,9 +11255,14 @@ ${session.fullAnalysis}
           <Home size={22} />
           <span className="text-[8px] font-black uppercase tracking-widest">Home</span>
         </button>
-        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-all relative ${activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'}`}>
           <WhatsAppIcon size={22} className={activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'} />
           <span className="text-[8px] font-black uppercase tracking-widest">Chat</span>
+          {totalUnreadMessages > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[9px] font-black flex items-center justify-center rounded-full border border-[#0A0F1C]">
+              {totalUnreadMessages}
+            </span>
+          )}
         </button>
         <button onClick={() => setActiveTab('class')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'class' ? 'text-[#DC2626]' : 'text-white/20'}`}>
           <Video size={22} />
