@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
+// import Browser from './components/Browser'; // Suspended
 import { 
   Mic, StopCircle, Upload, FileAudio, Image as ImageIcon, 
   Brain, History, Download, Play, 
-  ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard,
+  ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard, Edit2, FilePlus,
   ChevronUp, ChevronDown, Bold, Italic, List, CornerDownRight,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle, RotateCcw,
-  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
-  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff,
-  Search, Check, Info, Volume2, Square, Mail, ArrowRight, BoxSelect
+  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, Shield, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
+  Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff, Video, AtSign,
+  Search, Check, Info, Volume2, Square, Mail, ArrowRight, BoxSelect, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, Modality, ThinkingLevel } from "@google/genai";
@@ -21,12 +22,14 @@ import { toPng } from 'html-to-image';
 import axios from 'axios';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy, limit,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy, limit, arrayUnion,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   FirestoreOperation, handleFirestoreError
 } from './firebase';
 
 import { AILibrary } from './components/AILibrary';
+import { ChatRoom } from './components/ChatRoom';
+import { ClassRoom } from './components/ClassRoom';
 
 const WhatsAppIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
   <svg 
@@ -389,6 +392,45 @@ const formatAiError = (error: any) => {
   return `AI Error: ${message}`;
 };
 
+const robustJSONParse = (text: string) => {
+  if (!text) return null;
+  let cleaned = text.trim();
+  
+  // Remove markdown code blocks if present
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?|```$/g, '').trim();
+  }
+
+  // Helper to fix common LLM JSON escaping issues (like LaTeX backslashes)
+  const fixEscaping = (str: string) => {
+    // Escape backslashes that aren't already escaping something valid
+    // This is a common issue with LaTeX: \frac -> \\frac
+    return str.replace(/\\(?![/"\\bfnrtu])/g, '\\\\');
+  };
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    // Try to extract the JSON object with regex
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const jsonStr = jsonMatch[0];
+      try {
+        return JSON.parse(jsonStr);
+      } catch (err2) {
+        try {
+          // Attempt a more aggressive fix for LaTeX and other unescaped chars
+          return JSON.parse(fixEscaping(jsonStr));
+        } catch (err3) {
+          console.error("Robust JSON parse failed:", { original: err, second: err2, final: err3 });
+          throw err; // Throw original to keep error position context
+        }
+      }
+    }
+    throw err;
+  }
+};
+
 const HF_MODELS = {
   TEXT: "meta-llama/Llama-3.1-8B-Instruct",
   VISION: "meta-llama/Llama-3.2-11B-Vision-Instruct",
@@ -560,6 +602,7 @@ interface ExamConfig {
   duration: number; // in seconds
   price: number; // in Naira
   poolCount?: number;
+  warningMessage?: string;
 }
 
 async function fileToGenerativePart(file: File | Blob) {
@@ -1784,21 +1827,20 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
       const responseText = await askGemini() || await askTogether() || await askOpenRouter() || "";
       
       try {
-        // Clean markdown backticks before parsing if they exist
-        let cleanedText = responseText.trim();
-        if (cleanedText.startsWith('```')) {
-          cleanedText = cleanedText.replace(/^```(?:json)?\n?|```$/g, '').trim();
-        }
-        
-        const data = JSON.parse(cleanedText);
+        const data = robustJSONParse(responseText);
         
         // Robustness: ensure steps exists
-        if (!data.steps || !Array.isArray(data.steps)) {
+        if (!data || !data.steps || !Array.isArray(data.steps)) {
           console.warn("AI returned missing or invalid steps array, attempting to recover...");
-          data.steps = [{ 
-            step: data.solution || data.answer || "Calculation complete", 
-            explanation: data.reasoning || data.logic || "Derived from assignment image analysis." 
-          }];
+          const steps = (data && (data.steps || data.solution || data.answer)) ? 
+            (Array.isArray(data.steps) ? data.steps : [{ step: data.solution || data.answer || "Calculation complete", explanation: data.reasoning || data.logic || "Derived from analysis." }]) 
+            : [{ step: "Analysis Result", explanation: responseText.slice(0, 500) }];
+          
+          if (data) {
+            data.steps = steps;
+          } else {
+            // throw new Error("Invalid response format");
+          }
         }
         
         setSolution(data);
@@ -1811,35 +1853,9 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
           data: data
         });
         setUserNotification("Step-by-step solution generated!");
-      } catch (parseError) {
-        console.error("Primary JSON parse failed, trying regex match:", parseError);
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            const data = JSON.parse(jsonMatch[0]);
-            if (!data.steps || !Array.isArray(data.steps)) {
-              data.steps = [{ 
-                step: data.solution || data.answer || "Calculation complete", 
-                explanation: data.reasoning || data.logic || "Derived from assignment image analysis." 
-              }];
-            }
-            setSolution(data);
-            addToFinishedHistory({
-              id: `assignment-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-              title: data.title || "Assignment Solution",
-              type: 'assignment',
-              date: new Date().toLocaleDateString(),
-              timestamp: Date.now(),
-              data: data
-            });
-            setUserNotification("Step-by-step solution generated!");
-          } catch (e) {
-            console.error("Secondary JSON parse failed:", e);
-            throw new Error(`Invalid AI response structure. Please try again with a clearer image.`);
-          }
-        } else {
-          throw new Error("Could not extract a valid JSON solution from the AI response.");
-        }
+      } catch (parseError: any) {
+        console.error("Parse Issue:", parseError);
+        throw new Error(parseError.message || "Invalid AI response structure. Please try again.");
       }
     } catch (err: any) {
       console.error("Assignment Solve Error:", err);
@@ -2258,12 +2274,14 @@ export default function App() {
   const [profileFormData, setProfileFormData] = useState({
     displayName: '',
     fullName: '',
+    username: '',
     matricNumber: '',
     dob: '',
     university: '',
     level: '',
     department: '',
-    faculty: ''
+    faculty: '',
+    about: ''
   });
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [examIdInput, setExamIdInput] = useState('');
@@ -2273,11 +2291,29 @@ export default function App() {
   const [isHostPaid, setIsHostPaid] = useState(false);
   const [isTakingPaid, setIsTakingPaid] = useState(false);
   const [hostExamId, setHostExamId] = useState<string | null>(null);
+  const [hostedExams, setHostedExams] = useState<any[]>([]);
+  const [showExamSidebar, setShowExamSidebar] = useState(false);
+
+  // Scroll locking for Sidebar
+  useEffect(() => {
+    if (showExamSidebar) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => { document.body.style.overflow = 'auto'; };
+  }, [showExamSidebar]);
 
   // --- \u{1F4F1} APP STATE ---
-  const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications' | 'exam'>(() => {
+  const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications' | 'exam' | 'chat' | 'class'>(() => {
     return (localStorage.getItem('nsg_active_tab') as any) || 'home';
   });
+  
+  const [userHandle, setUserHandle] = useState<string>('');
+  const [isNativeBrowserVisible, setIsNativeBrowserVisible] = useState(false);
+  const [isClassActive, setIsClassActive] = useState(false);
+  const [classRoomId, setClassRoomId] = useState<string | null>(null);
+  const [isHost, setIsHost] = useState(false);
   
   useEffect(() => {
     localStorage.setItem('nsg_active_tab', activeTab);
@@ -2293,7 +2329,10 @@ export default function App() {
   const [readArticles, setReadArticles] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
-  const [blogPosts, setBlogPosts] = useState<any[]>([]);
+  const [blogPosts, setBlogPosts] = useState<any[]>(() => {
+    const cached = localStorage.getItem('nsg_cache_blog_posts');
+    return cached ? JSON.parse(cached) : [];
+  });
   const [isAddingPost, setIsAddingPost] = useState(false);
   const [editingPost, setEditingPost] = useState<any | null>(null);
   const [isEditingPost, setIsEditingPost] = useState(false);
@@ -2573,19 +2612,31 @@ export default function App() {
 
   useEffect(() => {
     if (showGodMode && user?.email === "nuellkelechi@gmail.com") {
-      const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const unsubscribe = onSnapshot(query(collection(db, 'users'), limit(100)), (snapshot) => {
         const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setAllUsers(usersList);
-      }, (err) => console.error("God Mode User Sync Error:", err));
+      }, (err) => {
+        console.error("God Mode User Sync Error:", err);
+        if (err.message.includes('quota')) {
+          setUserNotification("Quota exceeded. God Mode user list is incomplete.");
+        }
+      });
       return () => unsubscribe();
     }
   }, [showGodMode, user]);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(query(collection(db, 'blogPosts'), orderBy('timestamp', 'desc')), (snapshot) => {
+    const q = query(collection(db, 'blogPosts'), orderBy('timestamp', 'desc'), limit(15));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBlogPosts(posts);
-    }, (err) => console.error("Blog Posts Sync Error:", err));
+      localStorage.setItem('nsg_cache_blog_posts', JSON.stringify(posts));
+    }, (err) => {
+      console.error("Blog Posts Sync Error:", err);
+      if (err.message.includes('quota') || err.message.includes('8') || err.message.includes('Resource exhausted')) {
+        setUserNotification("Firestore Quota Exceeded. Using cached blog posts if available.");
+      }
+    });
     return () => unsubscribe();
   }, []);
 
@@ -2912,7 +2963,10 @@ export default function App() {
   }, [quizState, currentQuestionIndex, quizScore, userQuizAnswers, quizQuestions, quizTopic, currentQuizId]);
 
   // Notebook state
-  const [userNotes, setUserNotes] = useState<any[]>([]);
+  const [userNotes, setUserNotes] = useState<any[]>(() => {
+    const cached = localStorage.getItem('nsg_cache_user_notes');
+    return cached ? JSON.parse(cached) : [];
+  });
   const [selectedNote, setSelectedNote] = useState<any>(null);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteHistory, setNoteHistory] = useState<string[]>([]);
@@ -3122,7 +3176,8 @@ export default function App() {
     if (user) {
       const q = query(
         collection(db, 'notes'),
-        where('uid', '==', user.uid)
+        where('uid', '==', user.uid),
+        limit(100)
       );
       const unsub = onSnapshot(q, (snap) => {
         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -3133,8 +3188,12 @@ export default function App() {
           return timeB - timeA;
         });
         setUserNotes(sortedList);
+        localStorage.setItem('nsg_cache_user_notes', JSON.stringify(sortedList));
       }, (err) => {
         console.error("Notes fetch error:", err);
+        if (err.message.includes('quota') || err.message.includes('8') || err.message.includes('Resource exhausted')) {
+          setUserNotification("Quota exceeded. Using cached notes.");
+        }
       });
       return () => unsub();
     } else {
@@ -3707,14 +3766,64 @@ export default function App() {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [registeredStudents, setRegisteredStudents] = useState<RegisteredStudent[]>([]);
   const initialExamConfig: ExamConfig = {
-    questionCount: 25,
-    duration: 60,
-    price: 2000,
-    poolCount: 50
+    questionCount: 15,
+    duration: 30,
+    price: 200,
+    poolCount: 20,
+    warningMessage: ""
   };
   const [examConfig, setExamConfig] = useState<ExamConfig>(initialExamConfig);
   const [newStudentMatric, setNewStudentMatric] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
+
+  const [manualQuestion, setManualQuestion] = useState("");
+  const [manualOptions, setManualOptions] = useState(["", "", "", ""]);
+  const [manualCorrect, setManualCorrect] = useState(0);
+  const [manualExplanation, setManualExplanation] = useState("");
+  const [isEditingQuestionId, setIsEditingQuestionId] = useState<string | null>(null);
+
+  const addManualQuestion = () => {
+    if (!manualQuestion.trim() || manualOptions.some(opt => !opt.trim())) {
+      setUserNotification("Please fill in question and all 4 options.");
+      return;
+    }
+
+    const newQ: ExamQuestion = {
+      id: isEditingQuestionId || Math.random().toString(36).substr(2, 9),
+      question: manualQuestion,
+      options: manualOptions,
+      correctAnswer: manualCorrect,
+      explanation: manualExplanation
+    };
+
+    if (isEditingQuestionId) {
+      setExamQuestions(prev => prev.map(q => q.id === isEditingQuestionId ? newQ : q));
+      setIsEditingQuestionId(null);
+    } else {
+      setExamQuestions(prev => [...prev, newQ]);
+    }
+
+    // Reset fields
+    setManualQuestion("");
+    setManualOptions(["", "", "", ""]);
+    setManualCorrect(0);
+    setManualExplanation("");
+  };
+
+  const editQuestionFromPool = (q: ExamQuestion) => {
+    setManualQuestion(q.question);
+    setManualOptions([...q.options]);
+    setManualCorrect(q.correctAnswer);
+    setManualExplanation(q.explanation || "");
+    setIsEditingQuestionId(q.id);
+    // Scroll to the manual form
+    const form = document.getElementById('manual-question-form');
+    if (form) form.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const deleteQuestionFromPool = (id: string) => {
+    setExamQuestions(prev => prev.filter(q => q.id !== id));
+  };
 
   const handleAdminLogin = () => {
     if (adminPin === '286900') {
@@ -3812,7 +3921,7 @@ export default function App() {
             <Brain size={32} className="text-white" />
           </div>
           <h1 className="text-4xl sm:text-5xl font-black text-white italic tracking-tighter uppercase leading-none">
-            NSG <span className="text-[#DC2626]">OMNI</span>
+            NSG
           </h1>
           <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.4em]">Lecture Analysis OS 4.0</p>
         </div>
@@ -4053,6 +4162,18 @@ export default function App() {
     verifyPendingPayment();
   }, [user]);
 
+    // Presence Heartbeat
+    useEffect(() => {
+      if (!user) return;
+      const hb = setInterval(() => {
+        updateDoc(doc(db, 'users', user.uid), {
+          lastSeen: serverTimestamp(),
+          status: 'online'
+        }).catch(() => {});
+      }, 60000);
+      return () => clearInterval(hb);
+    }, [user]);
+
   const userUnsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -4092,13 +4213,28 @@ export default function App() {
             setProfileFormData(prev => ({
               displayName: data.displayName || prev.displayName || '',
               fullName: data.fullName || prev.fullName || '',
+              username: data.username || '',
               matricNumber: data.matricNumber || prev.matricNumber || '',
               dob: data.dob || prev.dob || '',
               university: data.university || prev.university || '',
               level: data.level || prev.level || '',
               department: data.department || prev.department || '',
-              faculty: data.faculty || prev.faculty || ''
+              faculty: data.faculty || prev.faculty || '',
+              about: data.about || ''
             }));
+            
+            // Backfill username if missing
+            if (!data.username) {
+              const now = new Date();
+              const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+              const secondsPart = now.getSeconds().toString().padStart(2, '0');
+              const randomPart = Math.random().toString(36).substring(2, 4);
+              const generatedUsername = `${datePart}${secondsPart}${randomPart}`;
+              updateDoc(userDocRef, { username: generatedUsername }).catch(console.error);
+              setUserHandle(generatedUsername);
+            } else {
+              setUserHandle(data.username);
+            }
             
             if (data.status === 'deleted') {
               if (currentUser.email === "nuellkelechi@gmail.com") {
@@ -4110,10 +4246,18 @@ export default function App() {
             }
           } else {
             const isDefaultAdmin = currentUser.email === "nuellkelechi@gmail.com";
+            // Date (YYYYMMDD) + Seconds (SS) + 2 Random letters
+            const now = new Date();
+            const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
+            const secondsPart = now.getSeconds().toString().padStart(2, '0');
+            const randomPart = Math.random().toString(36).substring(2, 4);
+            const generatedUsername = `${datePart}${secondsPart}${randomPart}`;
+            
             const userData = {
               uid: currentUser.uid,
               email: currentUser.email,
               displayName: currentUser.displayName,
+              username: generatedUsername,
               photoURL: currentUser.photoURL,
               role: isDefaultAdmin ? 'admin' : 'student',
               createdAt: new Date().toISOString(),
@@ -4283,11 +4427,16 @@ export default function App() {
 
     if (hostExamId) {
       console.log("Starting Exam Results sync for ID:", hostExamId);
-      unsubScores = onSnapshot(query(collection(db, 'exams', hostExamId, 'results'), where('hostUid', '==', user.uid)), (snapshot) => {
+      unsubScores = onSnapshot(query(collection(db, 'exams', hostExamId, 'results'), where('hostUid', '==', user.uid), limit(200)), (snapshot) => {
         const scores = snapshot.docs.map(doc => doc.data() as StudentResult);
         console.log(`Synced ${scores.length} results for exam ${hostExamId}`);
         setScoreSheet(scores.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-      }, (error) => console.error("Exam Results Sync Error:", error));
+      }, (error) => {
+        console.error("Exam Results Sync Error:", error);
+        if (error.message.includes('quota')) {
+          setUserNotification("Quota exceeded. Some exam results might not be visible.");
+        }
+      });
 
       unsubExam = onSnapshot(doc(db, 'exams', hostExamId), (snapshot) => {
         if (snapshot.exists()) {
@@ -4312,6 +4461,39 @@ export default function App() {
     };
   }, [user, adminMode, hostExamId, isGeneratingAdminQuestions]);
 
+  // Sync all exams hosted by the user
+  useEffect(() => {
+    if (!user || !adminMode) {
+      setHostedExams([]);
+      return;
+    }
+
+    const q = query(collection(db, 'exams'), where('hostUid', '==', user.uid), limit(5));
+    const unsub = onSnapshot(q, (snap) => {
+      const examsList = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHostedExams(examsList);
+      if (examsList.length > 0) {
+        setIsHostPaid(true);
+        // If nothing is selected, select the most recent one
+        const currentStoredId = localStorage.getItem('nsg_host_exam_id');
+        if (!hostExamId && !currentStoredId) {
+          setHostExamId(examsList[0].id);
+        }
+      }
+    }, (err) => console.error("Hosted Exams Sync Error:", err));
+
+    return () => unsub();
+  }, [user, adminMode]);
+
+  // Handle Exam ID local storage update
+  useEffect(() => {
+    if (hostExamId) {
+      localStorage.setItem('nsg_host_exam_id', hostExamId);
+    } else {
+      localStorage.removeItem('nsg_host_exam_id');
+    }
+  }, [hostExamId]);
+
   // User-specific Data Sync
   useEffect(() => {
     if (!user) {
@@ -4321,17 +4503,27 @@ export default function App() {
       return;
     }
 
-    const unsubChats = onSnapshot(collection(db, 'users', user.uid, 'chatSessions'), (snapshot) => {
+    const unsubChats = onSnapshot(query(collection(db, 'users', user.uid, 'chatSessions'), limit(30)), (snapshot) => {
       const sessions = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ChatSession));
       setChatSessions(sessions);
-    }, (err) => console.error("Chat Sessions Sync Error:", err));
+    }, (err) => {
+      console.error("Chat Sessions Sync Error:", err);
+      if (err.message.includes('quota')) {
+        setUserNotification("Quota exceeded. Chat history may be incomplete.");
+      }
+    });
 
     // For simplicity, we'll keep lecture sessions local or add them to Firestore too
     // Let's add them to Firestore for full persistence
-    const unsubLectures = onSnapshot(collection(db, 'users', user.uid, 'lectureSessions'), (snapshot) => {
+    const unsubLectures = onSnapshot(query(collection(db, 'users', user.uid, 'lectureSessions'), limit(30)), (snapshot) => {
       const lectureData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as LectureSession));
       setSessions(lectureData.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)));
-    }, (err) => console.error("Lecture Sessions Sync Error:", err));
+    }, (err) => {
+      console.error("Lecture Sessions Sync Error:", err);
+      if (err.message.includes('quota')) {
+        setUserNotification("Quota exceeded. Lecture history may be incomplete.");
+      }
+    });
 
     const unsubHistory = onSnapshot(query(collection(db, 'users', user.uid, 'studyHistory'), orderBy('date', 'desc'), limit(50)), (snapshot) => {
       const historyData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as HomeHistoryItem));
@@ -4389,7 +4581,15 @@ export default function App() {
       const user = result.user;
       
       // Check if user document exists, if not create it
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      let userDoc;
+      try {
+        userDoc = await getDoc(doc(db, 'users', user.uid));
+      } catch (err: any) {
+        if (err.message.includes('quota') || err.message.includes('8')) {
+          throw new Error("QUOTA_EXCEEDED");
+        }
+        throw err;
+      }
       if (!userDoc.exists()) {
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
@@ -4418,16 +4618,26 @@ export default function App() {
       setShowAuthModal(false);
       setUserNotification("Logged in with Google!");
     } catch (error: any) {
-      console.error("Login Error:", error);
-      const errorMessage = error.message || String(error);
       const errorCode = error.code || "unknown";
+      const errorMessage = error.message || String(error);
       
-      if (errorCode === 'auth/unauthorized-domain') {
+      // Specifically catch cancellation codes
+      if (errorCode === 'auth/cancelled-popup-request' || 
+          errorCode === 'auth/popup-closed-by-user') {
+        setIsAuthLoading(false);
+        return;
+      }
+
+      console.error("Login Error:", error);
+      
+      if (error.message === "QUOTA_EXCEEDED") {
+        setUserNotification("Firestore Quota Exceeded. Please try logging in again tomorrow when the systems reset. Thank you for your patience.");
+      } else if (errorCode === 'auth/unauthorized-domain') {
         setUserNotification(`Login failed: This domain is not authorized in Firebase Console. Please add "${window.location.hostname}" to Authorized Domains.`);
       } else if (errorCode === 'auth/popup-blocked') {
         setUserNotification("Login failed: Popup was blocked by your browser. Please allow popups for this site.");
-      } else if (errorCode === 'auth/cancelled-popup-request') {
-        // Ignore user cancellation
+      } else if (errorCode.includes('timeout') || errorMessage.includes('timeout')) {
+        setUserNotification(`Login Timeout: The connection to Firebase Auth timed out. Please check your internet connection or use a different network. If this continues, the service might be down.`);
       } else {
         setUserNotification(`Failed to login with Google: ${errorMessage} (${errorCode})`);
       }
@@ -4565,15 +4775,45 @@ export default function App() {
     if (!user) return;
     try {
       setIsAuthLoading(true);
+
+      const newUsername = profileFormData.username?.toLowerCase().trim();
+      
+      if (!newUsername) {
+        setUserNotification("Username is required.");
+        setIsAuthLoading(false);
+        return;
+      }
+
+      // Basic validation
+      if (newUsername.length < 3 || !/^[a-z0-9_]+$/.test(newUsername)) {
+        setUserNotification("Username must be at least 3 chars & only letters, numbers, or underscore.");
+        setIsAuthLoading(false);
+        return;
+      }
+
+      // Check for uniqueness if username changed
+      if (newUsername && newUsername !== currentUserData?.username) {
+        const q = query(collection(db, 'users'), where('username', '==', newUsername));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setUserNotification("Username already taken. Please choose another one.");
+          setIsAuthLoading(false);
+          return;
+        }
+      }
+
       await updateDoc(doc(db, 'users', user.uid), {
         displayName: profileFormData.displayName,
         fullName: profileFormData.fullName,
+        username: newUsername,
         matricNumber: profileFormData.matricNumber,
         dob: profileFormData.dob,
         university: profileFormData.university,
         level: profileFormData.level,
         department: profileFormData.department,
-        faculty: profileFormData.faculty
+        faculty: profileFormData.faculty,
+        about: profileFormData.about,
+        updatedAt: new Date().toISOString()
       });
       setIsEditingProfile(false);
       setUserNotification("Profile updated successfully!");
@@ -4746,15 +4986,16 @@ export default function App() {
       if (data.questions) {
         const formatted = data.questions.map((q: any) => ({ ...q, id: Math.random().toString(36).substr(2, 9) }));
         
-        // Update local state
-        setExamQuestions(formatted);
+        // Append to existing pool (Hybrid) - Max 100
+        const updatedPool = [...examQuestions, ...formatted].slice(0, 100);
+        setExamQuestions(updatedPool);
         
         // Auto-sync to Firestore if hosting
         if (hostExamId) {
-          await updateDoc(doc(db, 'exams', hostExamId), { questions: formatted });
+          await updateDoc(doc(db, 'exams', hostExamId), { questions: updatedPool });
         }
         
-        setAdminNotification(`Successfully generated ${formatted.length} questions.`);
+        setAdminNotification(`Successfully added ${formatted.length} questions to the pool (Total: ${updatedPool.length}/100).`);
       }
     } catch (e) {
       console.error(e);
@@ -4965,31 +5206,86 @@ export default function App() {
   };
 
   const handleHostPaymentSuccess = async (reference: any) => {
-    setIsHostPaid(true);
     const newId = Math.random().toString(36).substr(2, 9).toUpperCase();
     
     // Initialize exam in Firestore immediately
     if (user) {
       try {
-        await setDoc(doc(db, 'exams', newId), {
+        const newExamData = {
           id: newId,
           hostUid: user.uid,
           hostEmail: user.email,
-          config: examConfig,
+          config: initialExamConfig,
           questions: [],
           registeredStudents: [],
           createdAt: new Date().toISOString(),
           status: 'active'
-        });
+        };
+        await setDoc(doc(db, 'exams', newId), newExamData);
         
+        setIsHostPaid(true);
         setHostExamId(newId);
-        localStorage.setItem('nsg_host_exam_id', newId);
-        setUserNotification("Payment successful! Exam ID generated: " + newId);
+        
+        // Reset local states to default for the new exam
+        setExamConfig(initialExamConfig);
+        setExamQuestions([]);
+        setRegisteredStudents([]);
+        setExamStatus('active');
+        
+        setUserNotification("Payment successful! Exam session created: " + newId);
       } catch (err) {
         console.error("Exam Initialization Error:", err);
-        setIsHostPaid(false); // Rollback if DB failed
-        setUserNotification("Payment verified, but failed to initialize exam on cloud. Please try contact support.");
+        setUserNotification("Payment verified, but failed to initialize exam on cloud. Please contact support.");
       }
+    }
+  };
+  
+  const deleteExamFromSidebar = async (id: string) => {
+    showConfirm(
+      "DELETE EXAM",
+      "This will permanently delete this exam and all student results. This action cannot be undone.",
+      async () => {
+        try {
+          // Delete all results in the subcollection first
+          const resultsRef = collection(db, 'exams', id, 'results');
+          const resultsSnap = await getDocs(resultsRef);
+          const deletePromises = resultsSnap.docs.map(doc => deleteDoc(doc.ref));
+          await Promise.all(deletePromises);
+
+          // Delete the main exam document
+          await deleteDoc(doc(db, 'exams', id));
+          
+          if (hostExamId === id) {
+            setHostExamId(null);
+          }
+          setUserNotification("Exam deleted successfully.");
+        } catch (err) {
+          console.error("Delete Exam Error:", err);
+          setUserNotification("Failed to delete exam.");
+        }
+      }
+    );
+  };
+
+  const switchExam = (id: string) => {
+    setHostExamId(id);
+    setShowExamSidebar(false);
+    setUserNotification(`Switched to Exam: ${id}`);
+  };
+
+  const createNewExam = () => {
+    if (hostedExams.length >= 5) {
+      setUserNotification("Limit reached: You can only have 5 active exams at a time. Delete one to create space.");
+      return;
+    }
+
+    if (isPremium || currentUserData?.role === 'admin' || currentUserData?.bypassHostingPayment) {
+      handleHostPaymentSuccess({ reference: 'BYPASS' });
+    } else {
+      initializePayment({ 
+        onSuccess: handleHostPaymentSuccess, 
+        onClose: () => setUserNotification("Payment cancelled.") 
+      });
     }
   };
 
@@ -5472,6 +5768,18 @@ ${session.fullAnalysis}
           const localUrl = URL.createObjectURL(blob);
           setAudioUrl(localUrl);
 
+          // Force download to phone/PC storage as requested
+          try {
+            const downloadLink = document.createElement('a');
+            downloadLink.href = localUrl;
+            downloadLink.download = `NSG_Recording_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+          } catch (err) {
+            console.error("Recording auto-download failed:", err);
+          }
+
           // AUTO SAVE RECORDING
           if (user) {
             try {
@@ -5798,7 +6106,7 @@ ${session.fullAnalysis}
     formData.append('upload_preset', uploadPreset);
 
     try {
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
         method: 'POST',
         body: formData
       });
@@ -6597,6 +6905,70 @@ ${session.fullAnalysis}
     }
   };
 
+  const handleTagOmni = async (text: string, chatId: string) => {
+    try {
+      const response = await getAiInstance().models.generateContent({
+        model: FLASH_MODEL,
+        contents: [{ role: 'user', parts: [{ text: `User tagged you in a chat with this message: "${text}". Reply professionally as Omni AI, the NSG tutor.` }] }]
+      });
+      
+      const reply = response.text || "I'm processing your request.";
+      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        senderId: 'omni-ai',
+        senderHandle: 'Omni AI',
+        text: reply,
+        timestamp: serverTimestamp(),
+        type: 'text'
+      });
+    } catch (err) {
+      console.error("Omni tag error:", err);
+    }
+  };
+
+  const startClass = async () => {
+    if (!user || !userHandle) return;
+    try {
+      const classId = `NSG-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+      const classData = {
+        id: classId,
+        hostId: user.uid,
+        hostHandle: userHandle,
+        name: `${userHandle}'s Class`,
+        status: 'active',
+        participants: [userHandle],
+        boardText: 'Welcome to the class!',
+        media: [],
+        createdAt: serverTimestamp()
+      };
+      await setDoc(doc(db, 'classes', classId), classData);
+      setClassRoomId(classId);
+      setIsHost(true);
+      setActiveTab('class');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const joinClass = async (id: string) => {
+    if (!user || !userHandle) return;
+    try {
+      const classRef = doc(db, 'classes', id);
+      const classSnap = await getDoc(classRef);
+      if (classSnap.exists()) {
+        await updateDoc(classRef, {
+          participants: arrayUnion(userHandle)
+        });
+        setClassRoomId(id);
+        setIsHost(false);
+        setActiveTab('class');
+      } else {
+        setUserNotification("Class not found!");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const shareQuiz = async () => {
     if (!quizQuestions.length) return;
     if (!user) {
@@ -6711,8 +7083,8 @@ ${session.fullAnalysis}
       };
 
       const responseText = await askGemini() || await askTogether() || await askOpenRouter() || "{}";
-      const data = JSON.parse(responseText);
-      if (data.questions) {
+      const data = robustJSONParse(responseText);
+      if (data && data.questions) {
         const genId = `gen-${Date.now()}`;
         setQuizQuestions(data.questions);
         setCurrentQuestionIndex(0);
@@ -6794,8 +7166,8 @@ ${session.fullAnalysis}
         }
       });
 
-      const data = JSON.parse(response?.text || "{}");
-      if (data.questions) {
+      const data = robustJSONParse(response?.text || "{}");
+      if (data && data.questions) {
         const examQs = data.questions.map((q: any, i: number) => ({
           ...q,
           id: `dyn-q-${Date.now()}-${i}`
@@ -7068,7 +7440,7 @@ ${session.fullAnalysis}
                 {legalPage === 'privacy' && (
                   <div className="space-y-4">
                     <p className="font-bold text-[#DC2626]">Last Updated: April 9, 2026</p>
-                    <p>At NSG Omni AI, we take your privacy seriously. This policy explains how we collect, use, and protect your data.</p>
+                    <p>At NSG, we take your privacy seriously. This policy explains how we collect, use, and protect your data.</p>
                     
                     <h3 className="font-bold text-white">1. Information Collection</h3>
                     <p>We collect information you provide directly to us, such as your name, email address, and educational details when you create an account. We also collect audio recordings and text data you process through our AI tools.</p>
@@ -7107,8 +7479,9 @@ ${session.fullAnalysis}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
             className="flex flex-col flex-1 h-full overflow-hidden"
           >
-            {/* HEADER */}
-            <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
+            {/* HEADER - Only visible on Home tab */}
+            {activeTab === 'home' && (
+              <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
         <div className="flex items-center gap-3">
           <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#0A0F1C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center`}>
             <Brain size={22} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
@@ -7132,7 +7505,7 @@ ${session.fullAnalysis}
           {/* Notification Bell */}
           <button 
             onClick={() => setActiveTab('notifications')}
-            className={`relative p-2 rounded-xl transition-all ${activeTab === 'notifications' ? 'bg-[#DC2626] text-white' : (theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70' : 'bg-slate-100 border-slate-200 text-slate-600')} hover:text-[#DC2626]`}
+            className={`relative p-2 rounded-xl transition-all ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white/70' : 'bg-slate-100 border-slate-200 text-slate-600'} hover:text-[#DC2626]`}
           >
             <Bell size={20} />
             {unreadCount > 0 && (
@@ -7168,9 +7541,10 @@ ${session.fullAnalysis}
           </div>
         </div>
       </header>
+    )}
 
       {/* MAIN CONTENT */}
-      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pb-24 overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} custom-scrollbar`}>
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 pb-24 overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} custom-scrollbar ${activeTab === 'home' ? 'pt-0' : 'pt-4'}`}>
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -7384,6 +7758,10 @@ ${session.fullAnalysis}
                             window.open("https://wa.me/2349064470122", "_blank");
                             return;
                           }
+                          if ((tool as any).action) {
+                            (tool as any).action();
+                            return;
+                          }
                           setToolsSubTab(tool.id as any);
                         }}
                         className={`flex flex-col items-start p-5 rounded-3xl border transition-all text-left group relative overflow-hidden ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
@@ -7401,7 +7779,7 @@ ${session.fullAnalysis}
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/20 text-center">Upcoming Tools</p>
                     <div className="grid grid-cols-2 gap-4 opacity-70">
                       {[
-                        { id: 'td', title: 'TD Tool', icon: BoxSelect, color: 'from-slate-500 to-slate-600', desc: '2D Projection Engine' }
+                        { id: 'td', title: 'TD Tool', icon: BoxSelect, color: 'from-slate-500 to-slate-600', desc: '2D Projection Engine' },
                       ].map((tool) => (
                         <button 
                           key={tool.id}
@@ -7503,7 +7881,7 @@ ${session.fullAnalysis}
                                           <span className="text-[10px] font-black truncate group-hover:text-red-500 transition-colors uppercase tracking-tight">{session.title}</span>
                                           {session.status === 'pending' && <span className="text-[7px] bg-[#DC2626]/20 text-[#DC2626] px-1 rounded font-black uppercase tracking-tighter">Live</span>}
                                         </div>
-                                        <span className="text-[8px] opacity-60">{session.date} \u{2022} {session.duration}</span>
+                                        <span className="text-[8px] opacity-60">{session.date} | {session.duration}</span>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -7815,19 +8193,7 @@ ${session.fullAnalysis}
                                      <p className="text-[8px] text-white/40 font-bold uppercase">Omni & Zeal Discussion</p>
                                    </div>
                                  </button>
-                                 <button 
-                                   onClick={() => { setIsPodcastActive(true); setIsTeacherMode(true); setIsNotebookDrawerOpen(false); }}
-                                   className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all ${isPodcastActive && isTeacherMode ? 'bg-[#DC2626] border-[#DC2626] shadow-lg shadow-[#DC2626]/20' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                                 >
-                                   <div className={`p-2 rounded-lg ${isPodcastActive && isTeacherMode ? 'bg-white/20' : 'bg-purple-600'}`}>
-                                     <GraduationCap size={18} className="text-white" />
-                                   </div>
-                                   <div className="text-left">
-                                     <p className="text-[10px] font-black text-white uppercase tracking-tight">Academy Teacher</p>
-                                     <p className="text-[8px] text-white/40 font-bold uppercase">Personal Tutoring</p>
-                                   </div>
-                                 </button>
-                                 <div className="h-px bg-white/5 my-6" />
+<div className="h-px bg-white/5 my-6" />
                                  <div className="p-4 bg-white/2 rounded-2xl text-center space-y-2">
                                    <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.2em]">Source Statistics</p>
                                    <p className="text-xs font-black text-[#DC2626] whitespace-nowrap overflow-hidden text-ellipsis">{userNotes.length} Saved Sources</p>
@@ -7847,7 +8213,7 @@ ${session.fullAnalysis}
                            )}
                            <div className="hidden sm:block">
                              <h2 className="text-xs font-black text-white uppercase tracking-widest">{isPodcastActive ? 'Deep Brain AI' : 'Notebook'}</h2>
-                             <p className="text-[8px] text-[#DC2626] font-bold uppercase tracking-tight">{isPodcastActive ? (isTeacherMode ? 'Teacher Mode' : 'Podcast Mode') : 'Source Library'}</p>
+                             <p className="text-[8px] text-[#DC2626] font-bold uppercase tracking-tight">{isPodcastActive ? 'Podcast Mode' : 'Source Library'}</p>
                            </div>
                          </div>
                         <div className="flex items-center gap-2 ml-auto">
@@ -7913,15 +8279,15 @@ ${session.fullAnalysis}
                       </div>
 
                             {selectedNote ? (
-                              <div className="flex flex-col flex-1 overflow-hidden">
+                              <div className="flex flex-col flex-1 overflow-hidden min-h-0">
                                 {isPodcastActive ? (
-                                  <div className="flex-1 flex flex-col bg-[#050811] overflow-hidden">
+                                  <div className="flex-1 flex flex-col bg-[#050811] overflow-hidden min-h-0">
                                     <div className="p-4 border-b border-white/5 flex items-center justify-between">
                                       <div className="flex items-center gap-4">
                                         <button onClick={() => setIsPodcastActive(false)} className="text-white/40 hover:text-white"><ArrowLeft size={18} /></button>
                                         <div>
-                                          <h3 className="text-xs font-black text-white uppercase tracking-widest">{isTeacherMode ? 'Professor Omni' : 'Omni & Zeal'}</h3>
-                                          <p className="text-[8px] text-white/40 font-bold uppercase">{isTeacherMode ? 'Academy Environment' : 'Deep Brain Discussion'}</p>
+                                          <h3 className="text-xs font-black text-white uppercase tracking-widest">Omni & Zeal</h3>
+                                          <p className="text-[8px] text-white/40 font-bold uppercase">Deep Brain Discussion</p>
                                         </div>
                                       </div>
                                     </div>
@@ -7991,7 +8357,7 @@ ${session.fullAnalysis}
                                       )}
                                     </div>
                                     
-                                    <div className="p-4 border-t border-white/5 bg-[#050811] relative z-20">
+                                    <div className="p-4 sm:p-4 pb-20 border-t border-white/5 bg-[#050811] relative z-20">
                                       {/* Reply Tag Preview */}
                                       <AnimatePresence>
                                         {replyingTo && (
@@ -8060,7 +8426,7 @@ ${session.fullAnalysis}
                                         <input 
                                           id="podcast-chat-input"
                                           autoComplete="off"
-                                          placeholder={isTeacherMode ? "Ask Teacher Omni..." : "Chat with Omni & Zeal..."}
+                                          placeholder="Chat with Omni & Zeal..."
                                           className="w-full bg-white/5 border border-white/10 rounded-3xl pl-16 pr-14 py-4 text-sm text-white outline-none focus:border-blue-500/50 transition-all placeholder:text-white/20 shadow-inner"
                                           onKeyDown={(e) => {
                                             if (e.key === 'Enter') {
@@ -8748,8 +9114,17 @@ ${session.fullAnalysis}
                   <div className="space-y-4">
                     <h3 className={`font-bold text-lg ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Examination Briefing</h3>
                     <div className={`${theme === 'dark' ? 'bg-[#DC2626]/5 border-[#DC2626]/20' : 'bg-red-50 border-red-100'} p-4 rounded-2xl border space-y-3`}>
-                      <p className="text-xs text-[#DC2626] font-bold flex items-center gap-2"><XCircle size={14} /> WARNING: {studentName}, if you leave this app, you automatically forfeit the exam.</p>
-                      <p className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'} leading-relaxed`}>This is a professional CBT Mock Exam. You have {examConfig.duration} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
+                      <p className="text-xs text-[#DC2626] font-bold flex items-center gap-2"><XCircle size={14} /> IMPORTANT BRIEFING</p>
+                      <div className={`text-xs ${theme === 'dark' ? 'text-white/60' : 'text-slate-600'} leading-relaxed space-y-2 text-left`}>
+                        {examConfig.warningMessage ? (
+                          <MarkdownRenderer content={examConfig.warningMessage} />
+                        ) : (
+                          <>
+                            <p>WARNING: {studentName}, if you leave this app, you automatically forfeit the exam.</p>
+                            <p>This is a professional CBT Mock Exam. You have {examConfig.duration} minutes to answer {examConfig.questionCount} randomized questions. Use only your brain. Good luck.</p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <button onClick={startExam} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2">
@@ -8988,6 +9363,75 @@ ${session.fullAnalysis}
                 </div>
               )}
             </motion.div>
+          )}
+
+          {/* CHAT ROOM TAB */}
+          {activeTab === 'chat' && (
+            <ChatRoom 
+              theme={theme}
+              user={user}
+              userHandle={userHandle}
+              onTagOmni={handleTagOmni}
+              uploadToCloudinary={uploadToCloudinary}
+              setUserNotification={setUserNotification}
+            />
+          )}
+
+          {/* CLASS ROOM TAB */}
+          {activeTab === 'class' && (
+            <div className="flex-1 overflow-hidden">
+              {classRoomId ? (
+                <ClassRoom 
+                  theme={theme}
+                  user={user}
+                  userHandle={userHandle}
+                  isHost={isHost}
+                  classId={classRoomId}
+                  onExit={() => { setClassRoomId(null); setActiveTab('home'); }}
+                  uploadToCloudinary={uploadToCloudinary}
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center p-8 space-y-8 text-center">
+                   <div className="space-y-4">
+                     <div className="w-16 h-16 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto">
+                        <Video size={32} className="text-[#DC2626]" />
+                     </div>
+                     <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter">NSG Live Classes</h2>
+                     <p className="text-sm text-white/40 max-w-xs mx-auto">Host professional lecture rooms with video, audio, and real-time classboards.</p>
+                   </div>
+                   
+                   <div className="w-full max-w-sm space-y-3">
+                     <button 
+                       onClick={startClass}
+                       className="w-full bg-[#DC2626] text-white font-black py-4 rounded-2xl shadow-xl shadow-[#DC2626]/20 flex items-center justify-center gap-2 uppercase tracking-widest text-xs"
+                     >
+                       <Zap size={18} /> Host New Class
+                     </button>
+                     <div className="flex items-center gap-3 py-2">
+                       <div className="h-px flex-1 bg-white/5" />
+                       <span className="text-[8px] font-black text-white/20 uppercase">Or</span>
+                       <div className="h-px flex-1 bg-white/5" />
+                     </div>
+                     <div className="flex gap-2">
+                       <input 
+                         id="join-class-id"
+                         placeholder="Enter Class ID (NSG-XXXX)"
+                         className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 text-xs text-white outline-none focus:border-[#DC2626]"
+                       />
+                       <button 
+                         onClick={() => {
+                           const el = document.getElementById('join-class-id') as HTMLInputElement;
+                           if (el.value) joinClass(el.value);
+                         }}
+                         className="bg-white/10 text-white font-black px-6 py-4 rounded-2xl text-xs uppercase tracking-widest border border-white/10 hover:bg-white/20 transition-all"
+                       >
+                         Join
+                       </button>
+                     </div>
+                   </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* AI CHAT TAB */}
@@ -9574,7 +10018,9 @@ ${session.fullAnalysis}
                     { label: 'University', key: 'university', icon: GraduationCap, placeholder: 'e.g. University of Lagos' },
                     { label: 'Level', key: 'level', icon: Activity, placeholder: 'e.g. 400 Level' },
                     { label: 'Department', key: 'department', icon: Database, placeholder: 'e.g. Computer Science' },
-                    { label: 'Faculty', key: 'faculty', icon: LayoutGrid, placeholder: 'e.g. Science' }
+                    { label: 'Faculty', key: 'faculty', icon: LayoutGrid, placeholder: 'e.g. Science' },
+                    { label: 'About', key: 'about', icon: Info, placeholder: 'Tell us about yourself...' },
+                    { label: 'Username (Unique Handle)', key: 'username', icon: AtSign, placeholder: 'e.g. user_12345' }
                   ].map((field) => (
                     <div key={field.key} className="space-y-2">
                       <label className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1 flex items-center gap-1.5">
@@ -9721,6 +10167,12 @@ ${session.fullAnalysis}
               <div className="max-w-6xl mx-auto space-y-4 sm:space-y-8 pb-32">
                 <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-4 sm:pb-6">
                   <div className="flex items-center gap-2 sm:gap-4">
+                    <button 
+                      onClick={() => setShowExamSidebar(true)}
+                      className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} hover:bg-[#DC2626]/10`}
+                    >
+                      <Menu size={20} className="sm:size-[24px]" />
+                    </button>
                     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#DC2626] rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
                       <LayoutDashboard size={20} className="text-white sm:hidden" />
                       <LayoutDashboard size={24} className="text-white hidden sm:block" />
@@ -9747,11 +10199,99 @@ ${session.fullAnalysis}
                   </div>
                 </div>
 
+                {/* Sidebar Backdrop and Drawer */}
+                <AnimatePresence>
+                  {showExamSidebar && (
+                    <>
+                      <motion.div 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }} 
+                        exit={{ opacity: 0 }}
+                        onClick={() => setShowExamSidebar(false)}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150]"
+                      />
+                      <motion.div 
+                        initial={{ x: '-100%' }}
+                        animate={{ x: 0 }}
+                        exit={{ x: '-100%' }}
+                        className={`fixed left-0 top-0 bottom-0 w-[280px] sm:w-[320px] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border-r border-[#DC2626]/20 z-[160] shadow-2xl p-0 flex flex-col`}
+                      >
+                        <div className="p-6 flex flex-col h-full">
+                          <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-2">
+                               <div className="w-8 h-8 bg-[#DC2626] rounded-lg flex items-center justify-center">
+                                 <Database size={16} className="text-white" />
+                               </div>
+                               <p className="text-xs font-black uppercase tracking-widest text-[#DC2626]">Exam Manager</p>
+                            </div>
+                            <button onClick={() => setShowExamSidebar(false)} className={`${theme === 'dark' ? 'text-white/20' : 'text-slate-400'} hover:text-[#DC2626] transition-colors`}>
+                              <X size={20} />
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto space-y-3 pb-8 custom-scrollbar">
+                             <button 
+                               onClick={createNewExam}
+                               className={`w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-[#DC2626]/10 border border-[#DC2626]/20 text-[#DC2626] hover:bg-[#DC2626] hover:text-white transition-all group`}
+                             >
+                               <PlusCircle size={18} />
+                               <span className="text-[10px] font-black uppercase">Host New Exam ({hostedExams.length}/5)</span>
+                             </button>
+
+                             <div className="pt-4 space-y-3">
+                               <p className={`text-[8px] font-black ${theme === 'dark' ? 'text-white/30' : 'text-slate-400'} uppercase tracking-[0.2em] px-2 mb-4`}>Your Active Exams</p>
+                               {hostedExams.length === 0 ? (
+                                 <div className={`py-20 text-center space-y-2 ${theme === 'dark' ? 'text-white/20' : 'text-slate-300'}`}>
+                                   <Database size={32} className="mx-auto mb-2" />
+                                   <p className="text-[10px] font-bold">No active exams found</p>
+                                 </div>
+                               ) : (
+                                 hostedExams.map(ex => (
+                                   <div key={ex.id} className="relative group">
+                                     <button 
+                                       onClick={() => switchExam(ex.id)}
+                                       className={`w-full text-left p-4 rounded-2xl border transition-all ${hostExamId === ex.id 
+                                         ? 'bg-[#DC2626] border-[#DC2626] text-white shadow-lg shadow-[#DC2626]/20' 
+                                         : theme === 'dark' 
+                                           ? 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10' 
+                                           : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100'}`}
+                                     >
+                                       <div className="flex items-center justify-between">
+                                         <p className="text-xs font-black font-mono tracking-widest">{ex.id}</p>
+                                         {hostExamId === ex.id && <CheckCircle2 size={14} />}
+                                       </div>
+                                       <p className="text-[8px] mt-1 opacity-60 uppercase">{ex.questions?.length || 0} Questions | {ex.status}</p>
+                                     </button>
+                                     <button 
+                                       onClick={(e) => { e.stopPropagation(); deleteExamFromSidebar(ex.id!); }}
+                                       className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all ${hostExamId === ex.id 
+                                         ? 'text-white/40 hover:text-white hover:bg-white/10' 
+                                         : theme === 'dark'
+                                           ? 'text-white/10 hover:text-red-500 hover:bg-red-500/10'
+                                           : 'text-zinc-300 hover:text-red-500 hover:bg-red-50'} opacity-0 group-hover:opacity-100`}
+                                     >
+                                       <Trash2 size={14} />
+                                     </button>
+                                   </div>
+                                 ))
+                               )}
+                             </div>
+                          </div>
+
+                          <div className={`pt-4 border-t ${theme === 'dark' ? 'border-white/5 text-white/40' : 'border-zinc-100 text-zinc-400'}`}>
+                             <p className="text-[7px] text-center uppercase tracking-widest leading-relaxed"></p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+
                 {isAuthLoading ? (
                   <div className="flex items-center justify-center py-20">
                     <RefreshCcw className="animate-spin text-[#DC2626]" size={32} />
                   </div>
-                ) : !isHostPaid ? (
+                ) : (!isPremium && !isHostPaid && hostedExams.length === 0) ? (
                   <div className="max-w-md mx-auto py-10 sm:py-20 text-center space-y-6 px-4">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto">
                       <ShieldCheck size={32} className="text-[#DC2626] sm:size-[40px]" />
@@ -9763,20 +10303,11 @@ ${session.fullAnalysis}
                       </p>
                     </div>
                     <button 
-                      onClick={() => {
-                        if (isPremium || currentUserData?.bypassHostingPayment || currentUserData?.bypassAllPayments || (currentUserData?.role === 'admin')) {
-                          handleHostPaymentSuccess({ reference: 'GOD_MODE_BYPASS' });
-                        } else {
-                          initializePayment({ 
-                            onSuccess: handleHostPaymentSuccess, 
-                            onClose: handlePaystackClose 
-                          });
-                        }
-                      }} 
+                      onClick={createNewExam} 
                       className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 sm:py-5 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all flex items-center justify-center gap-2"
                     >
                       <CreditCard size={18} className="sm:size-[20px]" /> 
-                      {isPremium || currentUserData?.role === 'admin' ? "ACTIVATE EXAM CLOUD" : "PAY \u{20A6}200 TO START"}
+                      {isPremium || currentUserData?.role === 'admin' || currentUserData?.bypassHostingPayment ? "ACTIVATE EXAM CLOUD" : "PAY \u{20A6}200 TO START"}
                     </button>
                   </div>
                 ) : (
@@ -9859,14 +10390,87 @@ ${session.fullAnalysis}
                         </div>
                       </div>
 
+                      {/* Manual Question Entry */}
+                      <div id="manual-question-form" className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-3xl space-y-4 shadow-sm">
+                        <h3 className="font-bold flex items-center gap-2 text-white"><FilePlus size={18} className="text-[#DC2626]" /> {isEditingQuestionId ? 'Edit' : 'Add Manual'} Question</h3>
+                        <div className="space-y-4">
+                          <textarea 
+                            value={manualQuestion} 
+                            onChange={(e) => setManualQuestion(e.target.value)} 
+                            placeholder="Question text (Markdown/LaTeX supported)..." 
+                            className="w-full h-20 border rounded-2xl p-4 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" 
+                          />
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {manualOptions.map((opt, idx) => (
+                              <div key={idx} className="flex flex-col gap-1">
+                                <p className="text-[7px] font-black uppercase text-white/30">Option {String.fromCharCode(65 + idx)} {idx === manualCorrect && "(Correct)"}</p>
+                                <div className="flex gap-2">
+                                  <input 
+                                    type="text" 
+                                    value={opt} 
+                                    onChange={(e) => {
+                                      const newOpts = [...manualOptions];
+                                      newOpts[idx] = e.target.value;
+                                      setManualOptions(newOpts);
+                                    }} 
+                                    placeholder={`Option ${String.fromCharCode(65 + idx)}`} 
+                                    className="flex-1 border rounded-xl px-3 py-2 text-[10px] bg-white/5 border-white/10 text-white outline-none focus:border-[#DC2626]/50" 
+                                  />
+                                  <button 
+                                    onClick={() => setManualCorrect(idx)}
+                                    className={`px-3 rounded-lg text-[8px] font-black transition-all ${idx === manualCorrect ? 'bg-green-500 text-white' : 'bg-white/5 text-white/30 hover:bg-white/10'}`}
+                                  >
+                                    CORRECT
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <textarea 
+                            value={manualExplanation} 
+                            onChange={(e) => setManualExplanation(e.target.value)} 
+                            placeholder="Detailed Explanation (Academic Logic)..." 
+                            className="w-full h-16 border rounded-2xl p-4 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" 
+                          />
+                          <div className="flex gap-3">
+                            <button 
+                              onClick={addManualQuestion} 
+                              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black py-3 rounded-xl text-[10px] transition-all shadow-lg shadow-green-600/20 uppercase tracking-widest"
+                            >
+                              {isEditingQuestionId ? 'Update Question' : 'Add to Pool'}
+                            </button>
+                            {isEditingQuestionId && (
+                              <button 
+                                onClick={() => {
+                                  setIsEditingQuestionId(null);
+                                  setManualQuestion("");
+                                  setManualOptions(["", "", "", ""]);
+                                  setManualCorrect(0);
+                                  setManualExplanation("");
+                                }} 
+                                className="px-6 bg-white/5 hover:bg-white/10 text-white/40 rounded-xl text-[10px] font-black uppercase tracking-widest"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="grid md:grid-cols-2 gap-6">
                         {/* Exam Config */}
                         <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-3xl space-y-4 shadow-sm">
                           <h3 className="font-bold flex items-center gap-2 text-white"><Settings size={18} className="text-[#DC2626]" /> Exam Configuration</h3>
                           <div className="space-y-3">
                             <div>
-                              <p className="text-[8px] font-black uppercase mb-1 text-white/30">Question Count</p>
-                              <input type="number" value={examConfig.questionCount || 0} onChange={(e) => setExamConfig({...examConfig, questionCount: Math.max(1, parseInt(e.target.value) || 0)})} className="w-full border rounded-xl px-4 py-2 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
+                              <p className="text-[8px] font-black uppercase mb-1 text-white/30">Question Count (Max 50)</p>
+                              <input 
+                                type="number" 
+                                max={50}
+                                value={examConfig.questionCount || 0} 
+                                onChange={(e) => setExamConfig({...examConfig, questionCount: Math.min(50, Math.max(1, parseInt(e.target.value) || 0))})} 
+                                className="w-full border rounded-xl px-4 py-2 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" 
+                              />
                             </div>
                             <div>
                               <p className="text-[8px] font-black uppercase mb-1 text-white/30">Duration (Minutes)</p>
@@ -9876,17 +10480,48 @@ ${session.fullAnalysis}
                               <p className="text-[8px] font-black uppercase mb-1 text-white/30">Pool Count (AI Generation)</p>
                               <input type="number" value={examConfig.poolCount || 0} onChange={(e) => setExamConfig({...examConfig, poolCount: Math.max(1, parseInt(e.target.value) || 0)})} className="w-full border rounded-xl px-4 py-2 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
                             </div>
+                            <div>
+                              <p className="text-[8px] font-black uppercase mb-1 text-white/30">Exam Warning Message</p>
+                              <input 
+                                type="text" 
+                                value={examConfig.warningMessage || ""} 
+                                onChange={(e) => setExamConfig({...examConfig, warningMessage: e.target.value})} 
+                                placeholder="Default warning applies if empty..."
+                                className="w-full border rounded-xl px-4 py-2 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" 
+                              />
+                            </div>
                           </div>
                         </div>
 
                         {/* Question Generation */}
                         <div className="bg-white/5 border border-white/10 p-4 sm:p-6 rounded-3xl space-y-4 shadow-sm">
-                          <h3 className="font-bold flex items-center gap-2 text-white"><PlusCircle size={18} className="text-[#DC2626]" /> Question Pool</h3>
-                          <textarea value={adminQuestionsRaw} onChange={(e) => setAdminQuestionsRaw(e.target.value)} placeholder="Paste raw text here to generate MCQs..." className="w-full h-32 border rounded-2xl p-4 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
-                          <button onClick={generateAdminQuestions} disabled={isGeneratingAdminQuestions} className="w-full bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-3 rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#DC2626]/20 uppercase tracking-widest">
-                            {isGeneratingAdminQuestions ? <RefreshCcw size={16} className="animate-spin" /> : <Cpu size={16} />} GENERATE QUESTIONS
-                          </button>
-                          <p className="text-[10px] text-center text-white/30">Current Pool: {examQuestions.length} Questions</p>
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-bold flex items-center gap-2 text-white"><PlusCircle size={18} className="text-[#DC2626]" /> Add Questions</h3>
+                            <div className="bg-[#DC2626]/10 px-3 py-1 rounded-full border border-[#DC2626]/20">
+                              <p className="text-[9px] font-black text-[#DC2626] uppercase">Pool: {examQuestions.length}/100</p>
+                            </div>
+                          </div>
+                          
+                          <textarea value={adminQuestionsRaw} onChange={(e) => setAdminQuestionsRaw(e.target.value)} placeholder="Paste textbook, notes or raw text here for AI generation..." className="w-full h-32 border rounded-2xl p-4 text-[10px] outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" />
+                          
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="flex-1">
+                              <p className="text-[7px] font-black uppercase mb-1 text-white/30">Number of questions to be generated</p>
+                              <input 
+                                type="number" 
+                                value={examConfig.poolCount || 0} 
+                                onChange={(e) => setExamConfig({...examConfig, poolCount: Math.max(1, parseInt(e.target.value) || 0)})} 
+                                className="w-full border rounded-xl px-4 py-3 text-xs outline-none focus:border-[#DC2626]/50 transition-all bg-white/5 border-white/10 text-white" 
+                              />
+                            </div>
+                            <button 
+                              onClick={generateAdminQuestions} 
+                              disabled={isGeneratingAdminQuestions || !adminQuestionsRaw.trim()} 
+                              className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 sm:py-0 rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-[#DC2626]/20 uppercase tracking-widest transition-all"
+                            >
+                              {isGeneratingAdminQuestions ? <RefreshCcw size={16} className="animate-spin" /> : <Cpu size={16} />} GENERATE QUESTIONS WITH AI
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -9916,7 +10551,7 @@ ${session.fullAnalysis}
                               <div key={i} className="p-3 rounded-xl border flex items-center justify-between group bg-white/5 border-white/5">
                                 <div>
                                   <p className="text-[10px] font-bold text-white">{res.name}</p>
-                                  <p className="text-[8px] font-mono text-white/40">{res.matric} \u{2022} {res.score}/{res.total}</p>
+                                  <p className="text-[8px] font-mono text-white/40">{res.matric} | {res.score}/{res.total}</p>
                                 </div>
                                 <div className="text-right">
                                   <p className="text-[10px] font-black text-[#DC2626]">{res.total > 0 ? Math.round((res.score/res.total)*100) : 0}%</p>
@@ -9935,11 +10570,17 @@ ${session.fullAnalysis}
                             <p className="text-[10px] text-center py-10 text-white/20">No questions in pool</p>
                           ) : (
                             examQuestions.map((q, i) => (
-                              <div key={i} className="p-3 rounded-xl border space-y-2 bg-white/5 border-white/5">
-                                <MarkdownRenderer 
-                                  content={`${i + 1}. ${q.question}`}
-                                  className="text-[10px] font-bold leading-tight text-white"
-                                />
+                              <div key={i} className="p-3 rounded-xl border space-y-2 bg-white/5 border-white/5 group relative">
+                                <div className="flex items-start justify-between gap-4">
+                                  <MarkdownRenderer 
+                                    content={`${i + 1}. ${q.question}`}
+                                    className="text-[10px] font-bold leading-tight text-white flex-1"
+                                  />
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                    <button onClick={() => editQuestionFromPool(q)} className="p-1.5 bg-white/5 hover:bg-blue-500/20 text-white/20 hover:text-blue-400 rounded-lg"><Edit2 size={12} /></button>
+                                    <button onClick={() => deleteQuestionFromPool(q.id)} className="p-1.5 bg-white/5 hover:bg-red-500/20 text-white/20 hover:text-red-400 rounded-lg"><Trash2 size={12} /></button>
+                                  </div>
+                                </div>
                                 <div className="grid grid-cols-2 gap-1">
                                   {q.options.map((opt, idx) => (
                                     <MarkdownRenderer 
@@ -10252,14 +10893,14 @@ ${session.fullAnalysis}
                               <div>
                                 <p className="font-bold text-white">{u.fullName || u.displayName || 'Anonymous'}</p>
                                 <p className="text-[8px] font-mono opacity-50">{u.email}</p>
-                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} \u{2022} {u.dob || 'No DOB'}</p>
+                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} | {u.dob || 'No DOB'}</p>
                               </div>
                             </div>
                           </td>
                           <td className="py-4 px-2">
                              <div className="space-y-1">
                                 <p className="text-[8px] text-white/60 font-black uppercase truncate max-w-[120px]">{u.university || 'No University'}</p>
-                                <p className="text-[8px] text-[#DC2626] font-bold uppercase">{u.level || 'No Level'} \u{2022} {u.department || 'No Dept'}</p>
+                                <p className="text-[8px] text-[#DC2626] font-bold uppercase">{u.level || 'No Level'} | {u.department || 'No Dept'}</p>
                                 <p className="text-[7px] text-white/30 uppercase font-mono">{u.faculty || 'No Faculty'}</p>
                              </div>
                           </td>
@@ -10541,7 +11182,7 @@ ${session.fullAnalysis}
 
                   <div className="mt-10 flex items-center gap-2">
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
-                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai \u{2022} {new Date().toLocaleDateString()}</p>
+                    <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Generated by Omni Ai | {new Date().toLocaleDateString()}</p>
                     <div className="w-1.5 h-1.5 bg-[#DC2626] rounded-full" />
                   </div>
                 </div>
@@ -10557,9 +11198,13 @@ ${session.fullAnalysis}
           <Home size={22} />
           <span className="text-[8px] font-black uppercase tracking-widest">Home</span>
         </button>
-        <button onClick={() => setActiveTab('ai')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'ai' ? 'text-[#DC2626]' : 'text-white/20'}`}>
-          <MessageSquare size={22} />
+        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+          <WhatsAppIcon size={22} className={activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'} />
           <span className="text-[8px] font-black uppercase tracking-widest">Chat</span>
+        </button>
+        <button onClick={() => setActiveTab('class')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'class' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+          <Video size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Class</span>
         </button>
         <button onClick={() => setActiveTab('tools')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tools' ? 'text-[#DC2626]' : 'text-white/20'}`}>
           <LayoutGrid size={22} />
