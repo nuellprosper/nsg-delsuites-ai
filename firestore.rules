@@ -47,10 +47,13 @@ service cloud.firestore {
     function isValidUser(data) {
       return (!('uid' in data) || isValString(data.uid, 256)) && 
              (!('email' in data) || isValString(data.email, 512)) &&
-             (!('username' in data) || (data.username is string && data.username.size() >= 3 && data.username.size() <= 32 && data.username.matches('^[a-z0-9_]+$'))) &&
+             (!('username' in data) || (data.username is string && data.username.size() >= 3 && data.username.size() <= 64 && data.username.matches('^[a-z0-9_]+$'))) &&
              (!('role' in data) || data.role in ['admin', 'student']) &&
-             (!('about' in data) || isValString(data.about, 1000)) &&
-             (!('status' in data) || data.status is string);
+             (!('about' in data) || isValString(data.about, 2000)) &&
+             (!('status' in data) || data.status is string) &&
+             (!('displayName' in data) || isValString(data.displayName, 256)) &&
+             (!('fullName' in data) || isValString(data.fullName, 256)) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
     }
 
     function isValidNote(data) {
@@ -188,6 +191,7 @@ service cloud.firestore {
       allow list: if isSignedIn() && (
         resource.data.members.hasAny([request.auth.uid]) ||
         resource.data.members.hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username]) ||
+        (resource.data.get('unreadBy', []).hasAny([request.auth.uid])) ||
         chatId == 'omni_' + request.auth.uid
       );
       
