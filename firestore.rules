@@ -76,6 +76,18 @@ service cloud.firestore {
              data.score <= data.total;
     }
 
+    function isValidReport(data) {
+      return isValString(data.reporterId, 256) &&
+             data.reporterId == request.auth.uid &&
+             isValString(data.reportedId, 256) &&
+             data.status in ['pending', 'resolved'];
+    }
+
+    function isValidClassMessage(data) {
+      return isValString(data.sender, 256) &&
+             isValString(data.text, 5000);
+    }
+
     // --- Collection Rules ---
 
     // Users Collection
@@ -211,6 +223,18 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (existing().hostId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidClassMessage(incoming());
+      }
+    }
+
+    // Reports
+    match /reports/{reportId} {
+      allow get, list: if isAdmin();
+      allow create: if isSignedIn() && isValidReport(incoming());
+      allow update, delete: if isAdmin();
     }
   }
 }
