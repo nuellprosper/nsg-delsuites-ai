@@ -28,8 +28,8 @@ import {
 } from './firebase';
 
 import { AILibrary } from './components/AILibrary';
-import { ChatRoom } from './components/ChatRoom';
-import { ClassRoom } from './components/ClassRoom';
+import ChatRoom from './components/ChatRoom';
+import ClassRoom from './components/ClassRoom';
 
 const WhatsAppIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
   <svg 
