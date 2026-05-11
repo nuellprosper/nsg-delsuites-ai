@@ -6,7 +6,7 @@ import {
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard, Edit2, FilePlus,
   ChevronUp, ChevronDown, Bold, Italic, List, CornerDownRight,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle, RotateCcw,
-  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, Shield, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
+  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, Shield, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home, AlertTriangle,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff, Video, AtSign,
   Search, Check, Info, Volume2, Square, Mail, ArrowRight, BoxSelect, Globe
 } from 'lucide-react';
@@ -595,6 +595,17 @@ interface RegisteredStudent {
   paymentEnabled: boolean;
   isActive?: boolean;
   lastActive?: number;
+}
+
+interface AdminReport {
+  id: string;
+  reporterId: string;
+  reportedId: string;
+  reporterHandle: string;
+  reportedHandle: string;
+  messages: any[];
+  timestamp: any;
+  status: 'pending' | 'resolved';
 }
 
 interface ExamConfig {
@@ -2222,7 +2233,6 @@ interface HomeHistoryItem {
 export default function App() {
   const [isHfDepleted, setIsHfDepleted] = useState(false);
 
-  // Sync global state to React state if needed, or just use global
   useEffect(() => {
     const timer = setInterval(() => {
       if (isHfDepletedGlobal && !isHfDepleted) {
@@ -2293,6 +2303,14 @@ export default function App() {
   const [hostExamId, setHostExamId] = useState<string | null>(null);
   const [hostedExams, setHostedExams] = useState<any[]>([]);
   const [showExamSidebar, setShowExamSidebar] = useState(false);
+  const [adminReports, setAdminReports] = useState<AdminReport[]>([]);
+  const [classSearchTerm, setClassSearchTerm] = useState('');
+  const [messageSearchTerm, setMessageSearchTerm] = useState('');
+  const [isAddingParticipants, setIsAddingParticipants] = useState(false);
+  const [newParticipantInput, setNewParticipantInput] = useState(''); // Can be username or classId
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const [activeClassId, setActiveClassId] = useState<string | null>(null);
+  const [isEndingClass, setIsEndingClass] = useState(false);
 
   // Scroll locking for Sidebar
   useEffect(() => {
@@ -2428,6 +2446,10 @@ export default function App() {
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | 'privacy' | null>(null);
   const [theme, setTheme] = useState<'dark'>('dark');
+
+  useEffect(() => {
+    document.documentElement.style.backgroundColor = theme === 'dark' ? '#0A0F1C' : '#FFFFFF';
+  }, [theme]);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
@@ -2797,6 +2819,16 @@ export default function App() {
     try {
       await updateDoc(doc(db, 'users', userId), { status: newStatus });
       setGodModeNotification(`User account ${newStatus === 'deleted' ? 'deactivated' : 'revived'} successfully`);
+      setTimeout(() => setGodModeNotification(null), 3000);
+    } catch (error) {
+      console.error("Error updating user status:", error);
+    }
+  };
+
+  const handleUpdateUserStatus = async (userId: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { status: newStatus });
+      setGodModeNotification(`User status updated to ${newStatus.toUpperCase()}`);
       setTimeout(() => setGodModeNotification(null), 3000);
     } catch (error) {
       console.error("Error updating user status:", error);
@@ -3648,6 +3680,20 @@ export default function App() {
       console.error("Delete note error:", err);
     }
   };
+
+  // Load Admin reports
+  useEffect(() => {
+    if (isAdminUser) {
+      const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'), limit(50));
+      const unsub = onSnapshot(q, (snap) => {
+        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminReport));
+        setAdminReports(list);
+      }, (error) => {
+        handleFirestoreError(error, FirestoreOperation.LIST, 'reports');
+      });
+      return () => unsub();
+    }
+  }, [isAdminUser]);
 
   // Load email templates
   useEffect(() => {
@@ -6921,7 +6967,54 @@ ${session.fullAnalysis}
     }
   };
 
-  const handleTagOmni = async (text: string, chatId: string, attachments?: { url: string, type: string, name: string }[]) => {
+  const handleReportUser = async (reportedUserData: any, latestMessages: any[]) => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'reports'), {
+        reporterId: user.uid,
+        reporterUsername: userHandle,
+        reportedId: reportedUserData.uid || reportedUserData.id,
+        reportedUsername: reportedUserData.username || reportedUserData.displayName,
+        conversations: latestMessages.map(m => ({
+          text: m.text,
+          sender: m.senderHandle || m.senderId,
+          time: m.timestamp?.toDate?.()?.toISOString() || new Date().toISOString()
+        })),
+        timestamp: serverTimestamp(),
+        status: 'pending'
+      });
+      setUserNotification("User reported successfully. Admin will review.");
+    } catch (err) {
+      console.error("Report failed", err);
+      setUserNotification("Failed to report user.");
+    }
+  };
+
+  const handleBlockUser = async (targetId: string) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        blockedUsers: arrayUnion(targetId)
+      });
+      setUserNotification("User blocked.");
+    } catch (err) {
+      console.error("Block failed", err);
+    }
+  };
+
+  const handleUpdateProfilePicture = async (url: string) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        photoURL: url
+      });
+      setUserNotification("Profile picture updated.");
+    } catch (err) {
+      console.error("Update photo failed", err);
+    }
+  };
+
+  const handleOmniTag = async (chatId: string, text: string, attachments: any[] = []) => {
     if (!user) return;
     try {
       const parts: any[] = [{ text: `User tagged you in a chat. 
@@ -7321,7 +7414,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
   };
 
   return (
-    <div className={`h-screen flex flex-col transition-colors duration-300 font-sans selection:bg-[#DC2626] ${theme === 'dark' ? 'bg-[#0A0F1C] text-white dark' : 'bg-white text-slate-900'} overflow-hidden relative`}>
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 font-sans selection:bg-[#DC2626] ${theme === 'dark' ? 'bg-[#0A0F1C] text-white dark' : 'bg-white text-slate-900'} overflow-x-hidden relative`}>
       <AnimatePresence>
         {!user && <LoggedOutLanding key="landing" />}
       </AnimatePresence>
@@ -7601,7 +7694,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
     )}
 
       {/* MAIN CONTENT */}
-      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 ${activeTab === 'chat' ? 'pb-0' : 'pb-24'} overflow-y-auto flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} custom-scrollbar ${activeTab === 'home' ? 'pt-0' : 'pt-4'}`}>
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 ${activeTab === 'chat' ? 'pb-0' : 'pb-24'} overflow-y-auto flex flex-col custom-scrollbar ${activeTab === 'home' ? 'pt-0' : 'pt-4'}`}>
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -8001,10 +8094,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                       </AnimatePresence>
 
                       <div className="flex items-center justify-between mb-2">
-                        <button onClick={() => setShowRecordSidebar(true)} className={`p-2 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-xl ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'} hover:text-[#DC2626] transition-all flex items-center gap-2`}>
-                          <History size={18} />
-                          <span className="text-[10px] font-black uppercase tracking-widest">History</span>
-                        </button>
+                        {/* History button removed as requested */}
                       </div>
 
                       <AnimatePresence mode="wait">
@@ -9428,7 +9518,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
               theme={theme}
               user={user}
               userHandle={userHandle}
-              onTagOmni={handleTagOmni}
+              onTagOmni={handleOmniTag}
               uploadToCloudinary={uploadToCloudinary}
               setUserNotification={setUserNotification}
             />
@@ -10140,6 +10230,14 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row items-center gap-3">
+                    {user?.email === "nuellkelechi@gmail.com" && (
+                      <button 
+                        onClick={() => setShowGodMode(true)}
+                        className="w-full sm:w-auto px-6 py-3 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-[#DC2626]/20 flex items-center justify-center gap-2"
+                      >
+                        <ShieldCheck size={14} /> God Mode
+                      </button>
+                    )}
                     <button 
                       onClick={handleLogout}
                       className="w-full sm:w-auto px-6 py-3 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/10 flex items-center justify-center gap-2"
@@ -10661,11 +10759,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
         </AnimatePresence>
         {/* FOOTER */}
         <footer className={`w-full px-4 py-8 pb-8 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'}`}>
-          {user?.email === "nuellkelechi@gmail.com" && (
-            <button onClick={() => setShowGodMode(true)} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-colors flex items-center gap-1">
-              <ShieldCheck size={12} /> GOD MODE
-            </button>
-          )}
+          <p>© 2026 NSG Studio | Secured Infrastructure</p>
         </footer>
       </main>
 
@@ -10743,6 +10837,91 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                   >
                     <XCircle size={24} />
                   </button>
+                </div>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold flex items-center gap-2 text-white">
+                    <AlertTriangle size={18} className="text-[#DC2626]" /> 
+                    User Reports ({adminReports.filter(r => r.status === 'pending').length} Pending)
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {adminReports.length === 0 ? (
+                    <div className="col-span-full py-10 text-center text-white/20 uppercase font-black text-[10px]">No reports filed</div>
+                  ) : (
+                    adminReports.map(report => (
+                      <div key={report.id} className={`p-6 rounded-2xl border transition-all ${report.status === 'pending' ? 'bg-[#DC2626]/5 border-[#DC2626]/20' : 'bg-white/5 border-white/5 opacity-60'}`}>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-[#DC2626] rounded-xl flex items-center justify-center text-white font-black">
+                              {report.reportedHandle?.charAt(0) || '?'}
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-white uppercase tracking-tight">Reported: @{report.reportedHandle}</p>
+                              <p className="text-[8px] font-bold text-[#DC2626] uppercase">By: @{report.reporterHandle}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                             <button 
+                               onClick={async () => {
+                                 await updateDoc(doc(db, 'reports', report.id), { status: 'resolved' });
+                                 setGodModeNotification("Report marked as resolved");
+                               }}
+                               className="p-2 bg-green-600/10 text-green-500 rounded-lg hover:bg-green-600 hover:text-white transition-all text-[8px] font-black uppercase"
+                             >
+                               Resolve
+                             </button>
+                             <button 
+                               onClick={async () => {
+                                 if (window.confirm("Delete this report entry?")) {
+                                   await deleteDoc(doc(db, 'reports', report.id));
+                                 }
+                               }}
+                               className="p-2 bg-white/5 text-white/40 rounded-lg hover:text-red-500 transition-all"
+                             >
+                               <Trash2 size={12} />
+                             </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <p className="text-[8px] font-black text-white/30 uppercase tracking-widest border-b border-white/5 pb-1">Context Messages (Last 5)</p>
+                          <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                            {report.messages?.map((m: any, idx: number) => (
+                              <div key={idx} className="p-2 bg-white/5 rounded-lg border border-white/5">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[7px] font-black text-[#DC2626] uppercase">@{m.sender}</span>
+                                  <span className="text-[6px] text-white/20 uppercase">{new Date(m.time?.seconds * 1000 || m.time).toLocaleTimeString()}</span>
+                                </div>
+                                <p className="text-[10px] text-white/80 leading-relaxed">{m.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+                           <p className="text-[7px] text-white/20 uppercase font-bold tracking-widest">
+                             {report.timestamp?.toDate ? report.timestamp.toDate().toLocaleString() : 'Recent'}
+                           </p>
+                           <button 
+                             onClick={() => {
+                               const userToBlock = allUsers.find(u => u.id === report.reportedId || u.username === report.reportedHandle);
+                               if (userToBlock) {
+                                 handleUpdateUserStatus(userToBlock.id, 'restricted');
+                                 setGodModeNotification(`User @${report.reportedHandle} RESTRICTED`);
+                               }
+                             }}
+                             className="px-3 py-1 bg-red-600 text-white rounded-lg text-[8px] font-black uppercase hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
+                           >
+                             Restrict User
+                           </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -11250,7 +11429,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       </AnimatePresence>
 
       {/* BOTTOM NAVIGATION */}
-      <div className={`fixed bottom-0 left-0 right-0 z-[100] ${theme === 'dark' ? 'bg-[#0A0F1C]/80 border-white/10' : 'bg-white/80 border-slate-200'} backdrop-blur-xl border-t px-6 py-3 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.1)]`}>
+      <div className={`fixed bottom-0 left-0 right-0 z-[100] ${theme === 'dark' ? 'bg-[#0A0F1C]/90 border-white/10' : 'bg-white/90 border-slate-200'} backdrop-blur-xl border-t px-6 py-3 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.1)] pb-safe-offset-4 mb-0`}>
         <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'home' ? 'text-[#DC2626]' : 'text-white/20'}`}>
           <Home size={22} />
           <span className="text-[8px] font-black uppercase tracking-widest">Home</span>
@@ -11259,7 +11438,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
           <WhatsAppIcon size={22} className={activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'} />
           <span className="text-[8px] font-black uppercase tracking-widest">Chat</span>
           {totalUnreadMessages > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[9px] font-black flex items-center justify-center rounded-full border border-[#0A0F1C]">
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[9px] font-black flex items-center justify-center rounded-full border border-[#0A0F1C] scale-90">
               {totalUnreadMessages}
             </span>
           )}
@@ -11281,9 +11460,21 @@ Respond professionally, concisely, and use LaTeX for math.` }];
   )}
 </AnimatePresence>
 
-      {/* FOOTER REMOVED FROM HERE */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(220, 38, 38, 0.2);
+          border-radius: 10px;
+        }
+        .pb-safe-offset-4 {
+          padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+        }
+      `}} />
     </div>
   );
-};
-
-// No export default here as it's at the top
+}
