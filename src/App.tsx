@@ -10759,7 +10759,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
         </AnimatePresence>
         {/* FOOTER */}
         <footer className={`w-full px-4 py-8 pb-8 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'}`}>
-          <p>© 2026 NSG Studio | Secured Infrastructure</p>
+          <p>© 2026 NSG Studio | END-TO-END ENCRYPTED</p>
         </footer>
       </main>
 
