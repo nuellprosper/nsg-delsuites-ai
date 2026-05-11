@@ -2,6 +2,22 @@
 @import "katex/dist/katex.min.css";
 
 @layer base {
+  body {
+    @apply select-none touch-manipulation antialiased bg-[#0A0F1C];
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  input, textarea, [contenteditable="true"], .selectable-text {
+    @apply select-text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+  }
+
   .markdown-body {
     @apply text-[13px] sm:text-sm leading-relaxed antialiased;
   }
@@ -65,5 +81,13 @@
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(220, 38, 38, 0.4);
+  }
+
+  .lined-paper {
+    background-attachment: local;
+    background-image: 
+      linear-gradient(rgba(220, 38, 38, 0.1) 1px, transparent 1px);
+    background-size: 100% 1.75rem;
+    line-height: 1.75rem;
   }
 }
