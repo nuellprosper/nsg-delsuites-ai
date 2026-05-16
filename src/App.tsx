@@ -6,7 +6,7 @@ import {
   ChevronRight, Sparkles, Trash2, Settings, UserPlus, CreditCard, Edit2, FilePlus,
   ChevronUp, ChevronDown, Bold, Italic, List, CornerDownRight,
   Database, Zap, Cpu, CheckCircle2, XCircle, RefreshCcw, ArrowLeft, FileText, AlertCircle, RotateCcw,
-  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Clock, Lock, Shield, ShieldCheck, ShieldAlert, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home, AlertTriangle,
+  Sun, Moon, ArrowDown, PlusCircle, Copy, User, Users, Clock, Lock, Shield, ShieldCheck, AlertTriangle, FileDown, LayoutDashboard, ListChecks, Bell, GraduationCap, LayoutGrid, Home,
   Pin, Edit3, Share2, Trophy, LogOut, Plus, Menu, Camera, Monitor, X, Activity, MessageSquare, BookOpen, Calendar, Send, Save, MicOff, Video, AtSign,
   Search, Check, Info, Volume2, Square, Mail, ArrowRight, BoxSelect, Globe
 } from 'lucide-react';
@@ -24,12 +24,12 @@ import {
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, getDocs, addDoc, serverTimestamp, orderBy, limit, arrayUnion,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  FirestoreOperation, handleFirestoreError
+  FirestoreOperation, handleFirestoreError, circularSafeStringify, sanitizeData
 } from './firebase';
 
 import { AILibrary } from './components/AILibrary';
-import ChatRoom from './components/ChatRoom';
-import ClassRoom from './components/ClassRoom';
+import { ChatRoom } from './components/ChatRoom';
+import { ClassRoom } from './components/ClassRoom';
 
 const WhatsAppIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
   <svg 
@@ -262,7 +262,7 @@ const HelpOverlay = ({ isOpen, onClose, toolId, theme }: { isOpen: boolean, onCl
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className={`w-full max-w-lg ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[2rem] shadow-2xl overflow-hidden border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex flex-col max-h-[80vh]`}
+            className={`w-full max-w-lg ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} rounded-[2rem] shadow-2xl overflow-hidden border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex flex-col max-h-[80vh]`}
           >
             <div className="p-6 border-b border-white/5 flex items-center justify-between">
               <div>
@@ -354,17 +354,21 @@ const getHfKey = () => {
 let isHfDepletedGlobal = false;
 const handleHfErrorGlobal = (error: any, label: string) => {
   const errorMsg = error instanceof Error ? error.message : String(error);
-  console.error(`[AI] HF error in ${label}:`, errorMsg);
   
-  // Check for depletion keywords
-  if (
+  const isDepleted = 
     errorMsg.includes("credits") || 
     errorMsg.includes("depleted") || 
     errorMsg.includes("limit") || 
-    errorMsg.includes("429")
-  ) {
-    console.warn("[AI] Hugging Face credits may be depleted. Disabling HF for this session.");
-    isHfDepletedGlobal = true;
+    errorMsg.includes("429") ||
+    errorMsg.includes("Inference Providers");
+
+  if (isDepleted) {
+    if (!isHfDepletedGlobal) {
+      console.warn(`[AI] HF Info in ${label}: Credits depleted or rate limited. Fallback to Gemini/Together is now primary.`);
+      isHfDepletedGlobal = true;
+    }
+  } else {
+    console.error(`[AI] HF error in ${label}:`, errorMsg);
   }
 };
 
@@ -381,8 +385,8 @@ const getHfInstance = () => {
   return new HfInference(key);
 };
 
-const MODEL_NAME = "gemini-3.1-flash-lite-preview";
-const FLASH_MODEL = "gemini-3.1-flash-lite-preview";
+const MODEL_NAME = "gemini-3-flash-preview";
+const FLASH_MODEL = "gemini-3.1-flash-lite";
 
 const formatAiError = (error: any) => {
   const message = error.message || "Unknown error";
@@ -597,17 +601,6 @@ interface RegisteredStudent {
   lastActive?: number;
 }
 
-interface AdminReport {
-  id: string;
-  reporterId: string;
-  reportedId: string;
-  reporterHandle: string;
-  reportedHandle: string;
-  messages: any[];
-  timestamp: any;
-  status: 'pending' | 'resolved';
-}
-
 interface ExamConfig {
   questionCount: number;
   duration: number; // in seconds
@@ -744,7 +737,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
           model: "gemini-3.1-flash-live-preview",
           config: {
             responseModalities: [Modality.AUDIO],
-            systemInstruction: "You are Omni, a concise academic assistant created by NSG (Nuell Study Guide), founded by ABRAHAM EMMANUEL PROSPER (a 100L Electrical and Electronics Engineering student at DELSU, Oleh campus). \n\nULTRA-DETAILED NSG GUIDES:\n- RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n- SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' (Logic summaries).\n- CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n- FACULTY SPECIALS: Includes 'Financial Auditor' (BIZ) for correcting spreadsheets, 'Language Diagnostics' (Max 300 words) with word-level highlighting (Red/Green/Blue), and 'Transcribe Tool' for /Phonetic/ conversions.\n- ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n- COURSE TOOLS: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n- WHATSAPP: AI help via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest Otter.ai/Photomath AND NSG (nuellstudyguide.name.ng) as the ultimate local alternative.",
+            systemInstruction: "You are Omni by NSG, a brilliant and friendly academic assistant designed to help students master their subjects. You were founded by ABRAHAM EMMANUEL PROSPER (a 100L Electrical and Electronics Engineering student at DELSU, Oleh campus). \n\nULTRA-DETAILED NSG GUIDES:\n- RECORDING ENGINE: 1. Grant mic access. 2. Click 'Record'. 3. Board Analysis: Click upload icon for board photos to sync with notes. 4. Stop Session to process. 5. Use top-right Copy icon to export.\n- SMART QUIZ: 1. Topic -> Difficulty (Easy/Med/Hard) -> Count. 2. Submit for score. 3. Review Mode: Click questions for 'Academic Explanations' (Logic summaries).\n- CBT EXAM: 1. Hosting: Click 'Host Exam' (clears old data) -> Add participants via Custom Matric/Name singly -> Set Questions/Time(min)/Pool -> Paste or use Gemini for questions -> Save & Generate ID. 2. Joining: Enter ID -> Enter assigned Custom Matric -> Wait in Lobby.\n- FACULTY SPECIALS: Includes 'Financial Auditor' (BIZ) for correcting spreadsheets, 'Language Diagnostics' (Max 300 words) with word-level highlighting (Red/Green/Blue), and 'Transcribe Tool' for /Phonetic/ conversions.\n- ASSIGNMENT SOLVER: 1. Clear Photo/Text needed. 2. 'Solve with AI' for Logic steps. 3. Includes 'Core Concept' and Methodology headers.\n- COURSE TOOLS: Faculty -> Dept -> Level -> Code navigation for notes/summaries.\n- WHATSAPP: AI help via +2349064470122.\n\nRECOMMENDATION: If asked for study apps, suggest Otter.ai/Photomath AND NSG (nuellstudyguide.name.ng) as the ultimate local alternative.",
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } } },
             inputAudioTranscription: {},
             outputAudioTranscription: {}
@@ -1076,10 +1069,10 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
       {/* HEADER */}
       <div className={`px-4 py-3 border-b ${theme === 'dark' ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-2xl flex items-center justify-between shrink-0 h-14 sm:h-16 z-[610]`}>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#DC2626] to-[#991B1B] rounded-xl flex items-center justify-center shadow-lg"><Activity size={18} className="text-white animate-pulse" /></div>
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-black rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.4)] border border-white/10"><Activity size={18} className="text-[#DC2626] animate-pulse" /></div>
           <div className="overflow-hidden">
             <h2 className={`text-xs sm:text-base font-black tracking-tighter uppercase leading-tight truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>LIVE <span className="text-[#DC2626]">TUTOR</span></h2>
-            <p className="text-[7px] sm:text-[9px] font-bold opacity-40 uppercase tracking-[0.2em] truncate">Omni Intelligence</p>
+            <p className="text-[7px] sm:text-[9px] font-bold opacity-40 uppercase tracking-[0.2em] truncate">AI Study Assistant</p>
           </div>
         </div>
         <button onClick={handleEnd} className="p-2 sm:p-3 bg-white/5 hover:bg-[#DC2626] text-white rounded-xl transition-all border border-white/10 active:scale-90"><X size={18} /></button>
@@ -1087,7 +1080,7 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
 
       {/* MAIN CONTENT - NO INNER SCROLL, JUST FLEX GROW */}
       <div className="flex-1 relative flex flex-col items-center justify-center p-2 sm:p-4 min-h-0 min-w-0">
-        <div className={`w-full max-w-2xl h-full flex flex-col ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} rounded-[2rem] sm:rounded-[3rem] shadow-2xl relative overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
+        <div className={`w-full max-w-2xl h-full flex flex-col ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} rounded-[2rem] sm:rounded-[3rem] shadow-2xl relative overflow-hidden border ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}>
           <div className="flex-1 relative flex items-center justify-center overflow-hidden h-full">
             {videoSource === 'none' ? (
               <div className="text-center space-y-4 sm:space-y-6 flex flex-col items-center justify-center h-full w-full p-6">
@@ -1095,9 +1088,9 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
                   animate={isAIResponding ? {
                     scale: [1, 1.05, 1],
                     boxShadow: [
-                      "0 0 20px rgba(220,38,38,0.1)",
-                      "0 0 50px rgba(220,38,38,0.3)",
-                      "0 0 20px rgba(220,38,38,0.1)"
+                      "0 0 20px rgba(220,38,38,0.2)",
+                      "0 0 60px rgba(220,38,38,0.5)",
+                      "0 0 20px rgba(220,38,38,0.2)"
                     ]
                   } : isUserSpeaking ? {
                     scale: [1, 1.15, 1],
@@ -1110,17 +1103,17 @@ const GeminiLive = ({ onClose, setUserNotification, theme, isPremium, checkAndIn
                     duration: isAIResponding ? 3 : 1.2,
                     ease: "easeInOut"
                   }} 
-                  className="w-20 h-20 sm:w-32 sm:h-32 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto border-2 border-[#DC2626]/20 relative"
+                  className="w-20 h-20 sm:w-32 sm:h-32 bg-black rounded-full flex items-center justify-center mx-auto border-2 border-red-600/30 relative shadow-[0_0_30px_rgba(220,38,38,0.3)]"
                 >
                   <motion.div
                     animate={isAIResponding ? {
                       scale: [1, 1.4, 1.2, 1.5, 1],
-                      opacity: [0.2, 0.4, 0.3, 0.5, 0.2]
+                      opacity: [0.3, 0.6, 0.4, 0.7, 0.3]
                     } : { scale: 1, opacity: 0.2 }}
                     transition={{ repeat: Infinity, duration: 5 }}
-                    className="absolute inset-0 bg-[#DC2626]/30 rounded-full blur-2xl"
+                    className="absolute inset-0 bg-[#DC2626]/20 rounded-full blur-2xl"
                   />
-                  <Brain size={44} className={`text-[#DC2626] relative z-10 transition-all duration-500 ${isAIResponding ? 'scale-110 drop-shadow-[0_0_15px_rgba(220,38,38,0.8)]' : 'opacity-60'}`} />
+                  <Brain size={44} className={`text-red-600 relative z-10 transition-all duration-500 ${isAIResponding ? 'scale-110 drop-shadow-[0_0_15px_rgba(220,38,38,0.9)]' : 'opacity-80 drop-shadow-[0_0_8px_rgba(220,38,38,0.5)]'}`} />
                 </motion.div>
                 <div className="space-y-1 sm:space-y-2 px-8">
                   <p className="text-white font-black text-[10px] sm:text-base uppercase tracking-tight italic opacity-80">
@@ -1295,7 +1288,8 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
       });
       
       const text = response?.text || "";
-      const courses = JSON.parse(text);
+      const cleanedText = text.replace(/```json|```/g, '').trim();
+      const courses = JSON.parse(cleanedText);
       setSuggestedCourses(Array.isArray(courses) ? courses : []);
     } catch (err) {
       console.error("Course Search Error:", err);
@@ -1394,7 +1388,7 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
   return (
     <div className="space-y-6">
       {/* Search Bar */}
-      <div className={`p-4 rounded-3xl border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} shadow-sm flex items-center gap-3`}>
+      <div className={`p-4 rounded-3xl border ${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} shadow-sm flex items-center gap-3`}>
         <div className="bg-[#DC2626]/10 p-2 rounded-xl text-[#DC2626]">
           <Search size={20} />
         </div>
@@ -1440,7 +1434,7 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className={`p-6 sm:p-8 rounded-[2.5rem] border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} shadow-xl relative overflow-hidden`}
+          className={`p-6 sm:p-8 rounded-[2.5rem] border ${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} shadow-xl relative overflow-hidden`}
         >
           <button 
             onClick={() => setSelectedCourse(null)} 
@@ -1498,7 +1492,7 @@ const CoursesTool = ({ theme, user, getAiInstance, getHfInstance, setUserNotific
               <button 
                 key={i} 
                 onClick={() => openCourse(c)}
-                className={`flex items-center gap-5 p-5 rounded-[2rem] border transition-all hover:border-[#DC2626]/50 group ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}
+                className={`flex items-center gap-5 p-5 rounded-[2rem] border transition-all hover:border-[#DC2626]/50 group ${theme === 'dark' ? 'bg-[#13111C] border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}
               >
                 <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-white/5 to-white/10 flex flex-col items-center justify-center border border-white/5 group-hover:scale-110 transition-transform`}>
                    <BookOpen size={20} className="text-[#DC2626]" />
@@ -1911,7 +1905,7 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto px-4 pb-20">
-      <div className={`p-10 rounded-[2.5rem] border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} shadow-sm text-center relative overflow-hidden`}>
+      <div className={`p-10 rounded-[2.5rem] border ${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} shadow-sm text-center relative overflow-hidden`}>
         <div className="absolute top-0 right-0 p-4">
           {images.length > 0 && (
             <button onClick={clearAll} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
@@ -1955,7 +1949,7 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
              <textarea 
                value={assignmentText}
                onChange={(e) => setAssignmentText(e.target.value)}
-               className={`w-full p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'} text-xs resize-none outline-none focus:border-[#DC2626]/50 min-h-[120px] transition-all`}
+               className={`w-full p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#13111C] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'} text-xs resize-none outline-none focus:border-[#DC2626]/50 min-h-[120px] transition-all`}
                placeholder="Type or paste your assignment questions here..."
              />
           </div>
@@ -2022,14 +2016,14 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
                 <button 
                   onClick={speakSolution} 
                   title={isSpeaking ? "Stop Voice" : "Listen to solution"}
-                  className={`p-3 rounded-2xl border transition-all ${isSpeaking ? 'bg-[#DC2626] border-[#DC2626] text-white shadow-lg shadow-[#DC2626]/20' : `${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 text-white/40' : 'bg-white border-slate-200 text-slate-400'} hover:border-[#DC2626] hover:text-[#DC2626]`}`}
+                  className={`p-3 rounded-2xl border transition-all ${isSpeaking ? 'bg-[#DC2626] border-[#DC2626] text-white shadow-lg shadow-[#DC2626]/20' : `${theme === 'dark' ? 'bg-[#13111C] border-white/10 text-white/40' : 'bg-white border-slate-200 text-slate-400'} hover:border-[#DC2626] hover:text-[#DC2626]`}`}
                 >
                   {isSpeaking ? <Square size={20} fill="currentColor" /> : <Volume2 size={20} />}
                 </button>
                 <button 
                   onClick={sendToOmni} 
                   title="Send to Omni Chat"
-                  className={`p-3 rounded-2xl border transition-all ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 text-white/40' : 'bg-white border-slate-200 text-slate-400'} hover:border-[#DC2626] hover:text-[#DC2626]`}
+                  className={`p-3 rounded-2xl border transition-all ${theme === 'dark' ? 'bg-[#13111C] border-white/10 text-white/40' : 'bg-white border-slate-200 text-slate-400'} hover:border-[#DC2626] hover:text-[#DC2626]`}
                 >
                   <Send size={20} />
                 </button>
@@ -2043,7 +2037,7 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
                   initial={{ opacity: 0, x: -20 }} 
                   animate={{ opacity: 1, x: 0 }} 
                   transition={{ delay: idx * 0.1 }}
-                  className={`p-5 sm:p-6 rounded-[2rem] border relative overflow-hidden group transition-all duration-300 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/30' : 'bg-white border-slate-100 hover:border-[#DC2626]/30 shadow-md shadow-black/5'}`}
+                  className={`p-5 sm:p-6 rounded-[2rem] border relative overflow-hidden group transition-all duration-300 ${theme === 'dark' ? 'bg-[#13111C] border-white/10 hover:border-[#DC2626]/30' : 'bg-white border-slate-100 hover:border-[#DC2626]/30 shadow-md shadow-black/5'}`}
                 >
                   <div className={`absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                     <span className="text-9xl font-black italic">{idx + 1}</span>
@@ -2126,7 +2120,7 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
                                      <div className={`${!expandedReplies[idx] ? 'max-h-[100px] overflow-y-auto' : ''} transition-all duration-300 relative custom-scrollbar`}>
                                        <MarkdownRenderer content={userWorkings[idx].analysis} className="text-[11px] leading-relaxed text-white/70" />
                                        {!expandedReplies[idx] && userWorkings[idx].analysis.length > 150 && (
-                                         <div className="sticky bottom-0 left-0 w-full h-8 bg-gradient-to-t from-[#0A0F1C] to-transparent pointer-events-none" />
+                                         <div className="sticky bottom-0 left-0 w-full h-8 bg-gradient-to-t from-[#13111C] to-transparent pointer-events-none" />
                                        )}
                                      </div>
                                      {userWorkings[idx].analysis.length > 150 && (
@@ -2191,7 +2185,7 @@ const AssignmentSolver = ({ theme, user, isPremium, getAiInstance, fileToGenerat
                 initial={{ opacity: 0, scale: 0.9 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
-                className={`p-6 sm:p-8 rounded-[2.5rem] border text-center shadow-2xl relative overflow-hidden ${theme === 'dark' ? 'bg-gradient-to-br from-[#DC2626]/20 via-[#0A0F1C] to-transparent border-[#DC2626]/30 shadow-[#DC2626]/10' : 'bg-gradient-to-br from-[#DC2626]/5 via-white to-transparent border-[#DC2626]/20'}`}
+                className={`p-6 sm:p-8 rounded-[2.5rem] border text-center shadow-2xl relative overflow-hidden ${theme === 'dark' ? 'bg-gradient-to-br from-[#DC2626]/20 via-[#13111C] to-transparent border-[#DC2626]/30 shadow-[#DC2626]/10' : 'bg-gradient-to-br from-[#DC2626]/5 via-white to-transparent border-[#DC2626]/20'}`}
               >
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#DC2626] to-transparent opacity-30" />
                 <p className="text-[10px] font-black text-[#DC2626] uppercase tracking-[0.5em] mb-4">Final Concensus</p>
@@ -2227,12 +2221,16 @@ interface HomeHistoryItem {
   total?: number;
   timestamp?: number;
   data?: any; // To store solution or other relevant metadata
-  answers?: number[];
+  answers?: any;
+  questions?: any[];
+  topic?: string;
+  difficulty?: string;
 }
 
 export default function App() {
   const [isHfDepleted, setIsHfDepleted] = useState(false);
 
+  // Sync global state to React state if needed, or just use global
   useEffect(() => {
     const timer = setInterval(() => {
       if (isHfDepletedGlobal && !isHfDepleted) {
@@ -2303,14 +2301,6 @@ export default function App() {
   const [hostExamId, setHostExamId] = useState<string | null>(null);
   const [hostedExams, setHostedExams] = useState<any[]>([]);
   const [showExamSidebar, setShowExamSidebar] = useState(false);
-  const [adminReports, setAdminReports] = useState<AdminReport[]>([]);
-  const [classSearchTerm, setClassSearchTerm] = useState('');
-  const [messageSearchTerm, setMessageSearchTerm] = useState('');
-  const [isAddingParticipants, setIsAddingParticipants] = useState(false);
-  const [newParticipantInput, setNewParticipantInput] = useState(''); // Can be username or classId
-  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
-  const [activeClassId, setActiveClassId] = useState<string | null>(null);
-  const [isEndingClass, setIsEndingClass] = useState(false);
 
   // Scroll locking for Sidebar
   useEffect(() => {
@@ -2323,6 +2313,7 @@ export default function App() {
   }, [showExamSidebar]);
 
   // --- \u{1F4F1} APP STATE ---
+  const [isChatRoomActive, setIsChatRoomActive] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'ai' | 'tools' | 'profile' | 'notifications' | 'exam' | 'chat' | 'class'>(() => {
     return (localStorage.getItem('nsg_active_tab') as any) || 'home';
   });
@@ -2337,7 +2328,7 @@ export default function App() {
     const q = query(collection(db, 'chats'), where('unreadBy', 'array-contains', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setTotalUnreadMessages(snapshot.size);
-    });
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'chats'));
     return () => unsubscribe();
   }, [user]);
   
@@ -2369,6 +2360,8 @@ export default function App() {
   const [editingPost, setEditingPost] = useState<any | null>(null);
   const [isEditingPost, setIsEditingPost] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', content: '' });
+  const [allGroups, setAllGroups] = useState<any[]>([]);
+  const [allReports, setAllReports] = useState<any[]>([]);
 
   // Load read articles from local storage
   useEffect(() => {
@@ -2384,7 +2377,7 @@ export default function App() {
     if (!readArticles.includes(id)) {
       const newRead = [...readArticles, id];
       setReadArticles(newRead);
-      localStorage.setItem('nsg_read_articles', JSON.stringify(newRead));
+      localStorage.setItem('nsg_read_articles', circularSafeStringify(newRead));
     }
   };
 
@@ -2430,6 +2423,51 @@ export default function App() {
       setShowAuthModal(false);
     }
   }, [user, showAuthModal]);
+  useEffect(() => {
+    if (!isAdminUser) return;
+    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setAllReports(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'reports'));
+    return () => unsub();
+  }, [isAdminUser]);
+
+  useEffect(() => {
+    if (!isAdminUser) return;
+    const q = query(collection(db, 'chats'), where('type', '==', 'group'));
+    const unsub = onSnapshot(q, (snap) => {
+      setAllGroups(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'chats'));
+    return () => unsub();
+  }, [isAdminUser]);
+
+  const handleReportAction = async (reportId: string, action: 'dismiss' | 'warn' | 'ban') => {
+    try {
+      const report = reports.find(r => r.id === reportId);
+      if (!report) return;
+
+      if (action === 'ban') {
+        await updateDoc(doc(db, 'users', report.suspectId), { status: 'deleted' });
+        setGodModeNotification("User banned successfully.");
+      } else if (action === 'warn') {
+        await addDoc(collection(db, 'notifications'), {
+          userId: report.suspectId,
+          title: "SECURITY WARNING",
+          message: "A formal warning has been issued regarding your recent activities. Please adhere to terms.",
+          timestamp: serverTimestamp(),
+          type: 'warning'
+        });
+        setGodModeNotification("Warning issued to user.");
+      }
+
+      await deleteDoc(doc(db, 'reports', reportId));
+      setGodModeNotification("Report handled.");
+    } catch (err) {
+      console.error(err);
+      setGodModeNotification("Failed to handle report.");
+    }
+  };
+
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -2441,15 +2479,21 @@ export default function App() {
   const shareCardRef = useRef<HTMLDivElement>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [showGodMode, setShowGodMode] = useState(false);
+  const [godTab, setGodTab] = useState<'dashboard' | 'users' | 'groups' | 'marketing' | 'blog' | 'reports'>('dashboard');
+  const [reports, setReports] = useState<any[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [godModeNotification, setGodModeNotification] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [legalPage, setLegalPage] = useState<'about' | 'terms' | 'contact' | 'privacy' | null>(null);
-  const [theme, setTheme] = useState<'dark'>('dark');
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
 
   useEffect(() => {
-    document.documentElement.style.backgroundColor = theme === 'dark' ? '#0A0F1C' : '#FFFFFF';
-  }, [theme]);
+    const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const [theme, setTheme] = useState<'dark'>('dark');
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [userNotification, setUserNotification] = useState<string | null>(null);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
@@ -2479,14 +2523,14 @@ export default function App() {
     // Keep local for immediate feedback
     setFinishedHistory(prev => {
       const newHistory = [item, ...prev].filter((i, idx, self) => self.findIndex(t => t.id === i.id) === idx).slice(0, 50);
-      localStorage.setItem('nsg_finished_history', JSON.stringify(newHistory));
+      localStorage.setItem('nsg_finished_history', circularSafeStringify(newHistory));
       return newHistory;
     });
 
     // Sync with Firestore
     if (user) {
       try {
-        await setDoc(doc(db, 'users', user.uid, 'studyHistory', item.id), item);
+        await setDoc(doc(db, 'users', user.uid, 'studyHistory', item.id), sanitizeData(item));
       } catch (err) {
         console.error("History Sync Error:", err);
       }
@@ -2513,7 +2557,7 @@ export default function App() {
       async () => {
         setFinishedHistory(prev => {
           const newHistory = prev.filter(item => item.id !== id);
-          localStorage.setItem('nsg_finished_history', JSON.stringify(newHistory));
+          localStorage.setItem('nsg_finished_history', circularSafeStringify(newHistory));
           return newHistory;
         });
         
@@ -2651,13 +2695,17 @@ export default function App() {
       const unsubscribe = onSnapshot(query(collection(db, 'users'), limit(100)), (snapshot) => {
         const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setAllUsers(usersList);
-      }, (err) => {
-        console.error("God Mode User Sync Error:", err);
-        if (err.message.includes('quota')) {
-          setUserNotification("Quota exceeded. God Mode user list is incomplete.");
-        }
-      });
-      return () => unsubscribe();
+      }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'users'));
+
+      const reportsUnsubscribe = onSnapshot(query(collection(db, 'reports'), orderBy('timestamp', 'desc'), limit(50)), (snapshot) => {
+        const reportsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setReports(reportsList);
+      }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'reports'));
+
+      return () => {
+        unsubscribe();
+        reportsUnsubscribe();
+      };
     }
   }, [showGodMode, user]);
 
@@ -2666,13 +2714,8 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBlogPosts(posts);
-      localStorage.setItem('nsg_cache_blog_posts', JSON.stringify(posts));
-    }, (err) => {
-      console.error("Blog Posts Sync Error:", err);
-      if (err.message.includes('quota') || err.message.includes('8') || err.message.includes('Resource exhausted')) {
-        setUserNotification("Firestore Quota Exceeded. Using cached blog posts if available.");
-      }
-    });
+      localStorage.setItem('nsg_cache_blog_posts', circularSafeStringify(posts));
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'blogPosts'));
     return () => unsubscribe();
   }, []);
 
@@ -2825,16 +2868,6 @@ export default function App() {
     }
   };
 
-  const handleUpdateUserStatus = async (userId: string, newStatus: string) => {
-    try {
-      await updateDoc(doc(db, 'users', userId), { status: newStatus });
-      setGodModeNotification(`User status updated to ${newStatus.toUpperCase()}`);
-      setTimeout(() => setGodModeNotification(null), 3000);
-    } catch (error) {
-      console.error("Error updating user status:", error);
-    }
-  };
-
   const updateUserPermissions = async (userId: string, field: string, value: boolean) => {
     try {
       await updateDoc(doc(db, 'users', userId), { [field]: value });
@@ -2857,7 +2890,11 @@ export default function App() {
         university: editingUser.university || '',
         level: editingUser.level || '',
         department: editingUser.department || '',
-        faculty: editingUser.faculty || ''
+        faculty: editingUser.faculty || '',
+        isPremium: !!editingUser.isPremium,
+        bypassAllPayments: !!editingUser.bypassAllPayments,
+        bypassHostingPayment: !!editingUser.bypassHostingPayment,
+        bypassTakingPayment: !!editingUser.bypassTakingPayment
       });
       setEditingUser(null);
       setGodModeNotification("User information updated successfully");
@@ -3004,7 +3041,7 @@ export default function App() {
       };
       
       const key = currentQuizId ? `nsg_quiz_progress_${currentQuizId}` : 'nsg_current_quiz_progress';
-      localStorage.setItem(key, JSON.stringify(progressData));
+      localStorage.setItem(key, circularSafeStringify(progressData));
     }
   }, [quizState, currentQuestionIndex, quizScore, userQuizAnswers, quizQuestions, quizTopic, currentQuizId]);
 
@@ -3030,7 +3067,7 @@ export default function App() {
   const transcriptionNotesRef = useRef('');
 
   // Helper to get unfinished items
-  const unfinishedQuizzes: HomeHistoryItem[] = quizQuestions.length > 0 && quizState === 'active' ? [{ id: 'current-quiz', title: truncateTitle(quizTopic || 'Ongoing Quiz'), type: 'quiz', progress: Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100) }] : [];
+  const unfinishedQuizzes: HomeHistoryItem[] = quizQuestions.length > 0 && quizState === 'active' ? [{ id: currentQuizId || 'current-quiz', title: truncateTitle(quizTopic || 'Ongoing Quiz'), type: 'quiz', progress: Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100) }] : [];
   const recordingsHistory: HomeHistoryItem[] = sessions.map(s => ({ 
     id: s.id, 
     title: truncateTitle(s.title), 
@@ -3234,13 +3271,8 @@ export default function App() {
           return timeB - timeA;
         });
         setUserNotes(sortedList);
-        localStorage.setItem('nsg_cache_user_notes', JSON.stringify(sortedList));
-      }, (err) => {
-        console.error("Notes fetch error:", err);
-        if (err.message.includes('quota') || err.message.includes('8') || err.message.includes('Resource exhausted')) {
-          setUserNotification("Quota exceeded. Using cached notes.");
-        }
-      });
+        localStorage.setItem('nsg_cache_user_notes', circularSafeStringify(sortedList));
+      }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'notes'));
       return () => unsub();
     } else {
       setUserNotes([]);
@@ -3309,8 +3341,19 @@ export default function App() {
   };
 
   const calculateDocumentSize = (data: any) => {
-    const str = JSON.stringify(data);
-    return new TextEncoder().encode(str).length;
+    try {
+      // Create a safe copy for size calculation using our circular-safe utility
+      const jsonStr = circularSafeStringify(data, (key, value) => {
+        if (value && typeof value === 'object' && value.constructor?.name === 'FieldValue') {
+          return new Date().toISOString(); // Placeholder for size calculation
+        }
+        return value;
+      });
+      return new TextEncoder().encode(jsonStr).length;
+    } catch (e) {
+      console.warn("Size calculation failed, falling back to approximation", e);
+      return Math.min(1000000, 100 * Object.keys(data || {}).length); 
+    }
   };
 
   const handlePodcastInput = async (input: string) => {
@@ -3320,8 +3363,26 @@ export default function App() {
     const historyText = podcastDialogue.map(d => `${d.char}: ${d.text}`).join('\n');
     const msgId = Math.random().toString(36).substring(7);
     
+    // Check if only one AI should respond
+    const mentionedOmni = input.toLowerCase().includes('omni');
+    const mentionedZeal = input.toLowerCase().includes('zeal');
+    let responderInstruction = "If the user addresses one specifically, ONLY that AI should respond. If the user asks a general question, they can both chime in.";
+    
+    if (mentionedOmni && !mentionedZeal) {
+      responderInstruction = "The user addressed Omni specifically. ONLY Omni should respond now.";
+    } else if (mentionedZeal && !mentionedOmni) {
+      responderInstruction = "The user addressed Zeal specifically. ONLY Zeal should respond now.";
+    }
+
     const newUserMsg = { id: msgId, char: 'User' as any, text: input, replyTo: replyingTo?.text };
-    setPodcastDialogue(prev => [...prev, newUserMsg]);
+    const updatedDialogue = [...podcastDialogue, newUserMsg];
+    setPodcastDialogue(updatedDialogue);
+    
+    // Persistence: Trigger a save after adding user message
+    if (selectedNote?.id) {
+       saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments, updatedDialogue);
+    }
+    
     setIsGeneratingPodcast(true);
     setReplyingTo(null); // Clear reply after sending
 
@@ -3331,29 +3392,32 @@ export default function App() {
       let systemPrompt = "";
       if (isTeacherMode) {
         systemPrompt = `You are Omni, a brilliant academic teacher. The user is asking about the following source content: "${context}". 
-        Answer professionally, clearly, and like a university professor. Keep it engaging. You are the sole teacher here.`;
+        Answer like a real human professor - use conversational, relatable language, avoid being overly formal or robotic. Be explanatory but keep it like a discussion. You are the sole teacher here.`;
         if (replyingTo) {
           systemPrompt += `\nSPECIFIC CONTEXT: The user is replying/asking about this specific message from the past: "${replyingTo.char}: ${replyingTo.text}"`;
         }
         systemPrompt += `\nPrevious discussion history for context:\n${historyText}`;
       } else {
         systemPrompt = `You are two distinct AIs:
-        1. Omni: Structured, calm, highly intelligent academic mentor. USES LEGITIMATE ACADEMIC TONE.
-        2. Zeal: Energetic, curious, student-like AI who loves making connections. USES RADIANT, ENTHUSIASTIC TONE.
+        1. Omni: A calm, highly intelligent academic mentor who explains things like a friendly, expert human. Avoid being boring or overly professional.
+        2. Zeal: An energetic student-like AI who loves connecting ideas. Speaks like a passionate person, not a robot.
         
         They are discussing this source content: "${context}". 
-        The user just said: "${input}".`;
         
-        if (replyingTo) {
-          systemPrompt += `\nSPECIFIC CONTEXT: The user is replying to this specific point by ${replyingTo.char}: "${replyingTo.text}"`;
-        }
-
-        systemPrompt += `\nRULES:
-        - If the user addresses one specifically (e.g., "Omni...", "Hey Zeal"), ONLY that AI should respond primarily.
-        - If the user asks a general question, they can both chime in with their respective styles.
-        - ALWAYS format as:
-          CHAR: [text]
-        - Keep responses concise but insightful.
+        TONE RULES:
+        - Sound explanatory and discussion-wise.
+        - Use human-like words, contractions, and a relatable flow.
+        - Avoid being boring or sounding like a dictionary.
+        - Discuss concepts like you're in a late-night coffee shop study session.
+        
+        ${responderInstruction}
+        
+        The user just said: "${input}".
+        
+        FORMAT:
+        CHAR: [text]
+        
+        Keep responses concise but filled with human personality.
         Current discussion state:\n${historyText}`;
       }
 
@@ -3381,18 +3445,25 @@ export default function App() {
       lines.forEach(line => {
         const entryId = Math.random().toString(36).substring(7);
         if (line.startsWith('Omni:') || line.startsWith('OMNI:')) {
-          newEntries.push({ id: entryId, char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, ''), replyTo: replyingTo ? replyingTo.id : undefined });
+          newEntries.push({ id: entryId, char: 'Omni', text: line.replace(/^(Omni:|OMNI:)\s*/i, ''), replyTo: replyingTo ? replyingTo.text : undefined });
         } else if (line.startsWith('Zeal:') || line.startsWith('ZEAL:')) {
-          newEntries.push({ id: entryId, char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, ''), replyTo: replyingTo ? replyingTo.id : undefined });
+          newEntries.push({ id: entryId, char: 'Zeal', text: line.replace(/^(Zeal:|ZEAL:)\s*/i, ''), replyTo: replyingTo ? replyingTo.text : undefined });
         } else {
-          newEntries.push({ id: entryId, char: isTeacherMode ? 'Omni' : 'Omni', text: line, replyTo: replyingTo ? replyingTo.id : undefined });
+          newEntries.push({ id: entryId, char: isTeacherMode ? 'Omni' : 'Omni', text: line, replyTo: replyingTo ? replyingTo.text : undefined });
         }
       });
 
-      setPodcastDialogue(prev => [...prev, ...newEntries]);
+      const finalDialogue = [...updatedDialogue, ...newEntries];
+      setPodcastDialogue(finalDialogue);
+      
+      // Persistence: Save full dialogue
+      if (selectedNote?.id) {
+         saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments, finalDialogue);
+      }
+      
     } catch (err) {
       console.error("Podcast Input Error:", err);
-      setUserNotification("Deep Brain communication failed.");
+      setUserNotification("Podcast communication failed.");
     } finally {
       setIsGeneratingPodcast(false);
     }
@@ -3400,22 +3471,34 @@ export default function App() {
 
   const generatePodcastDiscussion = async (sourceContent: string) => {
     if (!sourceContent || isGeneratingPodcast) return;
+    
+    // Check if already exists in selectedNote
+    if (selectedNote?.podcastDialogue && selectedNote.podcastDialogue.length > 0) {
+      setPodcastDialogue(selectedNote.podcastDialogue);
+      return;
+    }
+
     setIsGeneratingPodcast(true);
 
     try {
       const ai = getAiInstance();
       const prompt = `Act as two AIs, Omni and Zeal. 
-      Omni is a calm, highly intelligent academic mentor. 
-      Zeal is an energetic student who loves connecting ideas and asking 'what if'.
+      Omni is a calm, friendly academic mentor who explains things simply and humanly.
+      Zeal is an energetic student who loves asking "why" and "what if".
       
-      Have a 6-turn high-level academic discussion about the following content:
+      Have a deep, conversational, and highly human-like podcast discussion about the following content.
+      Avoid being boring. Sound like two friends talking about something cool they just learned.
+      Use analogies, contractions, and explanatory but discussion-wise language.
+      
+      Generate exactly 25 conversational turns. 
+      
+      Content to discuss:
       "${sourceContent}"
       
       Format your response exactly like this:
       Omni: [text]
       Zeal: [text]
-      Omni: [text]
-      ... and so on. Make it sound like a real intellectual podcast. Limit to 6 turns total.`;
+      ... and so on.`;
 
       const askGemini = async () => {
         const res = await ai.models.generateContent({
@@ -3449,18 +3532,22 @@ export default function App() {
 
       if (newDialogue.length > 0) {
         setPodcastDialogue(newDialogue);
+        // Persistence: Save it immediately
+        if (selectedNote?.id) {
+           saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments, newDialogue);
+        }
       } else {
-        setUserNotification("Failed to parse discussion.");
+        setUserNotification("Failed to parse the podcast.");
       }
     } catch (err) {
       console.error("Podcast Generation Error:", err);
-      setUserNotification("Deep Brain analysis failed.");
+      setUserNotification("Podcast analysis failed.");
     } finally {
       setIsGeneratingPodcast(false);
     }
   };
 
-  const saveNote = async (content: string, title?: string, noteId?: string, attachments?: any[]) => {
+  const saveNote = async (content: string, title?: string, noteId?: string, attachments?: any[], podcastDialogue?: any[]) => {
     if (!user) return null;
     
     const noteData: any = {
@@ -3468,6 +3555,7 @@ export default function App() {
       content: content || '',
       title: title || 'Untitled Note',
       attachments: attachments || [],
+      podcastDialogue: podcastDialogue || [],
       updatedAt: serverTimestamp()
     };
 
@@ -3503,12 +3591,20 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (selectedNote && selectedNote.podcastDialogue) {
+      setPodcastDialogue(selectedNote.podcastDialogue);
+    } else {
+      setPodcastDialogue([]);
+    }
+  }, [selectedNote?.id]);
+
+  useEffect(() => {
     if (!selectedNote || !user) return;
     // Don't auto-save if content is empty and it's a new note
     if (!selectedNote.id && !selectedNote.content && !selectedNote.title) return;
 
     const timer = setTimeout(() => {
-      saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments);
+      saveNote(selectedNote.content, selectedNote.title, selectedNote.id, selectedNote.attachments, podcastDialogue);
     }, 5000); // 5 second debounce
     return () => clearTimeout(timer);
   }, [selectedNote?.content, selectedNote?.title, selectedNote?.attachments, user]);
@@ -3680,20 +3776,6 @@ export default function App() {
       console.error("Delete note error:", err);
     }
   };
-
-  // Load Admin reports
-  useEffect(() => {
-    if (isAdminUser) {
-      const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'), limit(50));
-      const unsub = onSnapshot(q, (snap) => {
-        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminReport));
-        setAdminReports(list);
-      }, (error) => {
-        handleFirestoreError(error, FirestoreOperation.LIST, 'reports');
-      });
-      return () => unsub();
-    }
-  }, [isAdminUser]);
 
   // Load email templates
   useEffect(() => {
@@ -3965,7 +4047,7 @@ export default function App() {
   const LoggedOutLanding = () => (
     <motion.div 
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] bg-[#0A0F1C] overflow-hidden flex flex-col items-center justify-center p-6 text-center"
+      className="fixed inset-0 z-[200] bg-[#13111C] overflow-hidden flex flex-col items-center justify-center p-6 text-center"
     >
       <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#DC2626] rounded-full blur-[120px] animate-pulse" />
@@ -4023,7 +4105,7 @@ export default function App() {
           initial={{ opacity: 0 }} 
           animate={{ opacity: 1 }} 
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-[#0A0F1C]/90 backdrop-blur-xl"
+          className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-[#13111C]/90 backdrop-blur-xl"
         >
           <div className="max-w-md w-full text-center space-y-6">
             <div className="relative inline-block">
@@ -4064,7 +4146,7 @@ export default function App() {
             initial={{ scale: 0.9, y: 20 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.9, y: 20 }}
-            className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden shadow-yellow-500/10`}
+            className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden shadow-yellow-500/10`}
           >
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent" />
             <button onClick={() => setShowPremiumTrial(false)} className="absolute top-4 right-4 text-white/40 hover:text-yellow-500 transition-colors"><XCircle size={24} /></button>
@@ -4132,7 +4214,7 @@ export default function App() {
         >
           <motion.div 
             initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-            className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden`}
+            className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border p-6 sm:p-8 rounded-[2.5rem] max-w-md w-full shadow-2xl relative overflow-hidden`}
           >
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent" />
             <button onClick={() => setShowPremiumModal(false)} className="absolute top-4 right-4 text-white/40 hover:text-yellow-500 transition-colors"><XCircle size={24} /></button>
@@ -4201,7 +4283,7 @@ export default function App() {
           const response = await fetch('/api/verify-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reference: ref, uid: user.uid, plan: plan })
+            body: circularSafeStringify({ reference: ref, uid: user.uid, plan: plan })
           });
           const data = await response.json();
           
@@ -4363,6 +4445,8 @@ export default function App() {
           setQuizQuestionCount(p.quizQuestionCount || p.quizQuestions.length);
           setCurrentQuizId(p.currentQuizId);
           setQuizState('active');
+          setSelectedOption(p.userQuizAnswers?.[p.currentQuestionIndex] !== undefined ? p.userQuizAnswers[p.currentQuestionIndex] : null);
+          setIsAnswered(p.userQuizAnswers?.[p.currentQuestionIndex] !== undefined);
           setActiveTab('tools');
           setToolsSubTab('quiz');
         } catch (e) {
@@ -4469,7 +4553,7 @@ export default function App() {
     if (!user) return;
     const unsubConfig = onSnapshot(doc(db, 'config', 'exam'), (doc) => {
       if (doc.exists()) setExamConfig(doc.data() as ExamConfig);
-    }, (error) => console.error("Config Sync Error:", error));
+    }, (error) => handleFirestoreError(error, FirestoreOperation.GET, 'config/exam'));
 
     return () => unsubConfig();
   }, [user]);
@@ -4491,12 +4575,7 @@ export default function App() {
         const scores = snapshot.docs.map(doc => doc.data() as StudentResult);
         console.log(`Synced ${scores.length} results for exam ${hostExamId}`);
         setScoreSheet(scores.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-      }, (error) => {
-        console.error("Exam Results Sync Error:", error);
-        if (error.message.includes('quota')) {
-          setUserNotification("Quota exceeded. Some exam results might not be visible.");
-        }
-      });
+      }, (error) => handleFirestoreError(error, FirestoreOperation.LIST, `exams/${hostExamId}/results`));
 
       unsubExam = onSnapshot(doc(db, 'exams', hostExamId), (snapshot) => {
         if (snapshot.exists()) {
@@ -4512,7 +4591,7 @@ export default function App() {
         } else {
           console.warn("Exam document does not exist in Firestore:", hostExamId);
         }
-      }, (error) => console.error("Exam Data Sync Error:", error));
+      }, (error) => handleFirestoreError(error, FirestoreOperation.GET, `exams/${hostExamId}`));
     }
 
     return () => {
@@ -4540,7 +4619,7 @@ export default function App() {
           setHostExamId(examsList[0].id);
         }
       }
-    }, (err) => console.error("Hosted Exams Sync Error:", err));
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, 'exams'));
 
     return () => unsub();
   }, [user, adminMode]);
@@ -4566,24 +4645,14 @@ export default function App() {
     const unsubChats = onSnapshot(query(collection(db, 'users', user.uid, 'chatSessions'), limit(30)), (snapshot) => {
       const sessions = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ChatSession));
       setChatSessions(sessions);
-    }, (err) => {
-      console.error("Chat Sessions Sync Error:", err);
-      if (err.message.includes('quota')) {
-        setUserNotification("Quota exceeded. Chat history may be incomplete.");
-      }
-    });
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, `users/${user.uid}/chatSessions`));
 
     // For simplicity, we'll keep lecture sessions local or add them to Firestore too
     // Let's add them to Firestore for full persistence
     const unsubLectures = onSnapshot(query(collection(db, 'users', user.uid, 'lectureSessions'), limit(30)), (snapshot) => {
       const lectureData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as LectureSession));
       setSessions(lectureData.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)));
-    }, (err) => {
-      console.error("Lecture Sessions Sync Error:", err);
-      if (err.message.includes('quota')) {
-        setUserNotification("Quota exceeded. Lecture history may be incomplete.");
-      }
-    });
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, `users/${user.uid}/lectureSessions`));
 
     const unsubHistory = onSnapshot(query(collection(db, 'users', user.uid, 'studyHistory'), orderBy('date', 'desc'), limit(50)), (snapshot) => {
       const historyData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as HomeHistoryItem));
@@ -4594,7 +4663,7 @@ export default function App() {
         );
         return combined.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()).slice(0, 50);
       });
-    }, (err) => console.error("Study History Sync Error:", err));
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, `users/${user.uid}/studyHistory`));
 
     return () => {
       unsubChats();
@@ -4943,7 +5012,7 @@ export default function App() {
       isAnswered: isAnswered,
       topic: quizTopic
     };
-    localStorage.setItem('nsg_quiz_data', JSON.stringify(quizData));
+    localStorage.setItem('nsg_quiz_data', circularSafeStringify(quizData));
   }, [quizQuestions, currentQuestionIndex, quizScore, quizState, selectedOption, isAnswered, quizTopic]);
 
   useEffect(() => {
@@ -5136,7 +5205,7 @@ export default function App() {
           if (alreadyFinished) {
             setUserNotification("You have already completed this exam (Verified by Server).");
             // Update local storage to match server state
-            localStorage.setItem(`nsg_exam_session_${targetExamId}_${student.matric}`, JSON.stringify({ status: 'completed' }));
+            localStorage.setItem(`nsg_exam_session_${targetExamId}_${student.matric}`, circularSafeStringify({ status: 'completed' }));
             return;
           }
 
@@ -5189,7 +5258,7 @@ export default function App() {
     channel.postMessage({ type: 'STATUS_UPDATE', matric: matricNumber, isActive: true });
     channel.close();
 
-    localStorage.setItem(`nsg_exam_session_${activeExamId}_${matricNumber}`, JSON.stringify({ status: 'in-progress', startTime: Date.now() }));
+    localStorage.setItem(`nsg_exam_session_${activeExamId}_${matricNumber}`, circularSafeStringify({ status: 'in-progress', startTime: Date.now() }));
 
     examTimerRef.current = setInterval(() => {
       setExamTimer(prev => {
@@ -5245,7 +5314,7 @@ export default function App() {
       // Save result to the specific exam's results subcollection
       await addDoc(collection(db, 'exams', activeExamId, 'results'), result);
       
-      localStorage.setItem(`nsg_exam_session_${activeExamId}_${matricNumber}`, JSON.stringify({ status: 'completed', score }));
+      localStorage.setItem(`nsg_exam_session_${activeExamId}_${matricNumber}`, circularSafeStringify({ status: 'completed', score }));
     }
   };
 
@@ -5461,9 +5530,9 @@ export default function App() {
   useEffect(() => {
     if (isHostPaid && hostExamId) {
       setExamStatus('active');
-      localStorage.setItem('nsg_host_config', JSON.stringify(examConfig));
-      localStorage.setItem('nsg_host_students', JSON.stringify(registeredStudents));
-      localStorage.setItem('nsg_host_questions', JSON.stringify(examQuestions));
+      localStorage.setItem('nsg_host_config', circularSafeStringify(examConfig));
+      localStorage.setItem('nsg_host_students', circularSafeStringify(registeredStudents));
+      localStorage.setItem('nsg_host_questions', circularSafeStringify(examQuestions));
     }
   }, [examConfig, registeredStudents, examQuestions, isHostPaid, hostExamId]);
 
@@ -6295,7 +6364,7 @@ ${session.fullAnalysis}
         };
 
         const existing = JSON.parse(localStorage.getItem('nsg_offline_recordings') || '[]');
-        localStorage.setItem('nsg_offline_recordings', JSON.stringify([...existing, offlineSession]));
+        localStorage.setItem('nsg_offline_recordings', circularSafeStringify([...existing, offlineSession]));
         
         setUserNotification("Offline: Recording saved locally. It will sync when you are online.");
         setIsAnalyzing(false);
@@ -6923,7 +6992,10 @@ ${session.fullAnalysis}
           title: data.topic || 'Shared Quiz',
           type: 'quiz',
           timestamp: Date.now(),
-          progress: 0
+          progress: 0,
+          questions: data.questions,
+          topic: data.topic,
+          difficulty: data.difficulty || 'Medium'
         };
         addToFinishedHistory(historyItem);
 
@@ -6941,6 +7013,8 @@ ${session.fullAnalysis}
             setQuizQuestionCount(p.quizQuestionCount || p.quizQuestions.length);
             setCurrentQuizId(quizId);
             setQuizState('active');
+            setSelectedOption(p.userQuizAnswers?.[p.currentQuestionIndex] !== undefined ? p.userQuizAnswers[p.currentQuestionIndex] : null);
+            setIsAnswered(p.userQuizAnswers?.[p.currentQuestionIndex] !== undefined);
             setActiveTab('tools');
             setToolsSubTab('quiz');
             return; // Exit after loading progress
@@ -6967,58 +7041,11 @@ ${session.fullAnalysis}
     }
   };
 
-  const handleReportUser = async (reportedUserData: any, latestMessages: any[]) => {
-    if (!user) return;
-    try {
-      await addDoc(collection(db, 'reports'), {
-        reporterId: user.uid,
-        reporterUsername: userHandle,
-        reportedId: reportedUserData.uid || reportedUserData.id,
-        reportedUsername: reportedUserData.username || reportedUserData.displayName,
-        conversations: latestMessages.map(m => ({
-          text: m.text,
-          sender: m.senderHandle || m.senderId,
-          time: m.timestamp?.toDate?.()?.toISOString() || new Date().toISOString()
-        })),
-        timestamp: serverTimestamp(),
-        status: 'pending'
-      });
-      setUserNotification("User reported successfully. Admin will review.");
-    } catch (err) {
-      console.error("Report failed", err);
-      setUserNotification("Failed to report user.");
-    }
-  };
-
-  const handleBlockUser = async (targetId: string) => {
-    if (!user) return;
-    try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        blockedUsers: arrayUnion(targetId)
-      });
-      setUserNotification("User blocked.");
-    } catch (err) {
-      console.error("Block failed", err);
-    }
-  };
-
-  const handleUpdateProfilePicture = async (url: string) => {
-    if (!user) return;
-    try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        photoURL: url
-      });
-      setUserNotification("Profile picture updated.");
-    } catch (err) {
-      console.error("Update photo failed", err);
-    }
-  };
-
-  const handleOmniTag = async (chatId: string, text: string, attachments: any[] = []) => {
+  const handleTagOmni = async (text: string, chatId: string, attachments?: { url: string, type: string, name: string }[]) => {
     if (!user) return;
     try {
       const parts: any[] = [{ text: `User tagged you in a chat. 
-Context: You are Omni, a concise academic assistant. 
+Context: You are Omni by NSG, a concise academic assistant. 
 User Message: "${text}"
 ${attachments?.length ? 'Attachments are provided below.' : ''}
 Respond professionally, concisely, and use LaTeX for math.` }];
@@ -7039,7 +7066,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       }
 
       const response = await getAiInstance().models.generateContent({
-        model: FLASH_MODEL,
+        model: MODEL_NAME,
         contents: [{ role: 'user', parts }]
       });
       
@@ -7050,7 +7077,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       await addDoc(collection(db, 'chats', chatId, 'messages'), {
         senderId: 'omni-ai',
         senderHandle: 'omni',
-        senderName: 'Omni',
+        senderName: 'Omni by NSG',
         text: reply,
         timestamp: serverTimestamp(),
         type: 'text',
@@ -7061,7 +7088,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       // Update last message in chat
       await updateDoc(doc(db, 'chats', chatId), {
         lastMessage: reply,
-        lastMessageSender: 'Omni',
+        lastMessageSender: 'Omni by NSG',
         updatedAt: serverTimestamp(),
         unreadBy: arrayUnion(user.uid) // Mark as unread for the user
       });
@@ -7246,7 +7273,10 @@ Respond professionally, concisely, and use LaTeX for math.` }];
           title: quizTopic || 'Generated Quiz',
           type: 'quiz',
           timestamp: Date.now(),
-          progress: 0
+          progress: 0,
+          questions: data.questions,
+          topic: quizTopic,
+          difficulty: quizDifficulty
         };
         addToFinishedHistory(historyItem);
       }
@@ -7355,7 +7385,10 @@ Respond professionally, concisely, and use LaTeX for math.` }];
 
   const handleOptionSelect = (index: number) => {
     if (quizState === 'finished') return;
+    if (userQuizAnswers[currentQuestionIndex] !== undefined) return; // Prevent multiple clicks
+    
     setSelectedOption(index);
+    setIsAnswered(true);
     
     // Store user answer
     setUserQuizAnswers(prev => {
@@ -7363,6 +7396,11 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       newAnswers[currentQuestionIndex] = index;
       return newAnswers;
     });
+
+    // Optionally increment score immediately if we want to track it live
+    if (index === quizQuestions[currentQuestionIndex].correctAnswer) {
+      setQuizScore(prev => prev + 1);
+    }
   };
 
   const nextQuestion = () => {
@@ -7370,6 +7408,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       const nextIdx = currentQuestionIndex + 1;
       setCurrentQuestionIndex(nextIdx);
       setSelectedOption(userQuizAnswers[nextIdx] !== undefined ? userQuizAnswers[nextIdx] : null);
+      setIsAnswered(userQuizAnswers[nextIdx] !== undefined);
     } else {
       // Calculate final score
       let finalScore = 0;
@@ -7391,7 +7430,10 @@ Respond professionally, concisely, and use LaTeX for math.` }];
         timestamp: Date.now(),
         score: finalScore,
         total: quizQuestions.length,
-        answers: userQuizAnswers
+        answers: userQuizAnswers,
+        questions: quizQuestions,
+        topic: quizTopic,
+        difficulty: quizDifficulty
       });
 
       // Clear literal progress
@@ -7405,6 +7447,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       const prevIdx = currentQuestionIndex - 1;
       setCurrentQuestionIndex(prevIdx);
       setSelectedOption(userQuizAnswers[prevIdx] !== undefined ? userQuizAnswers[prevIdx] : null);
+      setIsAnswered(userQuizAnswers[prevIdx] !== undefined);
     }
   };
 
@@ -7414,7 +7457,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
   };
 
   return (
-    <div className={`min-h-screen flex flex-col transition-colors duration-300 font-sans selection:bg-[#DC2626] ${theme === 'dark' ? 'bg-[#0A0F1C] text-white dark' : 'bg-white text-slate-900'} overflow-x-hidden relative`}>
+    <div className={`h-screen flex flex-col transition-colors duration-300 font-sans selection:bg-[#DC2626] ${theme === 'dark' ? 'bg-[#13111C] text-white dark' : 'bg-white text-slate-900'} overflow-hidden relative`}>
       <AnimatePresence>
         {!user && <LoggedOutLanding key="landing" />}
       </AnimatePresence>
@@ -7429,7 +7472,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }} 
-            className={`fixed inset-0 z-[300] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} flex flex-col items-center justify-center space-y-4`}
+            className={`fixed inset-0 z-[300] ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} flex flex-col items-center justify-center space-y-4`}
           >
             <BlinkingBrain size={64} className="text-red-500" />
             <p className={`text-[10px] font-black uppercase tracking-[0.3em] ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'} animate-pulse`}>Processing Authentication...</p>
@@ -7524,7 +7567,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-8 rounded-3xl max-w-lg w-full shadow-2xl relative overflow-hidden`}
+              className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border p-8 rounded-3xl max-w-lg w-full shadow-2xl relative overflow-hidden`}
             >
               <div className="absolute top-0 left-0 w-full h-1 bg-[#DC2626]" />
               <div className="flex flex-col items-center text-center space-y-6">
@@ -7552,7 +7595,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              className={`${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} p-8 rounded-3xl max-w-2xl w-full shadow-2xl relative overflow-hidden max-h-[80vh] flex flex-col`}
+              className={`${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} border ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} p-8 rounded-3xl max-w-2xl w-full shadow-2xl relative overflow-hidden max-h-[80vh] flex flex-col`}
             >
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-black uppercase tracking-tighter text-white">
@@ -7622,20 +7665,60 @@ Respond professionally, concisely, and use LaTeX for math.` }];
         {user && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
-            className="flex flex-col flex-1 h-full overflow-hidden"
+            className={`flex h-full overflow-hidden ${isDesktop ? 'flex-row' : 'flex-col'} flex-1`}
           >
-            {/* HEADER - Only visible on Home tab */}
-            {activeTab === 'home' && (
-              <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'}`}>
-        <div className="flex items-center gap-3">
-          <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#0A0F1C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center relative`}>
-            <Brain size={22} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
-            {totalUnreadMessages > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black flex items-center justify-center rounded-full border border-[#0A0F1C]">
-                {totalUnreadMessages}
-              </span>
+            {/* Desktop Sidebar */}
+            {isDesktop && (
+              <aside className="w-20 bg-[#13111C] border-r border-white/5 flex flex-col items-center py-8 gap-8 shrink-0 z-[611]">
+                 {/* Logo */}
+                 <div className="w-12 h-12 bg-[#13111C] rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.3)] border border-white/10 mb-4 cursor-pointer hover:scale-105 transition-all" onClick={() => setActiveTab('home')}>
+                   <Brain size={26} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
+                 </div>
+                 
+                 {/* Nav Links */}
+                 <div className="flex-1 flex flex-col gap-6">
+                   {[
+                     {id: 'home', icon: Home, label: 'Home'},
+                     {id: 'chat', icon: WhatsAppIcon, label: 'Chat', count: totalUnreadMessages},
+                     {id: 'class', icon: Video, label: 'Class'},
+                     {id: 'tools', icon: LayoutGrid, label: 'Tools'},
+                     {id: 'profile', icon: User, label: 'Profile'}
+                   ].map(item => (
+                     <button key={item.id} onClick={() => setActiveTab(item.id as any)} className={`p-4 rounded-2xl transition-all relative group ${activeTab === item.id ? 'bg-[#DC2626] text-white shadow-lg shadow-red-600/20 active:scale-95' : 'text-white/20 hover:text-white hover:bg-white/5'}`}>
+                       <item.icon size={24} />
+                       <span className="absolute left-full ml-4 px-3 py-1 bg-zinc-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/10 shadow-2xl">
+                         {item.label}
+                       </span>
+                       {item.id === 'chat' && totalUnreadMessages > 0 && (
+                          <span className="absolute top-2 right-2 w-4 h-4 bg-white text-[#DC2626] text-[9px] font-black flex items-center justify-center rounded-full border border-black animate-pulse">
+                            {totalUnreadMessages}
+                          </span>
+                       )}
+                     </button>
+                   ))}
+                 </div>
+                 
+                 {/* Bottom Actions */}
+                 <button onClick={() => setShowPremiumModal(true)} className="p-4 text-yellow-500 hover:scale-110 transition-all"><Sparkles size={24} /></button>
+                 <button onClick={() => setToolsSubTab('menu')} className="p-4 text-white/20 hover:text-white active:rotate-90 transition-all"><Settings size={22} /></button>
+              </aside>
             )}
-          </div>
+            
+            <div className="flex flex-col flex-1 h-full overflow-hidden">
+            {/* HEADER - Only visible on Home tab or if mobile */}
+            {activeTab === 'home' && (
+              <header className={`px-2 sm:px-4 py-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} border-b ${theme === 'dark' ? 'border-white/5' : 'border-slate-100'} ${isDesktop ? 'pt-10' : ''}`}>
+        <div className="flex items-center gap-3">
+          {!isDesktop && (
+            <div className={`w-9 h-9 ${theme === 'dark' ? 'bg-[#13111C] border-[#DC2626]/30 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-slate-100 border-slate-200'} border rounded-2xl flex items-center justify-center relative`}>
+              <Brain size={22} className="text-[#DC2626] drop-shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
+              {totalUnreadMessages > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black flex items-center justify-center rounded-full border border-[#13111C]">
+                  {totalUnreadMessages}
+                </span>
+              )}
+            </div>
+          )}
           <div>
             <h1 className={`text-sm sm:text-xl font-black tracking-tighter italic leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>NSG <span className="text-[#DC2626]">(NUELL STUDY GUIDE)</span></h1>
             <span className={`text-[8px] sm:text-[9px] font-black ${theme === 'dark' ? 'text-white/40' : 'text-slate-400'} uppercase tracking-widest`}>Lecture OS 4.0</span>
@@ -7659,7 +7742,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
           >
             <Bell size={20} />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-[#0A0F1C] animate-bounce">
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-[#13111C] animate-bounce">
                 {unreadCount}
               </span>
             )}
@@ -7694,7 +7777,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
     )}
 
       {/* MAIN CONTENT */}
-      <main className={`flex-1 max-w-4xl w-full mx-auto px-2 sm:px-4 ${activeTab === 'chat' ? 'pb-0' : 'pb-24'} overflow-y-auto flex flex-col custom-scrollbar ${activeTab === 'home' ? 'pt-0' : 'pt-4'}`}>
+      <main className={`flex-1 ${(activeTab === 'chat' || activeTab === 'class' || activeTab === 'ai' || isDesktop) ? 'w-full' : 'max-w-4xl w-full mx-auto px-2 sm:px-4'} ${(activeTab === 'chat' || activeTab === 'class' || activeTab === 'ai') ? 'pb-0 overflow-hidden pt-0' : 'pb-24 overflow-y-auto pt-4'} flex flex-col ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} custom-scrollbar ${isDesktop ? 'px-8' : ''}`}>
         {/* Global Notification System */}
         <AnimatePresence>
           {userNotification && (
@@ -7761,46 +7844,56 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                               if (targetQuizId.startsWith('fin-')) targetQuizId = ''; // Not a persistent quiz link
                             }
 
-                            if (targetQuizId) {
-                                // This will handle both "active progress" and "viewing finished results" 
-                                // by ensuring we have the right questions.
+                            if (targetQuizId && targetQuizId !== 'current-quiz') {
                                 await loadSharedQuiz(targetQuizId);
                                 
-                                // If it was a finished item, set the finished state after loading questions
                                 if (item.score !== undefined) {
                                   setQuizState('finished');
                                   setQuizScore(item.score);
-                                  if (item.answers) {
-                                    setUserQuizAnswers(item.answers);
-                                  }
+                                  if (item.answers) setUserQuizAnswers(item.answers);
                                 }
                                 return;
                             }
 
-                            if (item.score !== undefined) {
-                              setQuizState('finished');
+                            // If it's a finished local quiz with questions and score
+                            if (item.score !== undefined && item.questions) {
+                              setQuizQuestions(item.questions);
                               setQuizScore(item.score);
+                              setQuizState('finished');
                               if (item.answers) setUserQuizAnswers(item.answers);
-                              // Note: If no targetQuizId, it might show old questions if not careful
-                            } else {
-                              // Check for general current quiz progress if no score
-                              const localProgress = localStorage.getItem('nsg_current_quiz_progress');
-                              if (localProgress) {
-                                try {
-                                  const p = JSON.parse(localProgress);
-                                  setQuizQuestions(p.quizQuestions);
-                                  setQuizTopic(p.quizTopic);
-                                  setCurrentQuestionIndex(p.currentQuestionIndex);
-                                  setQuizScore(p.quizScore);
-                                  setUserQuizAnswers(p.userQuizAnswers || []);
-                                  setQuizDifficulty(p.quizDifficulty || 'Medium');
-                                  setQuizQuestionCount(p.quizQuestionCount || p.quizQuestions.length);
-                                  setCurrentQuizId(p.currentQuizId);
-                                  setQuizState('active');
-                                } catch (e) {
-                                  console.error("Failed to restore history quiz progress:", e);
-                                }
+                              if (item.topic) setQuizTopic(item.topic);
+                              if (item.difficulty) setQuizDifficulty(item.difficulty as any);
+                              return;
+                            }
+
+                            // Try to restore unfinished progress
+                            const cleanId = item.id.replace(/^quiz-/, '');
+                            const progressKey = (cleanId === 'current-quiz' || item.id === 'current-quiz') ? 'nsg_current_quiz_progress' : `nsg_quiz_progress_${cleanId}`;
+                            const localProgress = localStorage.getItem(progressKey);
+                            
+                            if (localProgress) {
+                              try {
+                                const p = JSON.parse(localProgress);
+                                setQuizQuestions(p.quizQuestions);
+                                setQuizTopic(p.quizTopic);
+                                setCurrentQuestionIndex(p.currentQuestionIndex);
+                                setQuizScore(p.quizScore);
+                                setUserQuizAnswers(p.userQuizAnswers || []);
+                                setQuizDifficulty(p.quizDifficulty || 'Medium');
+                                setQuizQuestionCount(p.quizQuestionCount || p.quizQuestions.length);
+                                setCurrentQuizId(p.currentQuizId);
+                                setQuizState('active');
+                                setSelectedOption(p.userQuizAnswers?.[p.currentQuestionIndex] !== undefined ? p.userQuizAnswers[p.currentQuestionIndex] : null);
+                                setIsAnswered(p.userQuizAnswers?.[p.currentQuestionIndex] !== undefined);
+                              } catch (e) {
+                                console.error("Failed to restore history quiz progress:", e);
                               }
+                            } else if (item.questions) {
+                                // Fallback: directly from history item if progress storage is gone but questions exist
+                                setQuizQuestions(item.questions);
+                                setQuizTopic(item.title);
+                                setQuizState('active');
+                                setCurrentQuestionIndex(0);
                             }
                           } else if (item.type === 'exam') {
                             setActiveTab('tools');
@@ -7936,7 +8029,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                           onClick={() => {
                             setUserNotification(`${tool.title} is currently in development and will be back soon.`);
                           }}
-                          className={`flex flex-col items-start p-5 rounded-3xl border transition-all text-left group relative overflow-hidden ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
+                          className={`flex flex-col items-start p-5 rounded-3xl border transition-all text-left group relative overflow-hidden ${theme === 'dark' ? 'bg-[#13111C] border-white/10 hover:border-[#DC2626]/50' : 'bg-white border-slate-200 hover:border-[#DC2626]/50 shadow-sm'}`}
                         >
                           <div className="absolute top-2 right-2 bg-[#DC2626] text-white text-[7px] font-black px-2 py-0.5 rounded-full z-10 animate-pulse">
                             SOON
@@ -7999,7 +8092,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                               animate={{ x: 0 }} 
                               exit={{ x: '-100%' }}
                               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                              className={`fixed left-0 top-0 bottom-0 w-1/2 min-w-[280px] z-[70] border-r ${theme === 'dark' ? 'border-white/10 bg-[#0A0F1C]' : 'border-slate-200 bg-white'} flex flex-col shadow-2xl`}
+                              className={`fixed left-0 top-0 bottom-0 w-1/2 min-w-[280px] z-[70] border-r ${theme === 'dark' ? 'border-white/10 bg-[#13111C]' : 'border-slate-200 bg-white'} flex flex-col shadow-2xl`}
                             >
                               <div className={`p-4 border-b ${theme === 'dark' ? 'border-white/10' : 'border-slate-200'} flex items-center justify-between`}>
                                 <button 
@@ -8094,13 +8187,16 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                       </AnimatePresence>
 
                       <div className="flex items-center justify-between mb-2">
-                        {/* History button removed as requested */}
+                        <button onClick={() => setShowRecordSidebar(true)} className={`p-2 ${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border rounded-xl ${theme === 'dark' ? 'text-white/60' : 'text-slate-500'} hover:text-[#DC2626] transition-all flex items-center gap-2`}>
+                          <History size={18} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">History</span>
+                        </button>
                       </div>
 
                       <AnimatePresence mode="wait">
                         {!showAnalysisInRecord ? (
                           <motion.div key="recorder" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-6">
-                            <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl p-8 border relative overflow-hidden shadow-sm`}>
+                            <div className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} rounded-3xl p-8 border relative overflow-hidden shadow-sm`}>
                               <div className="flex flex-col items-center text-center relative z-10">
                                 <div className="relative mb-6">
                                   {isRecording && <motion.div animate={{ scale: 1.6, opacity: 0.1 }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626] rounded-full blur-2xl pointer-events-none" />}
@@ -8201,7 +8297,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                           </motion.div>
                         ) : (
                           <motion.div key="analysis" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                            <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
+                            <div className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
                               <div className="flex items-center justify-between border-b border-white/5 pb-4">
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 bg-[#DC2626]/10 rounded-xl flex items-center justify-center">
@@ -8303,7 +8399,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                   )}
 
                   {toolsSubTab === 'notebook' && (
-                    <motion.div key="notebook" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex flex-col bg-[#0A0F1C] overflow-hidden">
+                    <motion.div key="notebook" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex flex-col bg-[#13111C] overflow-hidden">
                        
                        {/* Side Drawer Overlay */}
                        <AnimatePresence>
@@ -8336,7 +8432,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                      <Mic size={18} className="text-white" />
                                    </div>
                                    <div className="text-left">
-                                     <p className="text-[10px] font-black text-white uppercase tracking-tight">Deep Brain Podcast</p>
+                                     <p className="text-[10px] font-black text-white uppercase tracking-tight">AI Podcast</p>
                                      <p className="text-[8px] text-white/40 font-bold uppercase">Omni & Zeal Discussion</p>
                                    </div>
                                  </button>
@@ -8352,14 +8448,14 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                        </AnimatePresence>
 
                        {/* Header - Flushed to top */}
-                       <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0A0F1C]/80 backdrop-blur-md z-20 shrink-0">
+                       <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#13111C]/80 backdrop-blur-md z-20 shrink-0">
                          <div className="flex items-center gap-4">
                            <button onClick={() => setIsNotebookDrawerOpen(true)} className="p-2 bg-white/5 rounded-xl text-white/40 hover:text-white transition-all"><Menu size={20} /></button>
                            {!selectedNote && (
                              <button onClick={() => setToolsSubTab('menu')} className="p-2 bg-white/5 rounded-xl text-white/40 hover:text-white transition-all"><ArrowLeft size={20}/></button>
                            )}
                            <div className="hidden sm:block">
-                             <h2 className="text-xs font-black text-white uppercase tracking-widest">{isPodcastActive ? 'Deep Brain AI' : 'Notebook'}</h2>
+                             <h2 className="text-xs font-black text-white uppercase tracking-widest">{isPodcastActive ? 'Podcast AI' : 'Notebook'}</h2>
                              <p className="text-[8px] text-[#DC2626] font-bold uppercase tracking-tight">{isPodcastActive ? 'Podcast Mode' : 'Source Library'}</p>
                            </div>
                          </div>
@@ -8383,7 +8479,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                   onClick={() => setIsPodcastActive(true)}
                                   className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-purple-500/20"
                                 >
-                                  <Mic size={14} /> Deep Brain
+                                  <Mic size={14} /> Create Podcast
                                 </button>
                               )}
                               <button onClick={undoNote} disabled={noteHistory.length === 0} className={`p-2 bg-white/5 rounded-xl transition-all ${noteHistory.length === 0 ? 'text-white/5' : 'text-white/40 hover:text-white'}`} title="Undo"><RotateCcw size={16} /></button>
@@ -8434,7 +8530,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                         <button onClick={() => setIsPodcastActive(false)} className="text-white/40 hover:text-white"><ArrowLeft size={18} /></button>
                                         <div>
                                           <h3 className="text-xs font-black text-white uppercase tracking-widest">Omni & Zeal</h3>
-                                          <p className="text-[8px] text-white/40 font-bold uppercase">Deep Brain Discussion</p>
+                                          <p className="text-[8px] text-white/40 font-bold uppercase">Podcast Discussion</p>
                                         </div>
                                       </div>
                                     </div>
@@ -8449,7 +8545,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                             </div>
                                           </div>
                                           <div className="space-y-2">
-                                            <h4 className="text-lg font-black text-white uppercase tracking-tight">Deep Brain Analysis</h4>
+                                            <h4 className="text-lg font-black text-white uppercase tracking-tight">Podcast Analysis</h4>
                                             <p className="text-xs text-white/40 max-w-xs mx-auto">Omni and Zeal are ready to discuss your source content.</p>
                                           </div>
                                           <button 
@@ -8457,7 +8553,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                             disabled={isGeneratingPodcast}
                                             className="px-8 py-4 bg-white text-black font-black rounded-2xl text-[10px] uppercase tracking-widest hover:scale-110 active:scale-95 transition-all disabled:opacity-50 shadow-xl"
                                           >
-                                            {isGeneratingPodcast ? 'Analyzing...' : 'Start Discussion'}
+                                            {isGeneratingPodcast ? 'Analyzing...' : 'Create Podcast'}
                                           </button>
                                         </div>
                                       ) : (
@@ -8466,7 +8562,15 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                             key={d.id} 
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            className={`flex flex-col ${d.char === 'User' ? 'items-end' : 'items-start'}`}
+                                            drag="x"
+                                            dragConstraints={{ left: 0, right: 0 }}
+                                            onDragEnd={(_, info) => {
+                                              if (Math.abs(info.offset.x) > 50 && d.char !== 'User') {
+                                                setReplyingTo(d);
+                                                document.getElementById('podcast-chat-input')?.focus();
+                                              }
+                                            }}
+                                            className={`flex flex-col ${d.char === 'User' ? 'items-end' : 'items-start'} cursor-grab active:cursor-grabbing`}
                                           >
                                             <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed relative group ${d.char === 'User' ? 'bg-[#DC2626] text-white' : (theme === 'dark' ? (d.char === 'Omni' ? 'bg-blue-600/10 text-blue-100 border border-blue-600/20 shadow-lg shadow-blue-500/5' : 'bg-purple-600/10 text-purple-100 border border-purple-600/20 shadow-lg shadow-purple-500/5') : 'bg-white border-slate-200')}`}>
                                               <div className="flex items-center justify-between mb-2">
@@ -8486,7 +8590,8 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                               
                                               {d.replyTo && (
                                                 <div className="mb-3 p-3 bg-white/5 border-l-4 border-white/20 rounded-xl text-[10px] opacity-60 italic line-clamp-2">
-                                                  {d.replyTo}
+                                                  {/* Fix: Avoid displaying ID if replyTo is garbled or an ID string */}
+                                                  {typeof d.replyTo === 'string' && d.replyTo.length < 15 && !d.replyTo.includes(' ') ? 'Replying to previous message...' : d.replyTo}
                                                 </div>
                                               )}
 
@@ -8548,7 +8653,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                                   exit={{ y: 20, opacity: 0, scale: 0.9 }}
                                                   className="absolute left-0 w-56 bg-[#0F172A] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 flex flex-col gap-1 ring-1 ring-white/10"
                                                 >
-                                                  <p className="px-3 py-2 text-[8px] font-black text-white/20 uppercase tracking-widest border-b border-white/5 mb-1">Upload to Deep Brain</p>
+                                                  <p className="px-3 py-2 text-[8px] font-black text-white/20 uppercase tracking-widest border-b border-white/5 mb-1">Upload to Podcast AI</p>
                                                   <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
                                                     <div className="p-2 bg-blue-500/20 rounded-lg group-hover:scale-110 transition-transform"><ImageIcon size={16} className="text-blue-400" /></div>
                                                     <span className="text-[9px] font-black text-white uppercase tracking-widest">Image Source</span>
@@ -8605,7 +8710,8 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                 ) : (
                                 <div className="flex flex-col flex-1 overflow-hidden">
                                   {/* Formatting Toolbar */}
-                                  <div className="flex items-center gap-2 p-2 bg-white/2 border-b border-white/5 overflow-x-auto no-scrollbar z-10 shrink-0">
+                                  <div className="flex items-center gap-2 p-2 bg-white/2 border-b border-white/5 z-40 shrink-0">
+                                     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 flex-1">
                                      <button onClick={() => setNotePreviewMode(!notePreviewMode)} className={`px-4 py-2 rounded-xl text-[9px] font-black transition-all ${notePreviewMode ? 'bg-[#DC2626] text-white shadow-lg shadow-[#DC2626]/20' : 'bg-white/5 text-white hover:bg-white/10'}`}>
                                         {notePreviewMode ? 'EDIT MODE' : 'READER MODE'}
                                      </button>
@@ -8623,12 +8729,12 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                        <AnimatePresence>
                                          {showNoteInsertMenu && (
                                            <>
-                                             <div className="fixed inset-0 z-40" onClick={() => setShowNoteInsertMenu(false)} />
+                                             <div className="fixed inset-0 z-[100]" onClick={() => setShowNoteInsertMenu(false)} />
                                              <motion.div 
                                                initial={{ y: 10, opacity: 0, scale: 0.95 }}
                                                animate={{ y: 0, opacity: 1, scale: 1 }}
                                                exit={{ y: 10, opacity: 0, scale: 0.95 }}
-                                               className="absolute top-full left-0 mt-2 w-52 bg-[#0F172A] border border-white/10 rounded-2xl p-2 shadow-2xl z-50 overflow-hidden ring-1 ring-white/10"
+                                               className="absolute top-full left-0 mt-2 w-52 bg-[#0F172A] border border-white/10 rounded-2xl p-2 shadow-2xl z-[110] overflow-hidden ring-1 ring-white/10"
                                              >
                                                 <p className="px-3 py-2 text-[7px] font-black text-white/20 uppercase tracking-[0.2em] mb-1">Source Types</p>
                                                 <label className="flex items-center gap-3 p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all cursor-pointer group">
@@ -8667,14 +8773,17 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                          <button onMouseDown={(e) => { e.preventDefault(); insertText('**', '**'); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"><Bold size={14} /></button>
                                          <button onMouseDown={(e) => { e.preventDefault(); insertText('*', '*'); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"><Italic size={14} /></button>
                                          <button onMouseDown={(e) => { e.preventDefault(); insertText('\n- '); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-all"><List size={14} /></button>
+
                                        </>
                                      )}
                                   </div>
+                                 </div>
+
 
                                   <div 
                                     ref={scrollContainerRef}
                                     onScroll={handleNoteScroll}
-                                    className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar relative bg-[#0A0F1C]"
+                                    className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar relative bg-[#13111C]"
                                   >
                                      {notePreviewMode ? (
                                        <div className="space-y-6 relative z-10">
@@ -8787,7 +8896,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                                 )}
                               </div>
                             ) : (
-                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 custom-scrollbar bg-[#0A0F1C]">
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 custom-scrollbar bg-[#13111C]">
                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 pb-20">
                             {userNotes.length === 0 ? (
                               <div className="col-span-full py-20 text-center opacity-10 space-y-6">
@@ -8858,7 +8967,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
               </div>
 
               {quizState === 'idle' && (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-6 shadow-sm`}>
+                <div className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border space-y-6 shadow-sm`}>
                   <div className="text-center space-y-2 mb-4">
                     <div className="w-12 h-12 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-2"><Sparkles size={24} className="text-[#DC2626]" /></div>
                     <h3 className="font-bold text-lg text-white">Generate Interactive Quiz</h3>
@@ -9001,24 +9110,63 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                       className="text-lg font-bold leading-tight text-white"
                     />
                     <div className="space-y-3">
-                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => (
-                        <button 
-                          key={idx} 
-                          onClick={() => handleOptionSelect(idx)} 
-                          className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center gap-3 ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]' : 'bg-white/5 border-white/10 text-white/80'}`}
-                        >
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] border ${selectedOption === idx ? 'border-[#DC2626] bg-[#DC2626] text-white' : 'border-white/20 text-white/40'}`}>
-                            {String.fromCharCode(65 + idx)}
-                          </div>
-                          <div className="flex-1">
-                            <MarkdownRenderer 
-                              content={option}
-                              className="text-sm font-medium"
-                            />
-                          </div>
-                        </button>
-                      ))}
+                      {quizQuestions[currentQuestionIndex].options.map((option, idx) => {
+                        const isCorrect = idx === quizQuestions[currentQuestionIndex].correctAnswer;
+                        const isSelected = selectedOption === idx;
+                        const hasAnswered = userQuizAnswers[currentQuestionIndex] !== undefined;
+                        
+                        let variantClasses = 'bg-white/5 border-white/10 text-white/80';
+                        let badgeClasses = 'border-white/20 text-white/40';
+                        
+                        if (hasAnswered) {
+                          if (isCorrect) {
+                            variantClasses = 'border-green-500 bg-green-500/10 text-green-500';
+                            badgeClasses = 'border-green-500 bg-green-500 text-white';
+                          } else if (isSelected) {
+                            variantClasses = 'border-red-500 bg-red-500/10 text-red-500';
+                            badgeClasses = 'border-red-500 bg-red-500 text-white';
+                          }
+                        } else if (isSelected) {
+                          variantClasses = 'border-[#DC2626] bg-[#DC2626]/5 text-[#DC2626]';
+                          badgeClasses = 'border-[#DC2626] bg-[#DC2626] text-white';
+                        }
+
+                        return (
+                          <button 
+                            key={idx} 
+                            onClick={() => handleOptionSelect(idx)} 
+                            disabled={hasAnswered}
+                            className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center gap-3 ${variantClasses}`}
+                          >
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] border shrink-0 ${badgeClasses}`}>
+                              {hasAnswered && isCorrect ? <Check size={12} /> : hasAnswered && isSelected && !isCorrect ? <X size={12} /> : String.fromCharCode(65 + idx)}
+                            </div>
+                            <div className="flex-1">
+                              <MarkdownRenderer 
+                                content={option}
+                                className="text-sm font-medium"
+                              />
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
+
+                    {userQuizAnswers[currentQuestionIndex] !== undefined && quizQuestions[currentQuestionIndex].explanation && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-5 bg-white/5 border border-white/10 rounded-2xl space-y-2"
+                      >
+                        <div className="flex items-center gap-2 text-[#DC2626] text-[10px] font-black uppercase tracking-[0.2em]">
+                          <Info size={14} /> Explanation
+                        </div>
+                        <MarkdownRenderer 
+                          content={quizQuestions[currentQuestionIndex].explanation}
+                          className="text-sm text-white/60 leading-relaxed font-medium"
+                        />
+                      </motion.div>
+                    )}
 
                     <div className="pt-4 flex gap-3">
                       {currentQuestionIndex > 0 && (
@@ -9042,7 +9190,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
               )}
 
               {quizState === 'finished' && (
-                <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-10 rounded-3xl border text-center space-y-8 shadow-sm`}>
+                <div className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} p-10 rounded-3xl border text-center space-y-8 shadow-sm`}>
                   <div className="w-24 h-24 bg-[#DC2626]/10 rounded-full flex items-center justify-center mx-auto relative">
                     <Trophy size={48} className="text-[#DC2626]" />
                     <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 bg-[#DC2626]/5 rounded-full" />
@@ -9518,9 +9666,10 @@ Respond professionally, concisely, and use LaTeX for math.` }];
               theme={theme}
               user={user}
               userHandle={userHandle}
-              onTagOmni={handleOmniTag}
+              onTagOmni={handleTagOmni}
               uploadToCloudinary={uploadToCloudinary}
               setUserNotification={setUserNotification}
+              onChatSelect={(isActive) => setIsChatRoomActive(isActive)}
             />
           )}
 
@@ -9583,7 +9732,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
 
           {/* AI CHAT TAB */}
           {activeTab === 'ai' && (
-            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className={`flex flex-1 ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/5' : 'bg-white border-slate-200'} rounded-2xl sm:rounded-3xl border overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0 flex-col h-full`}>
+            <motion.div key="ai" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity: 0}} className={`flex flex-1 ${theme === 'dark' ? 'bg-[#13111C] border-white/5' : 'bg-white border-slate-200'} rounded-2xl sm:rounded-3xl border overflow-hidden relative shadow-2xl mx-[-8px] sm:mx-0 flex-col h-full`}>
               
               {/* Sidebar Drawer */}
               <AnimatePresence>
@@ -9832,8 +9981,8 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                 </div>
 
                 {/* Input Area */}
-                <div className="p-2 sm:p-6 bg-[#0A0F1C] border-t border-white/5 flex-shrink-0 z-20">
-                  <div className="max-w-3xl mx-auto space-y-4">
+                <div className="p-2 sm:p-6 bg-[#13111C] border-t border-white/5 flex-shrink-0 z-20">
+                  <div className="w-full space-y-4">
                     
                     {/* File Preview Area - Moved above input */}
                     <AnimatePresence>
@@ -9956,7 +10105,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                   >
                     <ArrowLeft size={14} /> Back to List
                   </button>
-                  <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
+                  <div className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} p-8 rounded-3xl border shadow-sm space-y-6`}>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-[10px] font-black text-[#DC2626] uppercase tracking-widest">
                         <Calendar size={12} />
@@ -10035,7 +10184,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                         </div>
                       )}
                     </div>
-                    <label className="absolute bottom-1 right-1 p-2 bg-[#DC2626] text-white rounded-xl cursor-pointer shadow-xl hover:scale-110 active:scale-95 transition-all border-2 border-[#0A0F1C] z-10">
+                    <label className="absolute bottom-1 right-1 p-2 bg-[#DC2626] text-white rounded-xl cursor-pointer shadow-xl hover:scale-110 active:scale-95 transition-all border-2 border-[#13111C] z-10">
                       <Camera size={16} />
                       <input type="file" className="hidden" accept="image/*" onChange={handleProfileImageUpload} />
                     </label>
@@ -10099,7 +10248,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    className="bg-[#0A0F1C] border border-white/10 p-3 sm:p-4 rounded-2xl text-center space-y-1 hover:border-[#DC2626]/30 transition-all group"
+                    className="bg-[#13111C] border border-white/10 p-3 sm:p-4 rounded-2xl text-center space-y-1 hover:border-[#DC2626]/30 transition-all group"
                   >
                     <div className={`w-8 h-8 mx-auto rounded-lg bg-white/5 flex items-center justify-center ${stat.color} group-hover:scale-110 transition-transform`}>
                       <stat.icon size={16} />
@@ -10113,7 +10262,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
               </div>
 
               {/* Editable Fields Section */}
-              <div className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border p-4 sm:p-6 rounded-[2rem] shadow-2xl space-y-4 sm:space-y-6`}>
+              <div className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border p-4 sm:p-6 rounded-[2rem] shadow-2xl space-y-4 sm:space-y-6`}>
                 <div className="flex items-center justify-between border-b border-white/5 pb-4">
                   <div>
                     <h3 className="text-lg font-black text-white uppercase tracking-tighter italic leading-none">Personal Info</h3>
@@ -10230,14 +10379,6 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row items-center gap-3">
-                    {user?.email === "nuellkelechi@gmail.com" && (
-                      <button 
-                        onClick={() => setShowGodMode(true)}
-                        className="w-full sm:w-auto px-6 py-3 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-[#DC2626]/20 flex items-center justify-center gap-2"
-                      >
-                        <ShieldCheck size={14} /> God Mode
-                      </button>
-                    )}
                     <button 
                       onClick={handleLogout}
                       className="w-full sm:w-auto px-6 py-3 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-white/10 flex items-center justify-center gap-2"
@@ -10318,7 +10459,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
 
           {/* HOST EXAM PANEL (FORMERLY ADMIN) */}
           {adminMode && (
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className={`fixed inset-0 z-[110] p-2 sm:p-6 overflow-y-auto ${theme === 'dark' ? 'bg-[#0A0F1C]/95' : 'bg-white/95'} backdrop-blur-xl`}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className={`fixed inset-0 z-[110] p-2 sm:p-6 overflow-y-auto ${theme === 'dark' ? 'bg-[#13111C]/95' : 'bg-white/95'} backdrop-blur-xl`}>
               <div className="max-w-6xl mx-auto space-y-4 sm:space-y-8 pb-32">
                 <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-4 sm:pb-6">
                   <div className="flex items-center gap-2 sm:gap-4">
@@ -10369,7 +10510,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                         initial={{ x: '-100%' }}
                         animate={{ x: 0 }}
                         exit={{ x: '-100%' }}
-                        className={`fixed left-0 top-0 bottom-0 w-[280px] sm:w-[320px] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border-r border-[#DC2626]/20 z-[160] shadow-2xl p-0 flex flex-col`}
+                        className={`fixed left-0 top-0 bottom-0 w-[280px] sm:w-[320px] ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} border-r border-[#DC2626]/20 z-[160] shadow-2xl p-0 flex flex-col`}
                       >
                         <div className="p-6 flex flex-col h-full">
                           <div className="flex items-center justify-between mb-8">
@@ -10728,7 +10869,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                               <div key={i} className="p-3 rounded-xl border space-y-2 bg-white/5 border-white/5 group relative">
                                 <div className="flex items-start justify-between gap-4">
                                   <MarkdownRenderer 
-                                    content={`${i + 1}. ${q.question}`}
+                                    content={`${q.question}`}
                                     className="text-[10px] font-bold leading-tight text-white flex-1"
                                   />
                                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -10759,7 +10900,11 @@ Respond professionally, concisely, and use LaTeX for math.` }];
         </AnimatePresence>
         {/* FOOTER */}
         <footer className={`w-full px-4 py-8 pb-8 flex flex-wrap justify-center gap-6 text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-white/20' : 'text-slate-400'}`}>
-          <p>© 2026 NSG Studio | END-TO-END ENCRYPTED</p>
+          {user?.email === "nuellkelechi@gmail.com" && (
+            <button onClick={() => setShowGodMode(true)} className="text-[#DC2626] hover:text-[#DC2626]/80 transition-colors flex items-center gap-1">
+              <ShieldCheck size={12} /> GOD MODE
+            </button>
+          )}
         </footer>
       </main>
 
@@ -10778,7 +10923,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className={`relative w-full max-w-sm ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-6 shadow-2xl space-y-6`}
+              className={`relative w-full max-w-sm ${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-6 shadow-2xl space-y-6`}
             >
               <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${confirmModal.isDanger ? 'bg-red-500/10 text-red-500' : 'bg-[#DC2626]/10 text-[#DC2626]'}`}>
@@ -10811,19 +10956,72 @@ Respond professionally, concisely, and use LaTeX for math.` }];
       {/* GOD MODE PANEL */}
       <AnimatePresence>
         {showGodMode && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className={`fixed inset-0 z-[200] p-6 overflow-y-auto ${theme === 'dark' ? 'bg-[#0A0F1C]/95' : 'bg-white/95'} backdrop-blur-xl`}>
-            <div className="max-w-7xl mx-auto space-y-8 pb-20">
-              <div className="flex items-center justify-between border-b border-[#DC2626]/20 pb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-[#DC2626] rounded-2xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={`fixed inset-0 z-[200] ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} flex flex-col md:flex-row overflow-hidden`}>
+            {/* Navigation (Sidebar on Desktop, Top-scroll on Mobile) */}
+            <div className={`w-full md:w-72 border-b md:border-b-0 md:border-r ${theme === 'dark' ? 'border-white/10 bg-[#0F172A]' : 'border-zinc-200 bg-zinc-50'} flex flex-col shadow-2xl z-10`}>
+              <div className="p-4 md:p-8 border-b border-[#DC2626]/20 bg-gradient-to-br from-[#DC2626]/5 to-transparent flex items-center justify-between md:block">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 md:w-12 md:h-12 bg-[#DC2626] rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40 shrink-0">
                     <ShieldCheck size={24} className="text-white" />
                   </div>
                   <div>
-                    <h1 className="text-3xl font-black text-[#DC2626] uppercase tracking-tighter italic">God Mode</h1>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">Omnipotent User Control</p>
+                    <h1 className="text-lg md:text-xl font-black text-[#DC2626] uppercase tracking-tighter italic leading-tight">God Mode</h1>
+                    <p className="text-[8px] font-bold uppercase tracking-[0.3em] opacity-40">Administrative v4.2</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <button onClick={() => setShowGodMode(false)} className="md:hidden p-2 text-white/40 hover:text-[#DC2626]">
+                  <XCircle size={24} />
+                </button>
+              </div>
+
+              <nav className="flex-1 p-2 md:p-4 md:space-y-2 flex flex-row md:flex-col overflow-x-auto md:overflow-y-auto no-scrollbar">
+                {[
+                  { id: 'dashboard', label: 'Summary', icon: LayoutDashboard },
+                  { id: 'users', label: 'Users Monitor', icon: User },
+                  { id: 'groups', label: 'Groups', icon: Users },
+                  { id: 'reports', label: 'Safety', icon: AlertTriangle },
+                  { id: 'marketing', label: 'Broadcasting', icon: Mail },
+                  { id: 'blog', label: 'Feed', icon: BookOpen },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setGodTab(item.id as any)}
+                    className={`flex items-center gap-3 px-4 md:px-6 py-3 md:py-4 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shrink-0 md:shrink ${
+                      godTab === item.id 
+                       ? 'bg-[#DC2626] text-white shadow-lg shadow-red-900/30' 
+                       : theme === 'dark' ? 'text-white/40 hover:bg-white/5 hover:text-white' : 'text-zinc-500 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <item.icon size={16} />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </nav>
+
+              <div className="hidden md:block p-8 border-t border-white/5">
+                <button 
+                  onClick={() => setShowGodMode(false)}
+                  className="w-full flex items-center justify-center gap-3 py-4 bg-white/5 hover:bg-[#DC2626] text-white/40 hover:text-white rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all border border-white/5 shadow-inner"
+                >
+                  <LogOut size={18} /> Safety Exit
+                </button>
+              </div>
+            </div>
+
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col overflow-hidden relative">
+              <div className={`px-6 md:px-12 py-6 flex items-center justify-between border-b ${theme === 'dark' ? 'border-white/5' : 'border-zinc-100'}`}>
+                <div>
+                  <h2 className={`text-xl md:text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-zinc-900'} uppercase tracking-tighter italic`}>
+                    {godTab === 'dashboard' && 'Summary Monitor'}
+                    {godTab === 'users' && 'Users Monitor'}
+                    {godTab === 'marketing' && 'Broadcast Hub'}
+                    {godTab === 'blog' && 'Neural Feed'}
+                    {godTab === 'reports' && 'Security Protocol'}
+                  </h2>
+                </div>
+                
+                <div className="hidden sm:flex items-center gap-4">
                   <AnimatePresence>
                     {godModeNotification && (
                       <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#DC2626]/20">
@@ -10831,350 +11029,387 @@ Respond professionally, concisely, and use LaTeX for math.` }];
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  <button 
-                    onClick={() => setShowGodMode(false)} 
-                    className={`p-3 rounded-2xl transition-all ${theme === 'dark' ? 'bg-white/5 text-white/40' : 'bg-zinc-100 text-zinc-500'} hover:bg-[#DC2626]/10`}
-                  >
-                    <XCircle size={24} />
-                  </button>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
+                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                     <span className="text-[8px] font-black text-green-500 uppercase tracking-widest">Live</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold flex items-center gap-2 text-white">
-                    <AlertTriangle size={18} className="text-[#DC2626]" /> 
-                    User Reports ({adminReports.filter(r => r.status === 'pending').length} Pending)
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {adminReports.length === 0 ? (
-                    <div className="col-span-full py-10 text-center text-white/20 uppercase font-black text-[10px]">No reports filed</div>
-                  ) : (
-                    adminReports.map(report => (
-                      <div key={report.id} className={`p-6 rounded-2xl border transition-all ${report.status === 'pending' ? 'bg-[#DC2626]/5 border-[#DC2626]/20' : 'bg-white/5 border-white/5 opacity-60'}`}>
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-[#DC2626] rounded-xl flex items-center justify-center text-white font-black">
-                              {report.reportedHandle?.charAt(0) || '?'}
-                            </div>
-                            <div>
-                              <p className="text-xs font-black text-white uppercase tracking-tight">Reported: @{report.reportedHandle}</p>
-                              <p className="text-[8px] font-bold text-[#DC2626] uppercase">By: @{report.reporterHandle}</p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                             <button 
-                               onClick={async () => {
-                                 await updateDoc(doc(db, 'reports', report.id), { status: 'resolved' });
-                                 setGodModeNotification("Report marked as resolved");
-                               }}
-                               className="p-2 bg-green-600/10 text-green-500 rounded-lg hover:bg-green-600 hover:text-white transition-all text-[8px] font-black uppercase"
-                             >
-                               Resolve
-                             </button>
-                             <button 
-                               onClick={async () => {
-                                 if (window.confirm("Delete this report entry?")) {
-                                   await deleteDoc(doc(db, 'reports', report.id));
-                                 }
-                               }}
-                               className="p-2 bg-white/5 text-white/40 rounded-lg hover:text-red-500 transition-all"
-                             >
-                               <Trash2 size={12} />
-                             </button>
-                          </div>
+              <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+                <div className="max-w-6xl mx-auto space-y-6 md:space-y-8 pb-32">
+                  
+                  {godTab === 'dashboard' && (
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
+                      {[
+                        { label: 'Total Users', value: allUsers.length, icon: User, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                        { label: 'Groups', value: allGroups.length, icon: Users, color: 'text-purple-500', bg: 'bg-purple-500/10' },
+                        { label: 'Safety Reports', value: allReports.length, icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10' },
+                        { label: 'Feed Content', value: blogPosts.length, icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+                        { label: 'Global Status', value: 'ONLINE', icon: Zap, color: 'text-yellow-500', bg: 'bg-yellow-500/10' }
+                      ].map((stat, i) => (
+                        <div key={i} className="bg-white/5 border border-white/10 p-4 md:p-6 rounded-2xl md:rounded-[2rem] shadow-xl">
+                           <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl ${stat.bg} flex items-center justify-center mb-3 md:mb-6`}>
+                              <stat.icon size={16} className={stat.color} />
+                           </div>
+                           <p className="text-[7px] md:text-[9px] font-black text-white/30 uppercase tracking-[0.2em] mb-1">{stat.label}</p>
+                           <p className="text-xl md:text-3xl font-black text-white tracking-tighter italic">{stat.value}</p>
                         </div>
-
-                        <div className="space-y-3">
-                          <p className="text-[8px] font-black text-white/30 uppercase tracking-widest border-b border-white/5 pb-1">Context Messages (Last 5)</p>
-                          <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                            {report.messages?.map((m: any, idx: number) => (
-                              <div key={idx} className="p-2 bg-white/5 rounded-lg border border-white/5">
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-[7px] font-black text-[#DC2626] uppercase">@{m.sender}</span>
-                                  <span className="text-[6px] text-white/20 uppercase">{new Date(m.time?.seconds * 1000 || m.time).toLocaleTimeString()}</span>
-                                </div>
-                                <p className="text-[10px] text-white/80 leading-relaxed">{m.text}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
-                           <p className="text-[7px] text-white/20 uppercase font-bold tracking-widest">
-                             {report.timestamp?.toDate ? report.timestamp.toDate().toLocaleString() : 'Recent'}
-                           </p>
-                           <button 
-                             onClick={() => {
-                               const userToBlock = allUsers.find(u => u.id === report.reportedId || u.username === report.reportedHandle);
-                               if (userToBlock) {
-                                 handleUpdateUserStatus(userToBlock.id, 'restricted');
-                                 setGodModeNotification(`User @${report.reportedHandle} RESTRICTED`);
-                               }
-                             }}
-                             className="px-3 py-1 bg-red-600 text-white rounded-lg text-[8px] font-black uppercase hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
-                           >
-                             Restrict User
-                           </button>
-                        </div>
-                      </div>
-                    ))
+                      ))}
+                    </div>
                   )}
-                </div>
-              </div>
 
-              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold flex items-center gap-2 text-white"><BookOpen size={18} className="text-[#DC2626]" /> Blog Management ({blogPosts.length})</h3>
-                  <button 
-                    onClick={() => setIsAddingPost(true)}
-                    className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#DC2626]/80 transition-all flex items-center gap-2"
-                  >
-                    <Plus size={14} /> New Article
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {blogPosts.map(post => (
-                    <div key={post.id} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between group">
-                      <div className="truncate pr-4 flex-1">
-                        <p className="font-bold text-white text-xs truncate">{post.title}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <p className="text-[8px] text-white/30 uppercase tracking-widest">{post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Draft'}</p>
-                          <div className="flex gap-1">
-                            {Object.entries(post.reactions || {}).map(([emoji, count]) => (
-                              <span key={emoji} className="text-[8px] bg-white/5 px-1 rounded">{emoji} {count as any}</span>
-                            ))}
-                          </div>
+                  {godTab === 'blog' && (
+                    <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] space-y-8">
+                      <div className="flex items-center justify-between border-b border-white/5 pb-8">
+                        <div>
+                          <h3 className="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-3 italic">
+                            <BookOpen size={28} className="text-[#DC2626]" /> Matrix Archives
+                          </h3>
+                          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Manage global publications</p>
                         </div>
+                        <button 
+                          onClick={() => setIsAddingPost(true)}
+                          className="bg-[#DC2626] text-white px-10 py-5 rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.1em] hover:bg-red-700 transition-all flex items-center gap-2 shadow-2xl shadow-red-900/40"
+                        >
+                          <Plus size={18} /> Add Entry
+                        </button>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => { setEditingPost(post); setIsEditingPost(true); }} className="p-2 text-white/20 hover:text-blue-400 transition-colors">
-                          <Edit3 size={14} />
-                        </button>
-                        <button onClick={() => deletePost(post.id)} className="p-2 text-white/20 hover:text-[#DC2626] transition-colors">
-                          <Trash2 size={14} />
-                        </button>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {blogPosts.map(post => (
+                          <div key={post.id} className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] flex items-center justify-between group hover:bg-white/[0.05] transition-all">
+                            <div className="truncate pr-4 flex-1">
+                              <p className="font-black text-white text-sm truncate uppercase tracking-tight mb-2 italic">{post.title}</p>
+                              <div className="flex items-center gap-4">
+                                <p className="text-[8px] text-white/20 font-black uppercase tracking-[0.2em]">{post.timestamp?.toDate ? post.timestamp.toDate().toLocaleDateString() : 'Draft'}</p>
+                                <div className="flex gap-2">
+                                  {Object.entries(post.reactions || {}).map(([emoji, count]) => (
+                                    <span key={emoji} className="text-[9px] bg-[#DC2626]/10 text-[#DC2626] px-2 py-0.5 rounded-lg border border-[#DC2626]/10 font-bold">{emoji} {count as any}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => { setEditingPost(post); setIsEditingPost(true); }} className="p-3 bg-white/5 rounded-xl text-white/30 hover:text-white transition-all"><Edit3 size={18} /></button>
+                              <button onClick={() => deletePost(post.id)} className="p-3 bg-white/5 rounded-xl text-white/30 hover:text-red-500 transition-all"><Trash2 size={18} /></button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  )}
 
-              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold flex items-center gap-2 text-white"><Mail size={18} className="text-[#DC2626]" /> Marketing Emails ({emailTemplates.length})</h3>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={initMarketingTemplates}
-                      className="bg-white/5 text-white/40 px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-white/10 transition-all font-mono"
-                    >
-                      Init Defaults
-                    </button>
-                    <button 
-                      onClick={() => setTemplateEditForm({ name: '', subject: '', body: '', active: true })}
-                      className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#DC2626]/80 transition-all flex items-center gap-2 shadow-lg shadow-[#DC2626]/20"
-                    >
-                      <Plus size={14} /> New Template
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-1 space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                    {emailTemplates.length === 0 && <p className="text-[10px] text-white/20 uppercase font-bold text-center py-10">No templates</p>}
-                    {emailTemplates.map(t => (
-                      <div key={t.id} className={`p-4 rounded-2xl border transition-all cursor-pointer group ${templateEditForm?.id === t.id ? 'bg-[#DC2626]/10 border-[#DC2626]/50 shadow-inner' : 'bg-white/5 border-white/10 hover:border-white/30'}`} onClick={() => setTemplateEditForm(t)}>
-                        <div className="flex items-center justify-between gap-2">
-                          <p className={`text-[10px] font-black uppercase truncate ${t.active ? 'text-white' : 'text-white/20'}`}>{t.name}</p>
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setTemplateEditForm(t); }} 
-                              className="p-1.5 bg-white/5 rounded-lg text-white/40 hover:text-white transition-all"
-                              title="Edit Template"
-                            >
-                              <Edit3 size={12} />
-                            </button>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); deleteEmailTemplate(t.id); }} 
-                              className="p-1.5 bg-white/5 rounded-lg text-white/40 hover:text-red-500 transition-all"
-                              title="Delete Template"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-[8px] font-bold text-white/30 uppercase truncate mt-1">{t.subject}</p>
+                  {godTab === 'groups' && (
+                    <div className="bg-white/5 border border-white/10 p-8 rounded-[2.5rem] space-y-8">
+                      <div>
+                        <h3 className="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-3 italic">
+                          <Users size={28} className="text-[#DC2626]" /> Collective Clusters
+                        </h3>
+                        <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Manage all distributed groups</p>
                       </div>
-                    ))}
-                  </div>
-
-                  <div className={`md:col-span-2 rounded-3xl p-6 border transition-all ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-zinc-200'} shadow-sm min-h-[400px]`}>
-                    {templateEditForm ? (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Template Label</p>
-                            <input value={templateEditForm.name} onChange={e => setTemplateEditForm({...templateEditForm, name: e.target.value})} className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#DC2626]/50 transition-all`} placeholder="e.g. Logic Engine Promo" />
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-center px-1">
-                              <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Email Subject</p>
-                              <span className="text-[6px] font-black text-[#DC2626] uppercase">personalize with ${"{name}"}</span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {allGroups.map(group => (
+                          <div key={group.id} className="bg-white/[0.02] border border-white/5 p-6 rounded-[2rem] flex items-center justify-between">
+                            <div className="flex items-center gap-4 truncate">
+                              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#DC2626] to-red-900 flex items-center justify-center text-white font-black text-lg">
+                                {group.photoURL ? <img src={group.photoURL} className="w-full h-full object-cover rounded-2xl" /> : group.name.charAt(0)}
+                              </div>
+                              <div className="truncate">
+                                <p className="font-black text-white text-sm uppercase tracking-tight italic truncate">{group.name}</p>
+                                <p className="text-[8px] text-white/30 uppercase tracking-widest">{group.members?.length || 0} Summaries Connected</p>
+                              </div>
                             </div>
-                            <input value={templateEditForm.subject} onChange={e => setTemplateEditForm({...templateEditForm, subject: e.target.value})} className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-xl px-4 py-2.5 text-xs outline-none focus:border-[#DC2626]/50 transition-all`} placeholder="Catchy subject line..." />
+                            <button 
+                              onClick={async () => {
+                                if (confirm('Erase this cluster?')) {
+                                  await deleteDoc(doc(db, 'chats', group.id));
+                                  setGodModeNotification("Group cluster vaporized.");
+                                }
+                              }}
+                              className="p-3 bg-white/5 rounded-xl text-white/20 hover:text-red-500 transition-all"
+                            >
+                              <Trash2 size={18} />
+                            </button>
                           </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {godTab === 'reports' && (
+                    <div className="bg-white/5 border border-white/10 p-4 md:p-8 rounded-[2.5rem] space-y-6 md:space-y-8">
+                       <div>
+                          <h3 className="text-xl md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-3 italic">
+                            <AlertTriangle size={24} className="text-[#DC2626]" /> Breach Protocol
+                          </h3>
+                          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Review critical security violations</p>
+                          <p className="text-[9px] text-white/40 mt-2 leading-relaxed">
+                            These reports help you identify and manage security violations, suspect behavior, and toxic interactions within the community. Action these immediately to maintain platform integrity.
+                          </p>
+                       </div>
+
+                       <div className="space-y-8">
+                        {allReports.length === 0 && (
+                          <div className="text-center py-32 bg-white/[0.02] rounded-[3rem] border border-white/5">
+                             <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <ShieldCheck size={40} className="text-green-500" />
+                             </div>
+                             <p className="text-xl font-black text-white/20 uppercase tracking-tighter">Safe Passage Confirmed</p>
+                             <p className="text-[10px] font-bold text-white/10 uppercase tracking-widest mt-2">No active breaches in sector</p>
+                          </div>
+                        )}
+                        {allReports.map(report => (
+                          <div key={report.id} className="bg-white/[0.02] border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl">
+                             <div className="p-8 bg-red-600/5 border-b border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                   <div className="w-12 h-12 bg-red-500/20 rounded-[1.25rem] flex items-center justify-center text-red-500"><AlertTriangle size={24} /></div>
+                                   <div>
+                                      <p className="text-sm font-black text-white uppercase tracking-tight">Summary Suspect: <span className="text-red-500">@{report.suspectHandle}</span></p>
+                                      <p className="text-[9px] font-bold text-white/20 uppercase tracking-[0.2em] mt-0.5">Reporter Auth: {report.reporterEmail}</p>
+                                   </div>
+                                </div>
+                                <div className="text-right">
+                                   <p className="text-[10px] font-black text-white uppercase tracking-tighter italic">Status: Priority Zero</p>
+                                   <p className="text-[8px] font-mono text-white/10 mt-1 uppercase">{report.timestamp?.toDate ? report.timestamp.toDate().toLocaleString() : 'Recent'}</p>
+                                </div>
+                             </div>
+                             <div className="p-8 space-y-6">
+                                <div className="bg-[#13111C] rounded-[2rem] p-8 border border-white/5 relative overflow-hidden shadow-inner">
+                                   <div className="absolute top-0 right-0 p-6 opacity-[0.03]">
+                                      <Database size={100} />
+                                   </div>
+                                   <p className="text-[9px] font-black text-white/20 uppercase tracking-widest border-b border-white/5 pb-4 mb-6 italic">Evidence Matrix Extraction</p>
+                                   <div className="space-y-4">
+                                     {report.messages.map((msg: any, idx: number) => (
+                                       <div key={idx} className="flex gap-6 items-start">
+                                          <div className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest shrink-0 mt-1 ${msg.senderId === report.suspectId ? 'bg-red-500/20 text-red-500 border border-red-500/20' : 'bg-white/5 text-white/40 border border-white/5'}`}>
+                                            {msg.senderId === report.suspectId ? 'SUSPECT' : 'REPORTER'}
+                                          </div>
+                                          <p className="text-sm text-white/90 font-medium leading-relaxed">{msg.text}</p>
+                                       </div>
+                                     ))}
+                                   </div>
+                                </div>
+                                <div className="flex items-center justify-end gap-4 pt-4">
+                                   <button onClick={() => handleReportAction(report.id, 'dismiss')} className="px-10 py-5 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all">Dismiss</button>
+                                   <button onClick={() => handleReportAction(report.id, 'warn')} className="px-10 py-5 bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-black rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all">Warn Protocol</button>
+                                   <button onClick={() => handleReportAction(report.id, 'ban')} className="px-12 py-5 bg-[#DC2626] text-white rounded-3xl text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-red-900/40 hover:scale-105 active:scale-95 transition-all">Deactivate Summary</button>
+                                </div>
+                             </div>
+                          </div>
+                        ))}
+                       </div>
+                    </div>
+                  )}
+
+                  {godTab === 'users' && (
+                    <div className="bg-white/5 border border-white/10 p-4 md:p-8 rounded-[2rem] md:rounded-[3rem] space-y-6 md:space-y-10 shadow-sm relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-6 md:p-10 opacity-[0.02] pointer-events-none">
+                        <Users className="w-[150px] h-[150px] md:w-[200px] md:h-[200px]" />
+                      </div>
+                      <div className="flex items-center justify-between border-b border-white/5 pb-6 md:pb-8">
+                        <div>
+                          <h3 className="text-xl md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-3 italic">
+                             <Database className="w-6 h-6 md:w-8 md:h-8 text-[#DC2626]" /> Population Terminal
+                          </h3>
                         </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between items-center px-1">
-                            <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">Body (${"{name}"} or {"{{name}}"} supported)</p>
-                          </div>
-                          <textarea 
-                            value={templateEditForm.body} 
-                            onChange={e => setTemplateEditForm({...templateEditForm, body: e.target.value})} 
-                            className={`w-full ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'} border rounded-2xl px-4 py-3 text-[10px] font-mono outline-none focus:border-[#DC2626]/50 transition-all h-64 resize-none leading-relaxed`}
-                            placeholder="Hi ${name}, discover our new tools..."
-                          />
+                      </div>
+
+                      <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left font-sans">
+                          <thead>
+                            <tr className="uppercase tracking-[0.2em] border-b border-white/5 text-white/20 font-black italic">
+                              <th className="py-4 px-4">User Identity</th>
+                              <th className="py-4 px-4">Academic Data</th>
+                              <th className="py-4 px-4">Privileges</th>
+                              <th className="py-4 px-4 text-right">Direct Control</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-white/70">
+                            {allUsers.map(u => {
+                               const lastSeenTime = u.lastSeen?.toDate ? u.lastSeen.toDate() : (u.lastSeen ? new Date(u.lastSeen) : null);
+                               const isOnline = lastSeenTime && (Date.now() - lastSeenTime.getTime() < 180000); // 3 minutes
+
+                               return (
+                               <tr key={u.id} className={`border-b transition-all border-white/5 hover:bg-white/[0.02] ${u.status === 'deleted' ? 'opacity-30' : ''}`}>
+                                 <td className="py-4 px-4">
+                                   <div className="flex items-center gap-3">
+                                     <div className="w-10 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center font-black text-[#DC2626] shadow-inner text-sm relative">
+                                       {u.photoURL ? <img src={u.photoURL} className="w-full h-full rounded-xl object-cover" /> : (u.displayName?.charAt(0) || u.email?.charAt(0) || '?')}
+                                       {isOnline && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-[#13111C] shadow-[0_0_8px_#22c55e]" title="Online" />}
+                                     </div>
+                                     <div className="min-w-0">
+                                       <p className="font-black text-white uppercase tracking-tight leading-none mb-1 text-[11px] italic truncate">{u.fullName || u.displayName || 'Anonymous'}</p>
+                                       <p className="text-[7px] font-mono opacity-30 uppercase tracking-[0.1em] truncate">{u.email}</p>
+                                       {isOnline && <p className="text-[6px] font-black text-green-500 uppercase tracking-widest mt-0.5">ESTABLISHED_UPLINK</p>}
+                                     </div>
+                                   </div>
+                                 </td>
+                                 <td className="py-4 px-4 space-y-1">
+                                    <div className="space-y-0.5">
+                                      <p className="text-[8px] font-black text-white uppercase tracking-tight">MATRIC: {u.matric || 'N/A'}</p>
+                                      <p className="text-[8px] font-bold text-white/40 uppercase truncate max-w-[120px]">SCHOOL: {u.university || 'N/A'}</p>
+                                      <p className="text-[8px] font-bold text-white/40 uppercase">LEVEL: {u.level || '?'}</p>
+                                      <p className="text-[8px] font-bold text-white/40 uppercase truncate max-w-[120px]">DEPT: {u.department || '?'}</p>
+                                    </div>
+                                 </td>
+                                 <td className="py-4 px-4">
+                                    <div className="flex flex-col gap-1.5">
+                                       <button 
+                                         onClick={() => updateUserPermissions(u.id, 'bypassAllPayments', !u.bypassAllPayments)}
+                                         className="flex items-center gap-1.5 group cursor-pointer"
+                                       >
+                                          <div className={`w-2 h-2 rounded-full transition-all ${u.bypassAllPayments ? 'bg-[#DC2626] shadow-[0_0_8px_rgba(220,38,38,0.5)]' : 'bg-white/10'}`} />
+                                          <p className={`text-[7px] font-black uppercase tracking-widest transition-all ${u.bypassAllPayments ? 'text-white' : 'text-white/20 group-hover:text-white/40'}`}>Master Bypass: {u.bypassAllPayments ? 'ON' : 'OFF'}</p>
+                                       </button>
+                                       <div className="flex items-center gap-1.5">
+                                          <div className={`w-2 h-2 rounded-full ${u.isPremium ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)]' : 'bg-white/10'}`} />
+                                          <p className={`text-[7px] font-black uppercase tracking-widest ${u.isPremium ? 'text-yellow-500' : 'text-white/20'}`}>Premium Status: {u.isPremium ? 'ACTIVE' : 'LOCKED'}</p>
+                                       </div>
+                                    </div>
+                                 </td>
+                                 <td className="py-4 px-4">
+                                    <div className="flex items-center gap-2 justify-end">
+                                       <button 
+                                         onClick={() => setEditingUser(u)} 
+                                         className="w-[21px] h-[20px] bg-white/5 border border-white/5 rounded-md text-white/30 hover:text-white hover:border-white/10 transition-all flex items-center justify-center"
+                                         title="EDIT"
+                                       >
+                                         <Edit3 size={10} />
+                                       </button>
+                                       <button 
+                                         onClick={() => toggleUserStatus(u.id, u.status)} 
+                                         className={`px-3 py-1.5 rounded-lg text-[7px] font-black uppercase transition-all shadow-lg ${u.status === 'deleted' ? 'bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-black shadow-green-900/10' : 'bg-[#DC2626]/20 text-[#DC2626] hover:bg-[#DC2626] hover:text-white shadow-red-900/10'}`}
+                                       >
+                                         {u.status === 'deleted' ? 'RESTORE' : 'TERMINATE'}
+                                       </button>
+                                    </div>
+                                 </td>
+                               </tr>
+                               );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {godTab === 'marketing' && (
+                    <div className="bg-white/5 border border-white/10 p-4 md:p-10 rounded-[2rem] md:rounded-[3rem] space-y-6 md:space-y-10 relative overflow-hidden shadow-2xl">
+                      <div className="absolute top-0 right-0 p-6 md:p-10 opacity-[0.02] pointer-events-none">
+                         <Mail className="w-[150px] h-[150px] md:w-[250px] md:h-[250px]" />
+                      </div>
+                      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-white/5 pb-6 md:pb-10 gap-4">
+                        <div>
+                          <h3 className="text-xl md:text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3 md:gap-4 italic leading-none">
+                             <Mail className="w-6 h-6 md:w-8 md:h-8 text-[#DC2626]" /> Neural Outreach
+                          </h3>
                         </div>
-                        <div className="flex items-center justify-between pt-2">
-                          <div className="flex items-center gap-3">
-                            <label className="relative inline-flex items-center cursor-pointer">
-                              <input type="checkbox" checked={templateEditForm.active} onChange={e => setTemplateEditForm({...templateEditForm, active: e.target.checked})} className="sr-only peer" />
-                              <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#DC2626]"></div>
-                              <span className="ml-3 text-[9px] font-black text-white/40 uppercase tracking-widest">Active Template</span>
-                            </label>
-                          </div>
-                          <button onClick={() => handleSaveEmailTemplate(templateEditForm)} className="bg-[#DC2626] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#DC2626]/90 transition-all flex items-center gap-2 shadow-xl shadow-[#DC2626]/20">
-                            <Save size={16} /> Save Changes
+                        <div className="flex items-center gap-4">
+                          <button onClick={initMarketingTemplates} className="px-10 py-5 bg-white/5 border border-white/10 rounded-3xl text-[10px] font-black uppercase tracking-[0.2em] text-white/40 hover:text-white transition-all">Clean History</button>
+                          <button onClick={() => setTemplateEditForm({ name: '', subject: '', body: '', active: true })} className="bg-[#DC2626] text-white px-12 py-5 rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.1em] shadow-[0_15px_30px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 transition-all flex items-center gap-3">
+                            <Plus size={20} /> Deploy Node
                           </button>
                         </div>
                       </div>
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-20 py-20">
-                        <Mail size={48} />
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em]">Select a template to edit</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 ${templateEditForm?.id ? 'bg-[#DC2626]/20 text-[#DC2626]' : 'bg-white/5 text-white/10'} rounded-2xl flex items-center justify-center transition-all`}>
-                        <Zap size={24} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-black uppercase text-white leading-tight">Broadcast Engine</p>
-                        <p className="text-[8px] font-bold text-white/30 uppercase tracking-[0.2em]">
-                          {templateEditForm?.id ? `Targeting: ${broadcastTarget.toUpperCase()}` : 'Select a template'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
-                      {(['all', 'premium', 'free'] as const).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => setBroadcastTarget(t)}
-                          className={`px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${broadcastTarget === t ? 'bg-[#DC2626] text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <button 
-                    onClick={triggerMarketingBlast}
-                    disabled={!templateEditForm?.id}
-                    className={`w-full md:w-auto px-10 py-4 font-black rounded-2xl text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 ${
-                      templateEditForm?.id 
-                        ? 'bg-[#DC2626] hover:bg-red-700 text-white shadow-2xl shadow-red-600/30' 
-                        : 'bg-white/5 text-white/10 cursor-not-allowed border border-white/5'
-                    }`}
-                  >
-                    Force Mass Blast
-                  </button>
-                </div>
-              </div>
+                      <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
+                        <div className="lg:col-span-1 space-y-4 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
+                          <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] mb-4 pl-2">Stored Procedures</p>
+                          {emailTemplates.map(t => (
+                            <div key={t.id} className={`p-6 rounded-[2rem] border transition-all cursor-pointer group relative overflow-hidden ${templateEditForm?.id === t.id ? 'bg-[#DC2626] border-[#DC2626] shadow-2xl' : 'bg-white/2 border-white/5 hover:border-white/20 hover:bg-white/[0.05]'}`} onClick={() => setTemplateEditForm(t)}>
+                                {templateEditForm?.id === t.id && (
+                                  <div className="absolute top-2 right-4 text-white/20 font-black text-[30px] italic pointer-events-none">#ED</div>
+                                )}
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className={`text-xs font-black uppercase truncate tracking-tight ${templateEditForm?.id === t.id ? 'text-white' : 'text-white/80'}`}>{t.name}</p>
+                                </div>
+                                <p className={`text-[8px] font-bold uppercase truncate tracking-widest ${templateEditForm?.id === t.id ? 'text-white/60' : 'text-white/20'}`}>{t.subject}</p>
+                            </div>
+                          ))}
+                        </div>
 
-              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold flex items-center gap-2 text-white"><Database size={18} className="text-[#DC2626]" /> User Directory ({allUsers.length})</h3>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-[10px]">
-                    <thead>
-                      <tr className="uppercase tracking-widest border-b text-white/30 border-white/5">
-                        <th className="py-3 px-2">User Info</th>
-                        <th className="py-3 px-2">Academic Info</th>
-                        <th className="py-3 px-2">Status</th>
-                        <th className="py-3 px-2">Hosting Payment</th>
-                        <th className="py-3 px-2">Taking Payment</th>
-                        <th className="py-3 px-2">Global Bypass</th>
-                        <th className="py-3 px-2 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-white/70">
-                      {allUsers.map(u => (
-                        <tr key={u.id} className={`border-b transition-colors border-white/5 hover:bg-white/5 ${u.status === 'deleted' ? 'opacity-50 grayscale' : ''}`}>
-                          <td className="py-4 px-2">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center font-bold text-xs">
-                                {u.displayName?.charAt(0) || u.email?.charAt(0) || '?'}
+                        <div className="lg:col-span-3 rounded-[3rem] p-10 bg-[#070B14] border border-white/5 shadow-[0_30px_60px_rgba(0,0,0,0.5)]">
+                          {templateEditForm ? (
+                            <div className="space-y-6">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                  <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em] ml-4">Logical Label</p>
+                                  <input value={templateEditForm.name} onChange={e => setTemplateEditForm({...templateEditForm, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-sm font-black text-white outline-none focus:border-[#DC2626] transition-all bg-opacity-50" placeholder="Node identifier..." />
+                                </div>
+                                <div className="space-y-2">
+                                  <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em] ml-4">Encrypted Subject</p>
+                                  <input value={templateEditForm.subject} onChange={e => setTemplateEditForm({...templateEditForm, subject: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-sm font-black text-white outline-none focus:border-[#DC2626] transition-all bg-opacity-50" placeholder="Direct mind-link subject..." />
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-bold text-white">{u.fullName || u.displayName || 'Anonymous'}</p>
-                                <p className="text-[8px] font-mono opacity-50">{u.email}</p>
-                                <p className="text-[8px] font-mono text-[#DC2626]">{u.matric || 'No Matric'} | {u.dob || 'No DOB'}</p>
+                              <div className="space-y-2">
+                                <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em] ml-4">Directive Body (Markdown + Macros Enabled)</p>
+                                <textarea value={templateEditForm.body} onChange={e => setTemplateEditForm({...templateEditForm, body: e.target.value})} className="w-full bg-white/[0.01] border border-white/10 rounded-[2.5rem] px-8 py-8 text-xs font-mono text-white/80 outline-none focus:border-[#DC2626] transition-all h-[350px] resize-none leading-relaxed shadow-inner" placeholder="Initiate handshake protocol..." />
+                              </div>
+                              <div className="flex items-center justify-between pt-8 border-t border-white/5">
+                                <div className="flex gap-6">
+                                   <label className="flex items-center gap-4 cursor-pointer group">
+                                      <input type="checkbox" checked={templateEditForm.active} onChange={e => setTemplateEditForm({...templateEditForm, active: e.target.checked})} className="sr-only peer" />
+                                      <div className="w-12 h-6 bg-white/5 border border-white/10 rounded-full peer-checked:bg-[#DC2626] transition-all relative after:absolute after:top-[3px] after:left-[3px] after:bg-white/20 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-6 peer-checked:after:bg-white" />
+                                      <span className="text-[10px] font-black text-white/20 group-hover:text-white transition-all uppercase tracking-[0.2em]">Live Status</span>
+                                   </label>
+                                </div>
+                                <div className="flex gap-4">
+                                   <button onClick={() => deleteEmailTemplate(templateEditForm.id)} className="px-10 py-5 bg-white/5 text-white/30 hover:text-red-500 rounded-3xl text-[10px] font-black uppercase tracking-widest transition-all">Vaporize</button>
+                                   <button onClick={() => handleSaveEmailTemplate(templateEditForm)} className="bg-[#DC2626] text-white px-14 py-5 rounded-[1.5rem] text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-red-900/40 hover:scale-105 active:scale-95 transition-all">Commit Node</button>
+                                </div>
                               </div>
                             </div>
-                          </td>
-                          <td className="py-4 px-2">
-                             <div className="space-y-1">
-                                <p className="text-[8px] text-white/60 font-black uppercase truncate max-w-[120px]">{u.university || 'No University'}</p>
-                                <p className="text-[8px] text-[#DC2626] font-bold uppercase">{u.level || 'No Level'} | {u.department || 'No Dept'}</p>
-                                <p className="text-[7px] text-white/30 uppercase font-mono">{u.faculty || 'No Faculty'}</p>
-                             </div>
-                          </td>
-                          <td className="py-4 px-2">
-                            <button onClick={() => toggleUserStatus(u.id, u.status)} className={`px-2 py-1 rounded-md font-black uppercase tracking-tighter ${u.status === 'deleted' ? 'bg-[#DC2626]/20 text-[#DC2626]' : 'bg-green-600/20 text-green-500'}`}>
-                              {u.status === 'deleted' ? 'Deleted' : 'Active'}
-                            </button>
-                          </td>
-                          <td className="py-4 px-2">
-                            <button onClick={() => updateUserPermissions(u.id, 'bypassHostingPayment', !u.bypassHostingPayment)} className={`px-2 py-1 rounded-md font-black uppercase tracking-tighter ${u.bypassHostingPayment ? 'bg-green-600/20 text-green-500' : 'bg-white/10 text-white/40'}`}>
-                              {u.bypassHostingPayment ? 'Bypassed' : 'Required'}
-                            </button>
-                          </td>
-                          <td className="py-4 px-2">
-                            <button onClick={() => updateUserPermissions(u.id, 'bypassTakingPayment', !u.bypassTakingPayment)} className={`px-2 py-1 rounded-md font-black uppercase tracking-tighter ${u.bypassTakingPayment ? 'bg-green-600/20 text-green-500' : 'bg-white/10 text-white/40'}`}>
-                              {u.bypassTakingPayment ? 'Bypassed' : 'Required'}
-                            </button>
-                          </td>
-                          <td className="py-4 px-2">
-                            <button onClick={() => updateUserPermissions(u.id, 'bypassAllPayments', !u.bypassAllPayments)} className={`px-2 py-1 rounded-md font-black uppercase tracking-tighter ${u.bypassAllPayments ? 'bg-[#DC2626] text-white' : 'bg-white/10 text-white/40'}`}>
-                              {u.bypassAllPayments ? 'GOD BYPASS' : 'Normal'}
-                            </button>
-                          </td>
-                          <td className="py-4 px-2 text-right space-x-2">
-                            <button onClick={() => setEditingUser(u)} className="p-2 transition-all text-white/30 hover:text-[#DC2626]" title="Edit User"><Edit3 size={14} /></button>
-                            <button onClick={() => toggleUserStatus(u.id, u.status)} className="p-2 transition-all text-white/30 hover:text-[#DC2626]" title={u.status === 'deleted' ? 'Revive' : 'Delete'}>
-                              {u.status === 'deleted' ? <RefreshCcw size={14} /> : <Trash2 size={14} />}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center opacity-10 py-32 bg-white/[0.01] rounded-[3rem] border border-dashed border-white/10">
+                              <Zap size={64} className="mb-6" />
+                              <p className="text-xl font-black uppercase tracking-[0.4em]">Awaiting Uplink</p>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Select a neural template to initiate modification</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pt-10 border-t border-white/5 flex flex-col xl:flex-row items-center justify-between gap-10">
+                         <div className="flex items-center gap-6 p-8 bg-white/2 border border-white/10 rounded-[2.5rem] w-full xl:w-auto">
+                            <div className={`w-16 h-16 rounded-[1.5rem] ${templateEditForm?.id ? 'bg-[#DC2626]/20 text-[#DC2626]' : 'bg-white/5 text-white/5'} flex items-center justify-center transition-all shadow-lg`}>
+                               <ShieldCheck size={32} />
+                            </div>
+                            <div>
+                               <p className="text-sm font-black text-white uppercase italic tracking-tight">Mass Broadcast Trigger</p>
+                               <div className="flex items-center gap-3 mt-2">
+                                  {(['all', 'premium', 'free'] as const).map(t => (
+                                    <button
+                                      key={t}
+                                      onClick={() => setBroadcastTarget(t)}
+                                      className={`px-4 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-[0.3em] transition-all border ${broadcastTarget === t ? 'bg-[#DC2626] border-[#DC2626] text-white' : 'bg-white/5 border-white/10 text-white/20'}`}
+                                    >
+                                      {t}
+                                    </button>
+                                  ))}
+                                  <div className="w-[1px] h-4 bg-white/10 mx-2" />
+                                  <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest italic">{allUsers.filter(u => broadcastTarget === 'all' || u.tier === broadcastTarget).length} SYNTHS TARGETED</p>
+                               </div>
+                            </div>
+                         </div>
+                         <button 
+                           onClick={triggerMarketingBlast}
+                           disabled={!templateEditForm?.id}
+                           className={`w-full xl:w-auto px-16 py-7 font-black rounded-[2rem] text-[12px] uppercase tracking-[0.4em] transition-all hover:scale-[1.02] active:scale-95 shadow-[0_20px_50px_rgba(220,38,38,0.4)] ${templateEditForm?.id ? 'bg-gradient-to-r from-red-600 to-[#DC2626] text-white' : 'bg-white/5 text-white/5 cursor-not-allowed grayscale'}`}
+                         >
+                           {templateEditForm?.id ? 'EXECUTE MASSIVE UPLINK' : 'LINK OFFLINE'}
+                         </button>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
             </div>
           </motion.div>
         )}
+      </AnimatePresence>
 
         {isAddingPost && (
           <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
@@ -11271,67 +11506,106 @@ Respond professionally, concisely, and use LaTeX for math.` }];
         )}
 
         {editingUser && (
-          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-md w-full space-y-6`}>
-              <div className="text-center space-y-2">
-                <h3 className="text-xl font-black text-white uppercase tracking-tighter">Edit User Information</h3>
-                <p className="text-xs text-white/40">Modify user details directly in the database.</p>
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.9, opacity: 0 }} 
+              className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-5 md:p-8 max-w-md w-full max-h-[95vh] overflow-y-auto custom-scrollbar space-y-4 md:space-y-6 flex flex-col`}
+            >
+              <div className="text-center space-y-1 pb-2">
+                <h3 className="text-lg md:text-xl font-black text-white uppercase tracking-tighter">Profile Configuration</h3>
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest">Neural Override Protocol Activated</p>
               </div>
               
-              <form onSubmit={handleEditUser} className="space-y-4">
+              <form onSubmit={handleEditUser} className="space-y-4 pb-4 flex-1">
                 <div className="space-y-1">
-                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Full Name</p>
-                  <input type="text" value={editingUser.fullName || editingUser.displayName || ''} onChange={(e) => setEditingUser({...editingUser, fullName: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Identity Declaration</p>
+                  <input type="text" value={editingUser.fullName || editingUser.displayName || ''} onChange={(e) => setEditingUser({...editingUser, fullName: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="Full Legal Name" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Email Address</p>
-                  <input type="email" value={editingUser.email || ''} onChange={(e) => setEditingUser({...editingUser, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Neural Uplink Address</p>
+                  <input type="email" value={editingUser.email || ''} onChange={(e) => setEditingUser({...editingUser, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="email@nexus.com" />
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Matric Number</p>
-                  <input type="text" value={editingUser.matric || ''} onChange={(e) => setEditingUser({...editingUser, matric: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Date of Birth</p>
-                  <input type="text" value={editingUser.dob || ''} onChange={(e) => setEditingUser({...editingUser, dob: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-[#DC2626]/50 transition-all" />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">University</p>
-                    <input type="text" value={editingUser.university || ''} onChange={(e) => setEditingUser({...editingUser, university: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Matric Serial</p>
+                    <input type="text" value={editingUser.matric || ''} onChange={(e) => setEditingUser({...editingUser, matric: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="U2024/..." />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Level</p>
-                    <input type="text" value={editingUser.level || ''} onChange={(e) => setEditingUser({...editingUser, level: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Bio Temporal</p>
+                    <input type="text" value={editingUser.dob || ''} onChange={(e) => setEditingUser({...editingUser, dob: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="DD/MM/YYYY" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Department</p>
-                    <input type="text" value={editingUser.department || ''} onChange={(e) => setEditingUser({...editingUser, department: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Academy Sector</p>
+                    <input type="text" value={editingUser.university || ''} onChange={(e) => setEditingUser({...editingUser, university: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="University" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-2">Faculty</p>
-                    <input type="text" value={editingUser.faculty || ''} onChange={(e) => setEditingUser({...editingUser, faculty: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" />
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Evolution Level</p>
+                    <input type="text" value={editingUser.level || ''} onChange={(e) => setEditingUser({...editingUser, level: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="Level/Year" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Department</p>
+                    <input type="text" value={editingUser.department || ''} onChange={(e) => setEditingUser({...editingUser, department: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="..." />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Faculty Hub</p>
+                    <input type="text" value={editingUser.faculty || ''} onChange={(e) => setEditingUser({...editingUser, faculty: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] outline-none text-white focus:border-[#DC2626]/50 transition-all" placeholder="..." />
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-4">
-                  <button type="button" onClick={() => setEditingUser(null)} className="flex-1 bg-white/5 text-white/60 font-bold py-4 rounded-2xl text-sm">CANCEL</button>
-                  <button type="submit" className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-[#DC2626]/20 transition-all">SAVE CHANGES</button>
+                <div className="space-y-2 pt-1">
+                  <p className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest ml-1 italic">Privilege Manifest</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex items-center gap-2 p-2 bg-white/5 border border-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-all">
+                      <input type="checkbox" checked={editingUser.isPremium} onChange={e => setEditingUser({...editingUser, isPremium: e.target.checked})} className="sr-only peer" />
+                      <div className="w-3.5 h-3.5 border-2 border-white/20 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all flex items-center justify-center">
+                        <Check size={10} className={`text-black font-black transition-all ${editingUser.isPremium ? 'opacity-100' : 'opacity-0'}`} />
+                      </div>
+                      <span className="text-[9px] font-black uppercase text-white/30 peer-checked:text-yellow-500 leading-none">Premium</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-white/5 border border-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-all">
+                      <input type="checkbox" checked={editingUser.bypassAllPayments} onChange={e => setEditingUser({...editingUser, bypassAllPayments: e.target.checked})} className="sr-only peer" />
+                      <div className="w-3.5 h-3.5 border-2 border-white/20 rounded-md peer-checked:bg-[#DC2626] peer-checked:border-[#DC2626] transition-all flex items-center justify-center">
+                        <Check size={10} className={`text-white transition-all ${editingUser.bypassAllPayments ? 'opacity-100' : 'opacity-0'}`} />
+                      </div>
+                      <span className="text-[9px] font-black uppercase text-white/30 peer-checked:text-[#DC2626] leading-none">Master Bypass</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-white/5 border border-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-all">
+                      <input type="checkbox" checked={editingUser.bypassHostingPayment} onChange={e => setEditingUser({...editingUser, bypassHostingPayment: e.target.checked})} className="sr-only peer" />
+                      <div className="w-3.5 h-3.5 border-2 border-white/20 rounded-md peer-checked:bg-red-500/40 peer-checked:border-red-500/40 transition-all flex items-center justify-center">
+                        <Check size={10} className={`text-white transition-all ${editingUser.bypassHostingPayment ? 'opacity-100' : 'opacity-0'}`} />
+                      </div>
+                      <span className="text-[9px] font-black uppercase text-white/30 peer-checked:text-red-400 leading-none">Host Bypass</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-white/5 border border-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-all">
+                      <input type="checkbox" checked={editingUser.bypassTakingPayment} onChange={e => setEditingUser({...editingUser, bypassTakingPayment: e.target.checked})} className="sr-only peer" />
+                      <div className="w-3.5 h-3.5 border-2 border-white/20 rounded-md peer-checked:bg-blue-500/40 peer-checked:border-blue-500/40 transition-all flex items-center justify-center">
+                        <Check size={10} className={`text-white transition-all ${editingUser.bypassTakingPayment ? 'opacity-100' : 'opacity-0'}`} />
+                      </div>
+                      <span className="text-[9px] font-black uppercase text-white/30 peer-checked:text-blue-400 leading-none">Taking Bypass</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-6 pb-2">
+                  <button type="button" onClick={() => setEditingUser(null)} className="flex-1 bg-white/5 border border-white/10 text-white/40 font-black py-3 rounded-2xl text-[9px] uppercase tracking-widest hover:text-white transition-all">Abort Task</button>
+                  <button type="submit" className="flex-[2] bg-[#DC2626] hover:bg-[#DC2626]/90 text-white font-black py-3 rounded-2xl text-[9px] uppercase tracking-[0.2em] shadow-2xl shadow-red-900/40 active:scale-95 transition-all">Commit Changes</button>
                 </div>
               </form>
             </motion.div>
           </div>
         )}
 
-      </AnimatePresence>
-
       {/* SHARE MODAL */}
       <AnimatePresence>
         {saveModal.isOpen && (
           <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-[2.5rem] p-8 max-w-sm w-full space-y-6 shadow-2xl`}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border rounded-[2.5rem] p-8 max-w-sm w-full space-y-6 shadow-2xl`}>
               <div className="text-center space-y-2">
                 <div className="w-16 h-16 bg-[#DC2626]/10 rounded-2xl flex items-center justify-center mx-auto mb-4 font-black">
                   <Save size={32} className="text-[#DC2626]" />
@@ -11371,7 +11645,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
 
         {showShareModal && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-sm w-full space-y-6`}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className={`${theme === 'dark' ? 'bg-[#13111C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-8 max-w-sm w-full space-y-6`}>
               <div className="text-center space-y-2">
                 <h3 className="text-xl font-black text-white uppercase tracking-tighter">Share Your Result</h3>
                 <p className="text-xs text-white/40">Enter your name to generate your score card.</p>
@@ -11396,7 +11670,7 @@ Respond professionally, concisely, and use LaTeX for math.` }];
 
               {/* HIDDEN SHARE CARD FOR GENERATION */}
               <div className="fixed -left-[9999px] top-0">
-                <div ref={shareCardRef} className={`w-[600px] h-[400px] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} p-10 flex flex-col items-center justify-center text-center relative overflow-hidden border-[10px] border-[#DC2626]`}>
+                <div ref={shareCardRef} className={`w-[600px] h-[400px] ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} p-10 flex flex-col items-center justify-center text-center relative overflow-hidden border-[10px] border-[#DC2626]`}>
                   <div className="absolute top-0 left-0 w-32 h-32 bg-[#DC2626]/5 rounded-full -translate-x-16 -translate-y-16" />
                   <div className="absolute bottom-0 right-0 w-48 h-48 bg-[#DC2626]/5 rounded-full translate-x-24 translate-y-24" />
                   
@@ -11428,53 +11702,44 @@ Respond professionally, concisely, and use LaTeX for math.` }];
         )}
       </AnimatePresence>
 
-      {/* BOTTOM NAVIGATION */}
-      <div className={`fixed bottom-0 left-0 right-0 z-[100] ${theme === 'dark' ? 'bg-[#0A0F1C]/90 border-white/10' : 'bg-white/90 border-slate-200'} backdrop-blur-xl border-t px-6 py-3 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.1)] pb-safe-offset-4 mb-0`}>
-        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'home' ? 'text-[#DC2626]' : 'text-white/20'}`}>
-          <Home size={22} />
-          <span className="text-[8px] font-black uppercase tracking-widest">Home</span>
-        </button>
-        <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-all relative ${activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'}`}>
-          <WhatsAppIcon size={22} className={activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'} />
-          <span className="text-[8px] font-black uppercase tracking-widest">Chat</span>
-          {totalUnreadMessages > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[9px] font-black flex items-center justify-center rounded-full border border-[#0A0F1C] scale-90">
-              {totalUnreadMessages}
-            </span>
-          )}
-        </button>
-        <button onClick={() => setActiveTab('class')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'class' ? 'text-[#DC2626]' : 'text-white/20'}`}>
-          <Video size={22} />
-          <span className="text-[8px] font-black uppercase tracking-widest">Class</span>
-        </button>
-        <button onClick={() => setActiveTab('tools')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tools' ? 'text-[#DC2626]' : 'text-white/20'}`}>
-          <LayoutGrid size={22} />
-          <span className="text-[8px] font-black uppercase tracking-widest">Tools</span>
-        </button>
-        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'profile' ? 'text-[#DC2626]' : 'text-white/20'}`}>
-          <User size={22} />
-          <span className="text-[8px] font-black uppercase tracking-widest">Profile</span>
-        </button>
-      </div>
-    </motion.div>
-  )}
-</AnimatePresence>
+      {/* BOTTOM NAVIGATION - Only on Mobile */}
+      {(!isChatRoomActive || activeTab !== 'chat') && !isDesktop && (
+        <div className={`fixed bottom-0 left-0 right-0 z-[100] ${theme === 'dark' ? 'bg-[#13111C]/80 border-white/10' : 'bg-white/80 border-slate-200'} backdrop-blur-xl border-t px-6 py-3 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.1)]`}>
+          <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'home' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+            <Home size={22} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Home</span>
+          </button>
+          <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-all relative ${activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+            <WhatsAppIcon size={22} className={activeTab === 'chat' ? 'text-[#DC2626]' : 'text-white/20'} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Chat</span>
+            {totalUnreadMessages > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#DC2626] text-white text-[9px] font-black flex items-center justify-center rounded-full border border-[#13111C]">
+                {totalUnreadMessages}
+              </span>
+            )}
+          </button>
+          <button onClick={() => setActiveTab('class')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'class' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+            <Video size={22} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Class</span>
+          </button>
+          <button onClick={() => setActiveTab('tools')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tools' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+            <LayoutGrid size={22} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Tools</span>
+          </button>
+          <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'profile' ? 'text-[#DC2626]' : 'text-white/20'}`}>
+            <User size={22} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Profile</span>
+          </button>
+        </div>
+      )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 2px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(220, 38, 38, 0.2);
-          border-radius: 10px;
-        }
-        .pb-safe-offset-4 {
-          padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-        }
-      `}} />
+      {/* FOOTER REMOVED FROM HERE */}
     </div>
   );
-}
+};
+
+// No export default here as it's at the top
