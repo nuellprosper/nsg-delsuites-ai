@@ -46,6 +46,28 @@ export enum FirestoreOperation {
   WRITE = 'write',
 }
 
+/**
+ * Robustly stringify objects that may contain circular references
+ */
+export function circularSafeStringify(obj: any, replacer?: (key: string, value: any) => any, indent: number = 2): string {
+  const cache = new WeakSet();
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (cache.has(value)) {
+        return "[Circular]";
+      }
+      cache.add(value);
+    }
+
+    // Default cleanup for common circular/internal props in Firebase objects
+    if (key === 'src' || key === 'target' || key === '_firestore' || key === 'firestore' || key.startsWith('_') || key.startsWith('$')) return undefined;
+
+    if (replacer) return replacer(key, value);
+    
+    return value;
+  }, indent);
+}
+
 export interface FirestoreErrorInfo {
   error: string;
   operationType: FirestoreOperation;
@@ -64,6 +86,27 @@ export interface FirestoreErrorInfo {
       photoUrl: string | null;
     }[];
   }
+}
+
+/**
+ * Deeply clean an object by removing undefined values, which Firestore does not support.
+ */
+export function sanitizeData(data: any): any {
+  if (data === null || data === undefined) return null;
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeData(item));
+  }
+  if (typeof data === 'object') {
+    const clean: any = {};
+    Object.keys(data).forEach(key => {
+      const val = data[key];
+      if (val !== undefined) {
+        clean[key] = sanitizeData(val);
+      }
+    });
+    return clean;
+  }
+  return data;
 }
 
 export function handleFirestoreError(error: unknown, operationType: FirestoreOperation, path: string | null) {
@@ -94,13 +137,23 @@ export function handleFirestoreError(error: unknown, operationType: FirestoreOpe
     console.error('CRITICAL: Firestore Quota Exceeded. The app will have limited functionality until the quota resets.');
   }
 
-  const safeErrInfo = JSON.parse(JSON.stringify(errInfo, (key, value) => {
-    if (key === 'src' || key === 'target') return undefined; // Common circular refs in some envs
-    return value;
-  }));
+  let safeErrInfo: any;
+  try {
+    const jsonStr = circularSafeStringify(errInfo);
+    safeErrInfo = JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("Failed to safely stringify error info:", e);
+    safeErrInfo = {
+      error: errorMessage,
+      operationType,
+      path,
+      isQuotaExceeded,
+      authInfo: { userId: auth.currentUser?.uid }
+    };
+  }
 
   console.error('Firestore Error: ', safeErrInfo);
-  throw new Error(JSON.stringify(safeErrInfo));
+  throw new Error(circularSafeStringify(safeErrInfo));
 }
 
 // Test connection
