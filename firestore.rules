@@ -53,7 +53,20 @@ service cloud.firestore {
              (!('status' in data) || data.status is string) &&
              (!('displayName' in data) || isValString(data.displayName, 256)) &&
              (!('fullName' in data) || isValString(data.fullName, 256)) &&
-             (!('updatedAt' in data) || data.updatedAt is string);
+             (!('photoURL' in data) || isValString(data.photoURL, 1024)) &&
+             (!('university' in data) || isValString(data.university, 512)) &&
+             (!('level' in data) || isValString(data.level, 128)) &&
+             (!('department' in data) || isValString(data.department, 512)) &&
+             (!('faculty' in data) || isValString(data.faculty, 512)) &&
+             (!('dob' in data) || isValString(data.dob, 128)) &&
+             (!('matric' in data) || isValString(data.matric, 128)) &&
+             (!('matricNumber' in data) || isValString(data.matricNumber, 128)) &&
+             (!('isPremium' in data) || data.isPremium is bool) &&
+             (!('bypassAllPayments' in data) || data.bypassAllPayments is bool) &&
+             (!('bypassHostingPayment' in data) || data.bypassHostingPayment is bool) &&
+             (!('bypassTakingPayment' in data) || data.bypassTakingPayment is bool) &&
+             (!('lastSeen' in data) || (data.lastSeen is string || data.lastSeen is timestamp)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string || data.updatedAt is timestamp));
     }
 
     function isValidNote(data) {
@@ -76,16 +89,15 @@ service cloud.firestore {
              data.score <= data.total;
     }
 
-    function isValidReport(data) {
-      return isValString(data.reporterId, 256) &&
-             data.reporterId == request.auth.uid &&
-             isValString(data.reportedId, 256) &&
-             data.status in ['pending', 'resolved'];
-    }
-
-    function isValidClassMessage(data) {
-      return isValString(data.sender, 256) &&
-             isValString(data.text, 5000);
+    function isValidMessage(data) {
+      return isValString(data.senderId, 256) &&
+             (!('senderHandle' in data) || isValString(data.senderHandle, 128)) &&
+             (!('text' in data) || isValString(data.text, 100000)) &&
+             (!('type' in data) || data.type in ['text', 'image', 'video', 'voice', 'file', 'call']) &&
+             (!('seenBy' in data) || data.seenBy is list) &&
+             (!('deletedBy' in data) || data.deletedBy is list) &&
+             (!('status' in data) || data.status is string) &&
+             (!('replyTo' in data) || (data.replyTo == null || data.replyTo is map));
     }
 
     // --- Collection Rules ---
@@ -97,7 +109,7 @@ service cloud.firestore {
       allow create: if isOwner(uid) && isValidUser(incoming());
       allow update: if (isOwner(uid) || isAdmin()) && isValidUser(incoming()) && (
         // Action: Profile Update
-        (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'username', 'university', 'level', 'department', 'faculty', 'dob', 'matric', 'matricNumber', 'updatedAt', 'fullName', 'status', 'premiumUntil', 'bypassHostingPayment', 'bypassTakingPayment', 'bypassAllPayments', 'about', 'lastSeen'])) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'username', 'university', 'level', 'department', 'faculty', 'dob', 'matric', 'matricNumber', 'updatedAt', 'fullName', 'status', 'premiumUntil', 'bypassHostingPayment', 'bypassTakingPayment', 'bypassAllPayments', 'isPremium', 'about', 'lastSeen', 'email'])) ||
         // Action: Presence Heartbeat
         (incoming().diff(existing()).affectedKeys().hasOnly(['lastSeen', 'status'])) ||
         // Action: Admin Role Update
@@ -142,6 +154,13 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update: if isAdmin();
       allow delete: if isAdmin();
+    }
+
+    // Reports Collection
+    match /reports/{reportId} {
+      allow list, get: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     // Quizzes (Shared)
@@ -200,12 +219,11 @@ service cloud.firestore {
       }
       
       // Strict list rule to prevent leakage
-      allow list: if isSignedIn() && (
+      allow list: if isAdmin() || (isSignedIn() && (
         resource.data.members.hasAny([request.auth.uid]) ||
-        resource.data.members.hasAny([get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username]) ||
-        (resource.data.get('unreadBy', []).hasAny([request.auth.uid])) ||
+        resource.data.get('unreadBy', []).hasAny([request.auth.uid]) ||
         chatId == 'omni_' + request.auth.uid
-      );
+      ));
       
       allow get: if isOmniOwner() || isMember() || isAdmin();
       allow create: if (chatId.startsWith('omni_') && chatId == 'omni_' + request.auth.uid) || isSignedIn();
@@ -213,7 +231,18 @@ service cloud.firestore {
       
       match /messages/{messageId} {
         allow read: if isOmniOwner() || isMember() || isAdmin();
-        allow create: if isOmniOwner() || isMember() || isAdmin();
+        allow create: if (isOmniOwner() || isMember() || isAdmin()) && isValidMessage(incoming());
+        allow update: if (isOmniOwner() || isMember() || isAdmin()) && (
+          // Action: Mark as seen
+          (incoming().diff(existing()).affectedKeys().hasOnly(['seenBy'])) ||
+          // Action: Hide for self
+          (incoming().diff(existing()).affectedKeys().hasOnly(['deletedBy'])) ||
+          // Action: Delete for everyone (Sender only)
+          (existing().senderId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasAny(['text', 'mediaUrl', 'type', 'deletedForEveryone', 'status'])) ||
+          // Admin override
+          isAdmin()
+        ) && isValidMessage(incoming());
+        allow delete: if isAdmin();
       }
     }
 
@@ -223,18 +252,6 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (existing().hostId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
-
-      match /messages/{messageId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && isValidClassMessage(incoming());
-      }
-    }
-
-    // Reports
-    match /reports/{reportId} {
-      allow get, list: if isAdmin();
-      allow create: if isSignedIn() && isValidReport(incoming());
-      allow update, delete: if isAdmin();
     }
   }
 }
