@@ -230,7 +230,7 @@ export const TDTool = ({ theme, getAiInstance, onClose }: any) => {
   };
 
   return (
-    <div className={`fixed inset-0 z-[700] flex flex-col ${theme === 'dark' ? 'bg-[#050810]' : 'bg-slate-50'} overscroll-none h-full w-full overflow-hidden`}>
+    <div className={`fixed inset-0 z-[700] flex flex-col ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-slate-50'} overscroll-none h-full w-full overflow-hidden`}>
       {/* HEADER */}
       <div className={`px-4 h-12 sm:h-14 border-b ${theme === 'dark' ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-white'} backdrop-blur-2xl flex items-center justify-between shrink-0 z-[710]`}>
         <div className="flex items-center gap-2">
@@ -341,7 +341,7 @@ export const TDTool = ({ theme, getAiInstance, onClose }: any) => {
               initial={{ x: 350, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 350, opacity: 0 }}
-              className={`w-full lg:w-[320px] flex flex-col absolute inset-y-0 right-0 lg:relative ${theme === 'dark' ? 'bg-[#0A0F1C] border-l border-white/5' : 'bg-white border-l border-slate-200 shadow-2xl'} z-[720] lg:z-10`}
+              className={`w-full lg:w-[320px] flex flex-col absolute inset-y-0 right-0 lg:relative ${theme === 'dark' ? 'bg-[#13111C] border-l border-white/5' : 'bg-white border-l border-slate-200 shadow-2xl'} z-[720] lg:z-10`}
             >
                <div className="p-5 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
                   <div className="flex sm:hidden gap-1.5 pb-2 overflow-x-auto no-scrollbar">
