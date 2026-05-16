@@ -4,14 +4,14 @@ import {
   Users, MessageSquare, Monitor, Share2, 
   Layout, Type, Image as ImageIcon, FileAudio,
   ChevronRight, ArrowLeft, Send, Sparkles, Shield, Plus,
-  X, User, Copy, AtSign
+  X, User
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   collection, doc, onSnapshot, updateDoc, 
-  setDoc, serverTimestamp, getDoc, arrayUnion, addDoc, query, orderBy, where, getDocs
+  setDoc, serverTimestamp, getDoc, arrayUnion, addDoc, query, orderBy
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, handleFirestoreError, FirestoreOperation } from '../firebase';
 
 interface ClassRoomProps {
   theme: 'dark' | 'light';
@@ -23,7 +23,7 @@ interface ClassRoomProps {
   uploadToCloudinary: (file: File | Blob) => Promise<string>;
 }
 
-const ClassRoom: React.FC<ClassRoomProps> = ({ 
+export const ClassRoom: React.FC<ClassRoomProps> = ({ 
   theme, user, userHandle, isHost, classId, onExit, uploadToCloudinary 
 }) => {
   const [classData, setClassData] = useState<any>(null);
@@ -45,23 +45,18 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
     const unsubscribe = onSnapshot(doc(db, 'classes', classId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // Automatically exit if the class has ended
-        if (data.status === 'ended' && !isHost) {
-          onExit();
-          return;
-        }
         setClassData(data);
         setBoardText(data.boardText || '');
         setParticipants(data.participants || []);
       }
-    });
+    }, (err) => handleFirestoreError(err, FirestoreOperation.GET, `classes/${classId}`));
 
     // Listen for messages
     const q = query(collection(db, 'classes', classId, 'messages'), orderBy('timestamp', 'asc'));
     const unsubscribeMessages = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setMessages(msgs);
-    });
+    }, (err) => handleFirestoreError(err, FirestoreOperation.LIST, `classes/${classId}/messages`));
 
     return () => {
       unsubscribe();
@@ -77,13 +72,6 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
     }
   }, [isCamOn]);
 
-  const stopCamera = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-      localStreamRef.current = null;
-    }
-  };
-
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -95,39 +83,9 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
     }
   };
 
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteHandle, setInviteHandle] = useState('');
-
-  const endClass = async () => {
-    if (!window.confirm("CRITICAL: This will DISCONNECT all participants and permanently end the session. Continue?")) return;
-    try {
-      await updateDoc(doc(db, 'classes', classId), {
-        status: 'ended',
-        endedAt: serverTimestamp()
-      });
-      onExit();
-    } catch (err) {
-      console.error("End class failed:", err);
-    }
-  };
-
-  const addParticipantByHandle = async () => {
-    if (!inviteHandle.trim()) return;
-    try {
-      const q = query(collection(db, 'users'), where('username', '==', inviteHandle.toLowerCase().trim()));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        alert("User not found.");
-        return;
-      }
-      const targetUser = snap.docs[0].data();
-      await updateDoc(doc(db, 'classes', classId), {
-        participants: arrayUnion(targetUser.uid || snap.docs[0].id)
-      });
-      setInviteHandle('');
-      alert(`User @${inviteHandle} added to class.`);
-    } catch (err) {
-      console.error("Add participant failed:", err);
+  const stopCamera = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
     }
   };
 
@@ -179,9 +137,9 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
   };
 
   return (
-    <div className={`flex flex-col h-full ${theme === 'dark' ? 'bg-black text-white' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`flex flex-col h-full ${theme === 'dark' ? 'bg-[#13111C] text-white' : 'bg-slate-50 text-slate-900'}`}>
       {/* Header */}
-      <div className="p-4 bg-[#0A0F1C]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between z-20">
+      <div className="p-4 bg-[#13111C]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between z-20">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-[#DC2626] rounded-xl flex items-center justify-center shadow-lg shadow-[#DC2626]/20">
             <Video size={20} className="text-white" />
@@ -197,10 +155,10 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
             <span className="text-[10px] font-black">{participants.length}</span>
           </div>
           <button 
-            onClick={isHost ? endClass : onExit}
+            onClick={onExit}
             className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-red-600/20 transition-all uppercase"
           >
-            <PhoneOff size={14} /> {isHost ? 'End Class' : 'Leave'}
+            <PhoneOff size={14} /> End
           </button>
         </div>
       </div>
@@ -245,7 +203,7 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
             </div>
           ) : (
             /* Classboard */
-            <div className={`flex-1 flex flex-col p-8 rounded-[3rem] ${theme === 'dark' ? 'bg-[#0A0F1C]' : 'bg-white'} border border-white/5 shadow-2xl relative`}>
+            <div className={`flex-1 flex flex-col p-8 rounded-[3rem] ${theme === 'dark' ? 'bg-[#13111C]' : 'bg-white'} border border-white/5 shadow-2xl relative`}>
               <div className="absolute top-8 left-8 flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-[#DC2626]/10 flex items-center justify-center">
                   <Layout size={18} className="text-[#DC2626]" />
@@ -295,7 +253,7 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
           {showChat && (
             <motion.div 
               initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              className="absolute sm:relative top-0 right-0 bottom-0 w-full sm:w-80 bg-[#0A0F1C] border-l border-white/5 flex flex-col shadow-2xl z-30"
+              className="absolute sm:relative top-0 right-0 bottom-0 w-full sm:w-80 bg-[#13111C] border-l border-white/5 flex flex-col shadow-2xl z-30"
             >
               <div className="p-4 border-b border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -371,86 +329,10 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
            </button>
         </div>
         
-        <button 
-          onClick={() => setShowInviteModal(true)}
-          className="hidden sm:flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white/60 px-5 py-3 rounded-2xl text-[10px] font-black uppercase transition-all"
-        >
+        <button className="hidden sm:flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white/60 px-5 py-3 rounded-2xl text-[10px] font-black uppercase transition-all">
            <Share2 size={16} /> Invite
         </button>
       </div>
-
-      <AnimatePresence>
-        {showInviteModal && (
-          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className={`w-full max-w-sm ${theme === 'dark' ? 'bg-[#0A0F1C] border-white/10' : 'bg-white border-slate-200'} border rounded-3xl p-6 shadow-2xl space-y-6`}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="font-black uppercase tracking-tighter text-lg">Invite to Class</h3>
-                <button onClick={() => setShowInviteModal(false)} className="text-white/20 hover:text-white"><X size={20} /></button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="bg-[#DC2626]/5 border border-[#DC2626]/10 p-4 rounded-2xl text-center space-y-3">
-                  <div>
-                    <p className="text-[8px] font-black text-[#DC2626] uppercase tracking-widest mb-1">Class ID</p>
-                    <p className="text-xl font-black font-mono text-white tracking-[0.2em]">{classId}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button 
-                        onClick={() => {
-                            navigator.clipboard.writeText(classId);
-                            alert("Class ID copied!");
-                        }}
-                        className="flex items-center justify-center gap-2 py-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white rounded-xl border border-[#DC2626]/20 transition-all text-[10px] font-bold uppercase tracking-wider"
-                    >
-                        <Copy size={12} /> ID
-                    </button>
-                    <button 
-                        onClick={() => {
-                            const link = `${window.location.origin}?class=${classId}`;
-                            navigator.clipboard.writeText(link);
-                            alert("Invite link copied!");
-                        }}
-                        className="flex items-center justify-center gap-2 py-2 bg-[#DC2626]/10 hover:bg-[#DC2626] text-[#DC2626] hover:text-white rounded-xl border border-[#DC2626]/20 transition-all text-[10px] font-bold uppercase tracking-wider"
-                    >
-                        <AtSign size={12} /> Link
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-[9px] font-black text-white/30 uppercase tracking-widest">Add by Username</p>
-                  <div className="flex gap-2">
-                    <input 
-                      value={inviteHandle}
-                      onChange={(e) => setInviteHandle(e.target.value)}
-                      placeholder="Enter username..."
-                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-[#DC2626]"
-                    />
-                    <button 
-                      onClick={addParticipantByHandle}
-                      className="bg-[#DC2626] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <button 
-                onClick={() => setShowInviteModal(false)}
-                className="w-full py-4 bg-white/5 text-white/40 rounded-2xl text-[10px] font-black uppercase mt-4"
-              >
-                Done
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Floating Status */}
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/80 backdrop-blur-md px-6 py-2 rounded-full border border-white/5 z-10">
@@ -460,6 +342,3 @@ const ClassRoom: React.FC<ClassRoomProps> = ({
     </div>
   );
 };
-
-export { ClassRoom };
-export default ClassRoom;
